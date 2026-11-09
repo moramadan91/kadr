@@ -4,3 +4,4 @@ src-tauri/gen/
 src-tauri/binaries/
 .DS_Store
 *.kadr
+Kadr_*.dmg
