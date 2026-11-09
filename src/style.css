@@ -151,6 +151,14 @@ main { display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; gap: 8p
 .pbar { height: 6px; background: var(--well); border-radius: 3px; overflow: hidden; }
 .pbar i { display: block; height: 100%; width: 0; background: var(--accent); }
 .acts { display: flex; gap: 8px; justify-content: flex-end; }
+.box:has(.ksheet) { width: min(880px, 94vw); max-height: 86vh; overflow: auto; }
+.ksheet { display: grid; gap: 14px; }
+.kcols { columns: 3 240px; column-gap: 22px; }
+.kcols section { break-inside: avoid; margin-bottom: 16px; }
+.kcols h4 { margin: 0 0 6px; font-size: 12px; color: var(--accent); }
+.kcols div { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--stroke); font-size: 12.5px; }
+.kcols kbd, .keys kbd { background: var(--glass-hi); border: 1px solid var(--stroke); border-radius: 5px; padding: 0 6px; font-family: inherit; color: var(--text); direction: ltr; display: inline-block; }
+.keys .wide { margin-top: 8px; }
 #toast { position: fixed; bottom: 360px; left: 50%; transform: translateX(-50%); padding: 9px 14px; z-index: 60; display: flex; gap: 10px; align-items: center; background: rgba(28, 32, 40, .8); }
 #toast[hidden] { display: none; }
 #ghost { position: fixed; z-index: 70; pointer-events: none; padding: 6px 10px; border-radius: 9px; background: rgba(46, 230, 214, .85); color: var(--accent-ink); font-size: 12px; font-weight: 700; }

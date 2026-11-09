@@ -27,7 +27,7 @@ function applyLang() {
   document.documentElement.lang = LANG;
   document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
   $$('[data-t]').forEach(el => (el.textContent = tr(el.dataset.t)));
-  $$('[data-tt]').forEach(el => (el.title = tr(el.dataset.tt)));
+  $$('[data-tt]').forEach(el => (el.title = tr(el.dataset.tt) + (KEY_HINT[el.dataset.tt] ? '  ' + KEY_HINT[el.dataset.tt] : '')));
   try { localStorage.setItem('kadr.lang', LANG); } catch {}
 }
 function paintIcons(root = document) {
@@ -552,9 +552,9 @@ function targetsAtPlayhead() {
   const s = sel && item(sel);
   return s && active(s, t) ? [s] : P.items.filter(i => active(i, t));
 }
-function splitAt() {
+function splitAt(all) {
   const min = 1 / P.fps;
-  const ok = targetsAtPlayhead().filter(it => t - it.start > min && it.start + it.dur - t > min);
+  const ok = (all ? P.items.filter(i => active(i, t)) : targetsAtPlayhead()).filter(it => t - it.start > min && it.start + it.dur - t > min);
   if (!ok.length) return toast(tr('cutHint'));
   snapshot();
   for (const it of ok) {
@@ -663,10 +663,11 @@ function inspector() {
   $('#inspTabs').innerHTML = tabs.map(x => `<button data-itab="${x}" class="${x === inspTab ? 'on' : ''}">${tr(x)}</button>`).join('');
   $('#inspTabs').hidden = !tabs.length;
   if (!it) {
-    const k = (a, b) => `<div><kbd>${a}</kbd> ${tr(b)}</div>`;
+    const k = (label, also) => `<div><kbd>${KEY_HINT[label]}</kbd>${also ? ` <kbd>${also}</kbd>` : ''} ${tr(label)}</div>`;
     body.innerHTML = `<p class="hint">${tr('nothingSel')}</p><div class="keys"><h4>${tr('shortcuts')}</h4>
-      ${k('Space', 'k_play')}${k('S', 'k_split')}${k('Q / W', 'k_q')}${k('Delete', 'k_del')}${k('⌘D', 'k_dup')}
-      ${k('⌘Z / ⇧⌘Z', 'k_undo')}${k('← → / ⇧', 'k_frame')}${k('V / B', 'k_tool')}${k('M', 'k_marker')}</div>`;
+      ${k('k_play')}${k('split')}${k('delLeft', 'W')}${k('k_copy', fmtKey('mod+v'))}${k('undo')}${k('select', 'B')}${k('k_frames', '→')}
+      <button class="wide" id="bAllKeys">${tr('k_all')}</button></div>`;
+    $('#bAllKeys').onclick = showKeys;
     return;
   }
   const h = [];
@@ -1161,28 +1162,96 @@ $('#bZoomOut').onclick = () => setZoom(pps / 1.4);
 $('#bFit').onclick = () => setZoom(($('#scroll').clientWidth - 40) / Math.max(total(), 1));
 $('#bLang').onclick = () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyLang(); renderLibCards(); refresh(); };
 
+/* ---------- keyboard: CapCut-style keymap. One table drives the keys, the tooltips and the shortcuts sheet ---------- */
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+let clipBoard = null;
+function copySel() { const it = sel && item(sel); if (it) clipBoard = JSON.parse(JSON.stringify(it)); }
+function cutSel() { copySel(); removeSel(); }
+function pasteClip() {
+  if (!clipBoard || (clipBoard.media && !P.media[clipBoard.media])) return;
+  snapshot();
+  const b = { ...JSON.parse(JSON.stringify(clipBoard)), id: uid(), start: t };
+  const c = b.track === 'v1' && magnet && P.items.find(i => i.track === 'v1' && active(i, t));
+  if (c) b.start = t - c.start > c.dur / 2 ? c.start + c.dur - 1e-4 : c.start - 1e-4; // land on the nearest cut
+  P.items.push(b);
+  sel = b.id;
+  refresh();
+}
+function selectStep(dir) {
+  const cur = sel && item(sel), track = cur ? cur.track : 'v1';
+  const row = P.items.filter(i => i.track === track).sort((a, b) => a.start - b.start);
+  const k = cur ? row.indexOf(cur) + dir : dir < 0 ? row.findLastIndex(i => i.start < t) : row.findIndex(i => i.start + i.dur > t);
+  if (row[k]) { select(row[k].id); seek(row[k].start); }
+}
+function jumpCut(dir) {
+  const eps = 0.5 / P.fps, pts = [0, total(), ...(P.markers || []), ...P.items.flatMap(i => [i.start, i.start + i.dur])];
+  const next = dir > 0 ? Math.min(...pts.filter(p => p > t + eps)) : Math.max(...pts.filter(p => p < t - eps));
+  if (isFinite(next)) seek(next);
+}
+async function newProj() {
+  if (dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
+  setPlaying(false);
+  P = newProject(); projectPath = null;
+  sel = null; t = 0; dirty = false;
+  undoStack.length = redoStack.length = 0;
+  syncSettings();
+  refresh();
+}
+const frameDur = () => 1 / P.fps;
+const KEYMAP = [
+  ['g_file', [
+    [['mod+n'], 'k_new', newProj], [['mod+o'], 'open', open], [['mod+s'], 'save', () => save()],
+    [['mod+shift+s'], 'k_saveAs', () => save(true)], [['mod+i'], 'import', importMedia], [['mod+e'], 'export', exportDialog]]],
+  ['g_edit', [
+    [['mod+z'], 'undo', () => restore(undoStack, redoStack)], [['mod+shift+z', 'mod+y'], 'redo', () => restore(redoStack, undoStack)],
+    [['mod+c'], 'k_copy', copySel], [['mod+x'], 'k_cut', cutSel], [['mod+v'], 'k_paste', pasteClip],
+    [['mod+d'], 'dup', duplicateSel], [['delete'], 'del', removeSel], [['esc'], 'k_deselect', () => select(null)]]],
+  ['g_timeline', [
+    [['c', 'mod+b', 's'], 'split', () => splitAt()], [['mod+shift+b'], 'k_splitAll', () => splitAt(true)],
+    [['q'], 'delLeft', () => trimTo('left')], [['w'], 'delRight', () => trimTo('right')],
+    [['v'], 'select', () => setTool('select')], [['b'], 'blade', () => setTool('blade')],
+    [['['], 'k_selPrev', () => selectStep(-1)], [[']'], 'k_selNext', () => selectStep(1)],
+    [['p'], 'magnet', () => $('#bMagnet').click()], [['n'], 'snap', () => $('#bSnap').click()], [['m'], 'marker', addMarker],
+    [['mod+='], 'zoomIn', () => setZoom(pps * 1.4)], [['mod+-'], 'zoomOut', () => setZoom(pps / 1.4)],
+    [['mod+0', 'shift+z'], 'fit', () => $('#bFit').click()]]],
+  ['g_player', [
+    [['space'], 'k_play', () => setPlaying(!playing)], [['l'], 'play', () => setPlaying(true)], [['k'], 'k_pause', () => setPlaying(false)],
+    [['j', 'shift+left'], 'k_back', () => { setPlaying(false); seek(t - 1); }], [['shift+right'], 'k_fwd', () => seek(t + 1)],
+    [['left'], 'k_frames', () => seek(t - frameDur())], [['right'], 'k_frames', () => seek(t + frameDur())],
+    [['up'], 'k_prevCut', () => jumpCut(-1)], [['down'], 'k_nextCut', () => jumpCut(1)],
+    [['home'], 'k_start', () => seek(0)], [['end'], 'k_end', () => seek(total())]]],
+  ['g_help', [[['shift+/', 'mod+/'], 'shortcuts', showKeys]]],
+];
+function fmtKey(spec) {
+  if (spec === 'shift+/') return '?';
+  const names = { mod: MAC ? '⌘' : 'Ctrl', shift: MAC ? '⇧' : 'Shift', alt: MAC ? '⌥' : 'Alt', space: 'Space', delete: 'Delete', esc: 'Esc',
+    left: '←', right: '→', up: '↑', down: '↓', home: 'Home', end: 'End', '=': '+', '/': '/' };
+  return spec.split('+').map(x => names[x] ?? x.toUpperCase()).join(MAC ? '' : '+');
+}
+const KEY_RUN = new Map(), KEY_HINT = {};
+for (const [, rows] of KEYMAP) for (const [ks, label, run] of rows) { ks.forEach(k => KEY_RUN.set(k, run)); KEY_HINT[label] ??= fmtKey(ks[0]); }
+// Physical key (e.code), so the shortcuts also work with an Arabic keyboard layout.
+function keyCombo(e) {
+  const c = e.code, named = { Space: 'space', BracketLeft: '[', BracketRight: ']', Equal: '=', Minus: '-', Slash: '/', Delete: 'delete', Backspace: 'delete',
+    ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Home: 'home', End: 'end', Escape: 'esc', NumpadAdd: '=', NumpadSubtract: '-' };
+  const k = c.startsWith('Key') ? c.slice(3).toLowerCase() : c.startsWith('Digit') ? c.slice(5) : named[c];
+  return k && ((e.metaKey || e.ctrlKey) ? 'mod+' : '') + (e.altKey ? 'alt+' : '') + (e.shiftKey ? 'shift+' : '') + k;
+}
+function showKeys() {
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<div class="ksheet"><h3>${tr('shortcuts')}</h3><div class="kcols">${KEYMAP.map(([g, rows]) => `<section><h4>${tr(g)}</h4>${rows.reduce((m, [ks, label]) => (m.at(-1)?.[1] === label ? m.at(-1)[0].push(...ks) : m.push([[...ks], label]), m), []).map(([ks, label]) =>
+    `<div><span>${tr(label)}</span><span>${ks.map(k => `<kbd>${fmtKey(k)}</kbd>`).join(' ')}</span></div>`).join('')}</section>`).join('')}</div>
+    <div class="acts"><button id="mClose">${tr('close')}</button></div></div>`;
+  $('#mClose').onclick = hideModal;
+}
+$('#bKeys').onclick = showKeys;
 window.addEventListener('keydown', e => {
-  if (e.target.matches('input, textarea, select') || !$('#modal').hidden) return;
-  const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
-  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
-  else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? restore(redoStack, undoStack) : restore(undoStack, redoStack); }
-  else if (mod && k === 's') { e.preventDefault(); save(e.shiftKey); }
-  else if (mod && k === 'o') { e.preventDefault(); open(); }
-  else if (mod && k === 'd') { e.preventDefault(); duplicateSel(); }
-  else if (mod && k === 'e') { e.preventDefault(); exportDialog(); }
-  else if (mod && k === 'i') { e.preventDefault(); importMedia(); }
-  else if (mod) return;
-  else if (k === 's') splitAt();
-  else if (k === 'q') trimTo('left');
-  else if (k === 'w') trimTo('right');
-  else if (k === 'm') addMarker();
-  else if (k === 'v') setTool('select');
-  else if (k === 'b') setTool('blade');
-  else if (k === 'delete' || k === 'backspace') removeSel();
-  else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); seek(t + (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 1 : 1 / P.fps)); }
-  else if (k === 'home') seek(0);
-  else if (k === 'end') seek(total());
-  else if (k === 'escape') select(null);
+  if (e.target.matches('input, textarea, select')) return;
+  if (!$('#modal').hidden) { if (e.key === 'Escape' && $('#mBox .ksheet')) hideModal(); return; }
+  const run = KEY_RUN.get(keyCombo(e));
+  if (!run) return;
+  e.preventDefault();
+  run();
 });
 
 (async () => {
