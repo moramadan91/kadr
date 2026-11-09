@@ -13,7 +13,7 @@ const icon = n => `<svg class="ic" viewBox="0 0 24 24">${ICONS[n] || ''}</svg>`;
 const IS_MAC = /Mac/.test(navigator.userAgent);
 if (IS_MAC) document.documentElement.classList.add('mac');
 
-const ASPECTS = { '9:16': [1080, 1920], '16:9': [1920, 1080], '1:1': [1080, 1080], '4:5': [1080, 1350] };
+const ASPECTS = Object.fromEntries(['9:16', '16:9', '1:1', '4:5', '4:3', '3:4', '21:9'].map(r => [r, dimsFor(r)]));
 const FONTS = ['Cairo', 'Geeza Pro', 'Arial', 'Helvetica Neue', 'Georgia', 'Impact'];
 const ACCENT = '#2ee6d6';
 const ROW = 46;
@@ -1120,41 +1120,157 @@ async function rasterizeTexts(Q, work) {
 }
 
 const RES = [['720p', 720], ['1080p', 1080], ['2K', 1440], ['4K', 2160]];
-function exportDialog() {
+/* ---------- new project / welcome ---------- */
+const FORMATS = [ // [ratio, label key, platforms]
+  ['9:16', 'f_vertical', 'TikTok · Reels · Shorts'], ['16:9', 'f_wide', 'YouTube'], ['1:1', 'f_square', 'Instagram · Facebook'],
+  ['4:5', 'f_portrait', 'Instagram'], ['4:3', 'f_classic', 'TV · iPad'], ['3:4', 'f_classicV', 'Pinterest'], ['21:9', 'f_cinema', 'Cinema'],
+];
+function dimsFor(ratio) { // short side 1080, even numbers
+  const [a, b] = ratio.split(':').map(Number), even = v => Math.round(v / 2) * 2;
+  return a >= b ? [even(1080 * a / b), 1080] : [1080, even(1080 * b / a)];
+}
+const recent = {
+  get() { try { return JSON.parse(localStorage.getItem('kadr.recent') || '[]'); } catch { return []; } },
+  add(f) { try { localStorage.setItem('kadr.recent', JSON.stringify([f, ...recent.get().filter(x => x !== f)].slice(0, 8))); } catch {} },
+};
+async function newProj(welcome) {
+  if (!welcome && dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
+  setPlaying(false);
+  let ratio = '9:16', fps = 30, res = 1080;
+  const rec = welcome ? recent.get() : [];
+  const shape = r => { const [a, b] = r.split(':').map(Number), k = 30 / Math.max(a, b); return `<i class="shape" style="width:${a * k}px;height:${b * k}px"></i>`; };
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<div class="npx">
+    <div class="np-head"><h3>${tr(welcome ? 'welcome' : 'k_new')}</h3>${welcome ? `<p class="hint">${tr('welcomeSub')}</p>` : ''}</div>
+    <div class="np-grid">${FORMATS.map(([r, k, pl]) => `<button class="fmt${r === ratio ? ' on' : ''}" data-r="${r}">${shape(r)}<b>${r}</b><span>${tr(k)}</span><small>${pl}</small></button>`).join('')}
+      <button class="fmt" data-r="custom"><i class="shape dash" style="width:26px;height:26px"></i><b>${tr('custom')}</b><span dir="ltr"><input id="npW" type="number" value="1080" min="16" max="8192"> × <input id="npH" type="number" value="1920" min="16" max="8192"></span></button></div>
+    <div class="np-row">
+      <label class="f"><span>${tr('np_name')}</span><input id="npName" value="${esc(tr('untitled'))}"></label>
+      <label class="f"><span>${tr('resolution')}</span><select id="npRes">${RES.map(([n, v]) => `<option value="${v}"${v === res ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="f"><span>${tr('fps')}</span><select id="npFps">${[24, 25, 30, 50, 60].map(f => `<option${f === fps ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
+    </div>
+    ${rec.length ? `<div class="np-recent"><h4>${tr('recent')}</h4>${rec.map((f, i) => `<button data-rec="${i}"><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${esc(f)}</small></button>`).join('')}</div>` : ''}
+    <div class="acts">${welcome ? `<button id="npOpen">${tr('open')}…</button>` : ''}<span class="flex"></span><button id="npNo">${tr(welcome ? 'skip' : 'cancel')}</button><button class="primary" id="npGo">${tr('create')}</button></div></div>`;
+  $('#mBox').onclick = e => {
+    const b = e.target.closest('.fmt');
+    if (b) { ratio = b.dataset.r; $$('.fmt').forEach(x => x.classList.toggle('on', x === b)); }
+    const r = e.target.closest('[data-rec]');
+    if (r) { hideModal(); openPath(rec[+r.dataset.rec]); }
+  };
+  $('#npNo').onclick = hideModal;
+  if ($('#npOpen')) $('#npOpen').onclick = () => { hideModal(); open(); };
+  $('#npGo').onclick = () => {
+    let w, h;
+    if (ratio === 'custom') { const e = v => Math.max(16, Math.round(clamp(+v || 1080, 16, 8192) / 2) * 2); w = e($('#npW').value); h = e($('#npH').value); }
+    else [w, h] = dimsFor(ratio);
+    hideModal();
+    P = Object.assign(newProject(), { w, h, fps: +$('#npFps').value, res: +$('#npRes').value, name: $('#npName').value.trim() || tr('untitled') });
+    projectPath = null; sel = null; t = 0; dirty = false;
+    undoStack.length = redoStack.length = 0;
+    binSel.clear();
+    syncSettings();
+    refresh();
+  };
+}
+
+/* ---------- export ---------- */
+const QUALITY = [['low', 'q_low'], ['rec', 'q_rec'], ['high', 'q_high']];
+const pref = (k, d) => { try { return localStorage.getItem('kadr.x.' + k) ?? d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem('kadr.x.' + k, v); } catch {} };
+async function exportDialog() {
   if (!total()) return toast(tr('emptyTl'));
   setPlaying(false);
   const short = Math.min(P.w, P.h);
+  let dir = pref('dir', '');
+  if (!dir) try { dir = await TA.path.desktopDir(); } catch {}
+  const cover = document.createElement('canvas');
+  cover.width = 360; cover.height = Math.round(360 * P.h / P.w);
+  cover.getContext('2d').drawImage(view, 0, 0, cover.width, cover.height);
+  const res0 = +pref('res', P.res || short), base = projectPath ? projectPath.split(/[\\/]/).pop().replace(/\.kadr$/, '') : (P.name || 'kadr-export');
+  const opt = (id, list, v) => `<select id="${id}">${list.map(([val, n]) => `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   $('#modal').hidden = false;
-  $('#mBox').innerHTML = `<h3>${tr('exportTitle')}</h3>
-    <label class="f"><span>${tr('resolution')}</span><select id="xRes">${RES.map(([n, v]) => `<option value="${v}"${v === short ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-    <label class="f"><span>${tr('fps')}</span><select id="xFps">${[24, 25, 30, 50, 60].map(f => `<option${f === P.fps ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
-    <label class="f"><span>${tr('codec')}</span><select id="xCodec"><option value="h264">H.264 (MP4)</option><option value="hevc">HEVC / H.265</option></select></label>
-    ${IS_MAC ? `<label class="inl"><input type="checkbox" id="xHw" checked>${tr('hw')}</label>` : ''}
-    <div class="acts"><button id="xNo">${tr('cancel')}</button><button class="primary" id="xGo">${tr('exportGo')}</button></div>`;
+  $('#mBox').innerHTML = `<div class="xp">
+    <div class="xp-cover"></div>
+    <div class="xp-form">
+      <h3>${tr('exportTitle')}</h3>
+      <label class="xr"><span>${tr('np_name')}</span><input id="xName" value="${esc(base)}"></label>
+      <div class="xr"><span>${tr('exportTo')}</span><div class="xdir"><input id="xDir" value="${esc(dir)}" readonly><button class="ib" id="xPick" data-i="folder-open"></button></div></div>
+      <label class="xsec"><input type="checkbox" id="xVid" checked> <b>${tr('video')}</b></label>
+      <div id="xVidBox">
+        <label class="xr"><span>${tr('resolution')}</span>${opt('xRes', RES.map(([n, v]) => [v, n]), RES.some(r => r[1] === res0) ? res0 : 1080)}</label>
+        <label class="xr"><span>${tr('bitrate')}</span>${opt('xQ', QUALITY.map(([v, k]) => [v, tr(k)]), pref('q', 'rec'))}</label>
+        <label class="xr"><span>${tr('codec')}</span>${opt('xCodec', [['h264', 'H.264'], ['hevc', 'HEVC / H.265'], ['prores', 'ProRes 422']], pref('codec', 'h264'))}</label>
+        <label class="xr"><span>${tr('format')}</span>${opt('xFmt', [['mp4', 'mp4'], ['mov', 'mov']], pref('fmt', 'mp4'))}</label>
+        <label class="xr"><span>${tr('fps')}</span>${opt('xFps', [24, 25, 30, 50, 60].map(f => [f, f + 'fps']), P.fps)}</label>
+        ${IS_MAC ? `<label class="xr"><span>${tr('hw')}</span><input type="checkbox" id="xHw"${pref('hw', '1') === '1' ? ' checked' : ''}></label>` : ''}
+      </div>
+      <label class="xsec"><input type="checkbox" id="xAud"${pref('aud', '0') === '1' ? ' checked' : ''}> <b>${tr('audioFile')}</b></label>
+      <div id="xAudBox"><label class="xr"><span>${tr('format')}</span>${opt('xAFmt', [['mp3', 'MP3'], ['wav', 'WAV'], ['m4a', 'AAC (m4a)']], pref('afmt', 'mp3'))}</label></div>
+    </div>
+    <div class="xp-foot"><span id="xInfo"></span><span class="flex"></span><button id="xNo">${tr('cancel')}</button><button class="primary" id="xGo">${tr('exportGo')}</button></div></div>`;
+  $('.xp-cover').appendChild(cover);
+  paintIcons($('#mBox'));
+  const sync = () => {
+    const vid = $('#xVid').checked, aud = $('#xAud').checked, pr = $('#xCodec').value === 'prores';
+    $('#xVidBox').classList.toggle('off', !vid);
+    $('#xAudBox').classList.toggle('off', !aud);
+    if (pr) $('#xFmt').value = 'mov';
+    $('#xFmt').disabled = pr;
+    if ($('#xHw')) $('#xHw').disabled = pr;
+    const sh = +$('#xRes').value, area = sh * sh * Math.max(P.w, P.h) / Math.min(P.w, P.h), fps = +$('#xFps').value;
+    const q = { low: 0.6, rec: 1, high: 1.8 }[$('#xQ').value], codec = $('#xCodec').value;
+    const mbps = codec === 'prores' ? 147 * area / (1920 * 1080) * fps / 30 : 8 * q * area / (1920 * 1080) * fps / 30 * (codec === 'hevc' ? 0.6 : 1);
+    const mb = total() * ((vid ? mbps : 0) + (aud ? ($('#xAFmt').value === 'wav' ? 1.536 : 0.192) : 0) + (vid ? 0.192 : 0)) / 8;
+    $('#xInfo').innerHTML = `${tr('duration')}: <bdi>${fmt(total())}</bdi> · ${tr('size')}: <bdi>~${mb < 1000 ? Math.max(1, Math.round(mb)) + ' MB' : (mb / 1000).toFixed(1) + ' GB'}</bdi>`;
+    $('#xGo').disabled = !vid && !aud;
+  };
+  $('#mBox').onchange = sync;
+  sync();
+  $('#xPick').onclick = async () => { const d = await TA.dialog.open({ directory: true, defaultPath: $('#xDir').value || undefined }); if (d) $('#xDir').value = d; };
   $('#xNo').onclick = hideModal;
-  $('#xGo').onclick = () => {
-    const k = +$('#xRes').value / short, fps = +$('#xFps').value;
-    const codec = $('#xCodec').value + ($('#xHw') && $('#xHw').checked ? '_hw' : '');
+  $('#xGo').onclick = async () => {
+    const name = $('#xName').value.trim().replace(/[\\/:*?"<>|]/g, '-') || 'kadr-export', d = $('#xDir').value;
+    if (!d) return toast(tr('pickFolder'));
+    const sep = d.includes('\\') ? '\\' : '/', at = ext => d.replace(/[\\/]$/, '') + sep + name + '.' + ext;
+    const vid = $('#xVid').checked, aud = $('#xAud').checked, codecSel = $('#xCodec').value;
+    const o = {
+      k: +$('#xRes').value / short, fps: +$('#xFps').value, quality: $('#xQ').value,
+      codec: codecSel + (codecSel !== 'prores' && $('#xHw') && $('#xHw').checked ? '_hw' : ''),
+      video: vid && at(codecSel === 'prores' ? 'mov' : $('#xFmt').value), audio: aud && at($('#xAFmt').value),
+    };
+    Object.entries({ dir: d, res: $('#xRes').value, q: o.quality, codec: codecSel, fmt: $('#xFmt').value, hw: $('#xHw')?.checked ? '1' : '0', aud: aud ? '1' : '0', afmt: $('#xAFmt').value })
+      .forEach(([k, v]) => setPref(k, v));
+    const exists = (await Promise.all([o.video, o.audio].filter(Boolean).map(f => inv('path_exists', { path: f })))).some(Boolean);
+    if (exists && !(await TA.dialog.ask(tr('overwrite'), { kind: 'warning' }))) return;
     hideModal();
-    doExport(k, fps, codec);
+    doExport(o);
   };
 }
-async function doExport(k, fps, codec, preset) {
-  const out = preset || await TA.dialog.save({ defaultPath: 'kadr-export.mp4', filters: [{ name: 'MP4', extensions: ['mp4'] }] });
-  if (!out) return;
+async function doExport(o) {
+  if (typeof o === 'number') o = { k: o, fps: arguments[1], codec: arguments[2], video: arguments[3], quality: 'rec' }; // dev demo form
   cancelled = false;
   let work = null;
   try {
-    progress(tr('p_texts'), 0);
-    const Q = S.scaleProject(P, k);
-    Q.fps = fps;
-    work = await inv('work_begin');
-    const list = await rasterizeTexts(Q, work);
-    const { args, duration } = G.buildArgs(Q, { out, textList: list ? work.path + '/text.ffconcat' : null, codec });
-    progress(tr('p_export'), 0);
-    await inv('export_run', { id: work.id, args, concat: list ? G.concatText(list, fps) : null, duration });
-    work = null;
+    if (o.video) {
+      progress(tr('p_texts'), 0);
+      const Q = S.scaleProject(P, o.k);
+      Q.fps = o.fps;
+      work = await inv('work_begin');
+      const list = await rasterizeTexts(Q, work);
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textList: list ? work.path + '/text.ffconcat' : null, codec: o.codec, quality: o.quality });
+      progress(tr('p_export'), 0);
+      await inv('export_run', { id: work.id, args, concat: list ? G.concatText(list, o.fps) : null, duration });
+      work = null;
+    }
+    if (o.audio && !cancelled) {
+      progress(tr('p_audioExport'), 0);
+      work = await inv('work_begin');
+      const { args, duration } = G.buildArgs(P, { out: o.audio, audioExport: o.audio.split('.').pop() });
+      await inv('export_run', { id: work.id, args, concat: null, duration });
+      work = null;
+    }
     hideModal();
+    const out = o.video || o.audio;
     toast(tr('exported') + ': ' + out.split(/[\\/]/).pop(), { label: tr('reveal'), run: () => TA.opener.revealItemInDir(out) });
   } catch (e) {
     hideModal();
@@ -1246,16 +1362,19 @@ async function toggleRecord() {
 
 /* ---------- project ---------- */
 function syncSettings() {
-  $('#aspect').value = Object.keys(ASPECTS).find(k => ASPECTS[k][0] === P.w && ASPECTS[k][1] === P.h) || '9:16';
+  const ar = Object.keys(ASPECTS).find(k => ASPECTS[k][0] === P.w && ASPECTS[k][1] === P.h);
+  $('#aspect').innerHTML = Object.keys(ASPECTS).map(r => `<option>${r}</option>`).join('') + (ar ? '' : `<option value="custom">${P.w}×${P.h}</option>`);
+  $('#aspect').value = ar || 'custom';
   renderBin();
 }
 async function save(as) {
   let f = as ? null : projectPath;
-  if (!f) f = await TA.dialog.save({ defaultPath: (LANG === 'ar' ? 'مشروع' : 'project') + '.kadr', filters: [{ name: 'Kadr', extensions: ['kadr'] }] });
+  if (!f) f = await TA.dialog.save({ defaultPath: (P.name || (LANG === 'ar' ? 'مشروع' : 'project')) + '.kadr', filters: [{ name: 'Kadr', extensions: ['kadr'] }] });
   if (!f) return;
   if (!f.endsWith('.kadr')) f += '.kadr';
   try { await inv('save_project', { path: f, json: JSON.stringify(P) }); } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
   projectPath = f;
+  recent.add(f);
   dirty = false;
   refresh();
   toast(tr('saved'));
@@ -1263,12 +1382,16 @@ async function save(as) {
 async function open() {
   if (dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
   const f = await TA.dialog.open({ filters: [{ name: 'Kadr', extensions: ['kadr'] }] });
-  if (!f) return;
+  if (f) openPath(f, true);
+}
+async function openPath(f, asked) {
+  if (!asked && dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
   let r;
   try { r = await inv('open_project', { path: f }); } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
   setPlaying(false);
   P = Object.assign(newProject(), r.project);
   projectPath = f;
+  recent.add(f);
   sel = null; t = 0; dirty = false;
   undoStack.length = redoStack.length = 0;
   syncSettings();
@@ -1283,13 +1406,14 @@ function setTool(x) {
   renderTimeline();
 }
 
-$('#aspect').onchange = e => { snapshot(); [P.w, P.h] = ASPECTS[e.target.value]; refresh(); };
+$('#aspect').onchange = e => { if (!ASPECTS[e.target.value]) return; snapshot(); [P.w, P.h] = ASPECTS[e.target.value]; syncSettings(); refresh(); };
 $('#bImport').onclick = importMedia;
 $('#bText').onclick = () => addText('plain');
 $('#bCaps').onclick = autoCaptions;
 $('#bExport').onclick = exportDialog;
 $('#bSave').onclick = e => save(e.shiftKey);
 $('#bOpen').onclick = open;
+$('#bNew').onclick = () => newProj();
 $('#bUndo').onclick = () => restore(undoStack, redoStack);
 $('#bRedo').onclick = () => restore(redoStack, undoStack);
 $('#bPlay').onclick = () => setPlaying(!playing);
@@ -1347,19 +1471,10 @@ function jumpCut(dir) {
   const next = dir > 0 ? Math.min(...pts.filter(p => p > t + eps)) : Math.max(...pts.filter(p => p < t - eps));
   if (isFinite(next)) seek(next);
 }
-async function newProj() {
-  if (dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
-  setPlaying(false);
-  P = newProject(); projectPath = null;
-  sel = null; t = 0; dirty = false;
-  undoStack.length = redoStack.length = 0;
-  syncSettings();
-  refresh();
-}
 const frameDur = () => 1 / P.fps;
 const KEYMAP = [
   ['g_file', [
-    [['mod+n'], 'k_new', newProj], [['mod+o'], 'open', open], [['mod+s'], 'save', () => save()],
+    [['mod+n'], 'k_new', () => newProj()], [['mod+o'], 'open', open], [['mod+s'], 'save', () => save()],
     [['mod+shift+s'], 'k_saveAs', () => save(true)], [['mod+i'], 'import', importMedia], [['mod+e'], 'export', exportDialog]]],
   ['g_edit', [
     [['mod+z'], 'undo', () => restore(undoStack, redoStack)], [['mod+shift+z', 'mod+y'], 'redo', () => restore(redoStack, undoStack)],
@@ -1438,7 +1553,7 @@ requestAnimationFrame(loop);
 setTimeout(checkUpdate, 3000);
 
 inv('dev_demo').then(async d => {
-  if (!d.paths || !d.paths.length) return;
+  if (!d.paths || !d.paths.length) return newProj(true);
   const ids = addToBin(await inv('probe', { paths: d.paths }));
   for (const id of ids) addMedia(id, P.media[id].kind === 'image' ? 'v2' : null, P.media[id].kind === 'image' ? 1 : null);
   const pic = P.items.find(i => P.media[i.media]?.kind === 'image');

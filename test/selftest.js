@@ -72,5 +72,16 @@ const wav = path.join(dir, 'mix.wav');
 run(ffmpeg, buildArgs(p, { out: wav, audioOnly: true }).args);
 assert.ok(fs.statSync(wav).size > 16000 * 2 * 3);
 
+// rotation + ProRes, and a separate MP3
+p.items[2].rotate = 30;
+const mov = path.join(dir, 'out.mov');
+run(ffmpeg, buildArgs(p, { out: mov, textList, codec: 'prores', quality: 'high' }).args);
+assert.strictEqual(JSON.parse(run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', mov])).streams.find(s => s.codec_type === 'video').codec_name, 'prores');
+const mp3 = path.join(dir, 'out.mp3');
+run(ffmpeg, buildArgs(p, { out: mp3, audioExport: 'mp3' }).args);
+const a3 = JSON.parse(run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', mp3]));
+assert.strictEqual(a3.streams.length, 1); assert.strictEqual(a3.streams[0].codec_name, 'mp3');
+assert.ok(Math.abs(+a3.format.duration - 3.5) < 0.15, 'mp3 duration ' + a3.format.duration);
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');

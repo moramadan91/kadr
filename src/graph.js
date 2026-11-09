@@ -20,10 +20,11 @@
   }
 
   const ENCODERS = {
-    h264: ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p'],
-    hevc: ['-c:v', 'libx265', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
-    h264_hw: ['-c:v', 'h264_videotoolbox', '-q:v', '65', '-pix_fmt', 'yuv420p'],
-    hevc_hw: ['-c:v', 'hevc_videotoolbox', '-q:v', '65', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
+    h264: q => ['-c:v', 'libx264', '-preset', 'medium', '-crf', String({ low: 23, rec: 18, high: 14 }[q] ?? 18), '-pix_fmt', 'yuv420p'],
+    hevc: q => ['-c:v', 'libx265', '-preset', 'medium', '-crf', String({ low: 26, rec: 20, high: 16 }[q] ?? 20), '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
+    h264_hw: q => ['-c:v', 'h264_videotoolbox', '-q:v', String({ low: 50, rec: 65, high: 80 }[q] ?? 65), '-pix_fmt', 'yuv420p'],
+    hevc_hw: q => ['-c:v', 'hevc_videotoolbox', '-q:v', String({ low: 50, rec: 65, high: 80 }[q] ?? 65), '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
+    prores: () => ['-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le'],
   };
 
   // o: { out, textList (ffconcat path or null), audioOnly, codec }
@@ -31,7 +32,7 @@
     const W = p.w, H = p.h, fps = p.fps, T = S.projectDur(p);
     if (!(T > 0)) throw new Error('empty timeline');
     const vt = p.tracks.filter(t => t.kind === 'video').map(t => t.id).reverse(); // bottom layer first
-    const vis = o.audioOnly ? [] : p.items
+    const vis = o.audioOnly || o.audioExport ? [] : p.items
       .filter(i => vt.includes(i.track) && i.media && p.media[i.media] && p.media[i.media].kind !== 'audio')
       .sort((a, b) => vt.indexOf(a.track) - vt.indexOf(b.track) || a.start - b.start);
     const aud = p.items.filter(i => audible(p, i));
@@ -50,7 +51,7 @@
       return n++;
     };
 
-    if (!o.audioOnly) {
+    if (!o.audioOnly && !o.audioExport) {
       let base = 'b0';
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
       vis.forEach((it, j) => {
@@ -107,10 +108,13 @@
     else fc.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${f3(T)}[aout]`);
 
     args.push('-filter_complex', fc.join(';'));
-    if (o.audioOnly) {
+    if (o.audioExport) {
+      const ac = { mp3: ['-c:a', 'libmp3lame', '-b:a', '320k'], wav: ['-c:a', 'pcm_s16le', '-ar', '48000'], m4a: ['-c:a', 'aac', '-b:a', '256k'] }[o.audioExport];
+      args.push('-map', '[aout]', ...ac, '-t', f3(T), '-progress', 'pipe:1', o.out);
+    } else if (o.audioOnly) {
       args.push('-map', '[aout]', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-t', f3(T), o.out);
     } else {
-      args.push('-map', '[vout]', '-map', '[aout]', ...(ENCODERS[o.codec] || ENCODERS.h264),
+      args.push('-map', '[vout]', '-map', '[aout]', ...(ENCODERS[o.codec] || ENCODERS.h264)(o.quality),
         '-r', String(fps), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
         '-t', f3(T), '-progress', 'pipe:1', o.out);
     }

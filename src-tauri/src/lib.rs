@@ -328,6 +328,9 @@ fn cleanup(st: &AppState) {
 }
 
 #[tauri::command]
+fn path_exists(path: String) -> bool { Path::new(&path).exists() }
+
+#[tauri::command]
 fn quit_app(app: AppHandle, state: State<AppState>) {
     cleanup(&state);
     app.exit(0);
@@ -362,7 +365,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, work_begin, work_end, write_frame, export_run,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
