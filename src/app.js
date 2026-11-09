@@ -832,8 +832,12 @@ function mirrorSel() {
   refresh();
 }
 
+let binSig = '';
 function refresh() {
   pack();
+  // library redraws only when its files or their "in use" marks change (thumbnails are <video> elements)
+  const sig = Object.keys(P.media).join() + '|' + [...new Set(P.items.map(i => i.media))].join();
+  if (sig !== binSig) { binSig = sig; renderBin(); }
   renderTimeline();
   inspector();
   gcEls();
