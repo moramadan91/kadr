@@ -37,6 +37,7 @@
     const aud = p.items.filter(i => audible(p, i));
 
     const args = ['-y', '-hide_banner', '-nostats'];
+    const even = v => Math.max(2, Math.round(v / 2) * 2);
     const fc = [];
     const idx = new Map();
     let n = 0;
@@ -65,6 +66,13 @@
           if (Math.abs(g.s - 1) > 1e-4) ch.push(`hue=s=${g.s.toFixed(4)}`);
         }
         ch.push('format=yuva420p');
+        let ox = L.ox, oy = L.oy;
+        const rot = num(it.rotate, 0) * Math.PI / 180;
+        if (rot) { // rotate about the box centre; the bigger canvas stays centred on the same point
+          const rw = even(Math.abs(L.cw * Math.cos(rot)) + Math.abs(L.ch * Math.sin(rot))), rh = even(Math.abs(L.cw * Math.sin(rot)) + Math.abs(L.ch * Math.cos(rot)));
+          ch.push(`rotate=a=${rot.toFixed(6)}:ow=${rw}:oh=${rh}:c=none`);
+          ox = Math.round(L.ox + (L.cw - rw) / 2); oy = Math.round(L.oy + (L.ch - rh) / 2);
+        }
         const opacity = num(it.opacity, 1);
         if (opacity < 1) ch.push(`colorchannelmixer=aa=${opacity.toFixed(3)}`);
         const fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
@@ -72,7 +80,7 @@
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
         fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
-        fc.push(`[${base}][v${j}]overlay=x=${L.ox}:y=${L.oy}:eof_action=pass[b${j + 1}]`);
+        fc.push(`[${base}][v${j}]overlay=x=${ox}:y=${oy}:eof_action=pass[b${j + 1}]`);
         base = `b${j + 1}`;
       });
       if (o.textList) {

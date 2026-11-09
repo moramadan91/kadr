@@ -27,6 +27,7 @@ function applyLang() {
   document.documentElement.lang = LANG;
   document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
   $$('[data-t]').forEach(el => (el.textContent = tr(el.dataset.t)));
+  $$('[data-ph]').forEach(el => (el.placeholder = tr(el.dataset.ph)));
   $$('[data-tt]').forEach(el => (el.title = tr(el.dataset.tt) + (KEY_HINT[el.dataset.tt] ? '  ' + KEY_HINT[el.dataset.tt] : '')));
   try { localStorage.setItem('kadr.lang', LANG); } catch {}
 }
@@ -218,8 +219,9 @@ function drawVisual(ctx, time) {
       const k = (src.videoWidth || src.naturalWidth || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
       ctx.save();
       ctx.globalAlpha = S.fadeAlpha(it, time - it.start) * num(it.opacity, 1);
-      if (it.flipH || it.flipV) {
+      if (it.flipH || it.flipV || num(it.rotate, 0)) {
         ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2);
+        ctx.rotate(num(it.rotate, 0) * Math.PI / 180);
         ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
@@ -557,6 +559,10 @@ function splitAt(all) {
   const ok = (all ? P.items.filter(i => active(i, t)) : targetsAtPlayhead()).filter(it => t - it.start > min && it.start + it.dur - t > min);
   if (!ok.length) return toast(tr('cutHint'));
   snapshot();
+  splitItems(ok);
+  refresh();
+}
+function splitItems(ok) {
   for (const it of ok) {
     const cut = t - it.start, b = JSON.parse(JSON.stringify(it));
     b.id = uid(); b.start = t; b.dur = it.dur - cut; b.fadeIn = 0;
@@ -571,7 +577,6 @@ function splitAt(all) {
     }
     P.items.push(b);
   }
-  refresh();
 }
 // Q / W: drop the part of the clip before / after the playhead.
 function trimTo(side) {
@@ -636,7 +641,7 @@ function refresh() {
 /* ---------- inspector ---------- */
 const getPath = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
 function setPath(o, k, v) { const ks = k.split('.'); const last = ks.pop(); ks.reduce((a, x) => (a[x] ??= {}), o)[last] = v; }
-const showVal = (k, v) => k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|crop\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW/.test(k) ? String(v | 0) : (+v).toFixed(2);
+const showVal = (k, v) => k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|crop\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW/.test(k) ? String(v | 0) : (+v).toFixed(2);
 
 const fld = {
   range: (k, label, min, max, step, it, d = 0) =>
@@ -692,6 +697,7 @@ function inspector() {
     h.push(grp('scale', fld.select('fit', 'fit_', [['cover', tr('cover')], ['contain', tr('contain')]], it) +
       fld.range('scale', 'scale', 0.1, 3, 0.01, it, 1) +
       `<div class="row2">${fld.number('x', 'posX', 1, it)}${fld.number('y', 'posY', 1, it)}</div>` +
+      fld.range('rotate', 'rotation', -180, 180, 1, it) +
       fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1) +
       `<div class="inl">${fld.check('flipH', 'flipH', it)}${fld.check('flipV', 'flipV', it)}</div>`));
     h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
@@ -784,25 +790,72 @@ function setLibTab(tab) {
 }
 $('#libTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setLibTab(b.dataset.tab); });
 
+/* ---------- media library: search, sort, grid/list, multi-select, context menu ---------- */
+const binSel = new Set();
+let binAnchor = null, focusZone = 'tl';
+let binView = (() => { try { return localStorage.getItem('kadr.binView') || 'grid'; } catch { return 'grid'; } })();
+function binOrder() {
+  const q = $('#binQ').value.trim().toLowerCase(), by = $('#binSort').value;
+  const cmp = {
+    added: (a, b) => num(b[1].added, 0) - num(a[1].added, 0),
+    name: (a, b) => a[1].name.localeCompare(b[1].name),
+    dur: (a, b) => num(b[1].dur, 0) - num(a[1].dur, 0),
+    kind: (a, b) => a[1].kind.localeCompare(b[1].kind) || a[1].name.localeCompare(b[1].name),
+  }[by];
+  return Object.entries(P.media).filter(([, m]) => !q || m.name.toLowerCase().includes(q)).sort(cmp).map(([id]) => id);
+}
 function renderBin() {
-  $('#binList').innerHTML = Object.entries(P.media).map(([id, m]) => {
-    const url = esc(urlOf(m));
+  for (const id of binSel) if (!P.media[id]) binSel.delete(id);
+  const used = new Set(P.items.map(i => i.media));
+  $('#binList').className = binView;
+  $('#binView').innerHTML = icon(binView === 'grid' ? 'list' : 'layout-grid');
+  $('#binList').innerHTML = binOrder().map(id => {
+    const m = P.media[id], url = esc(urlOf(m));
     const th = m.kind === 'video' ? `<video src="${url}#t=0.5" muted preload="metadata"></video>`
       : m.kind === 'image' ? `<img src="${url}">` : icon('music');
-    return `<div class="mi" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span></div><div class="nm">${esc(m.name)}</div></div>`;
+    return `<div class="mi${binSel.has(id) ? ' sel' : ''}" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span>${used.has(id) ? `<span class="used" title="${tr('inUse')}">${icon('check')}</span>` : ''}</div><div class="nm">${esc(m.name)}</div></div>`;
   }).join('');
 }
+function paintBinSel() { $$('#binList .mi').forEach(el => el.classList.toggle('sel', binSel.has(el.dataset.mid))); }
+function binPick(mid, e) {
+  focusZone = 'bin';
+  if (e.shiftKey && binAnchor) {
+    const o = binOrder(), a = o.indexOf(binAnchor), b = o.indexOf(mid);
+    if (!(e.metaKey || e.ctrlKey)) binSel.clear();
+    o.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => binSel.add(x));
+  } else if (e.metaKey || e.ctrlKey) {
+    binSel.has(mid) ? binSel.delete(mid) : binSel.add(mid);
+    binAnchor = mid;
+  } else {
+    if (!binSel.has(mid)) { binSel.clear(); binSel.add(mid); }
+    binAnchor = mid;
+  }
+  paintBinSel();
+}
+const picked = () => binOrder().filter(id => binSel.has(id));
+// Adds clips one after another on a track, starting at `start` (end of the track when null).
+function addMany(mids, track, start) {
+  let at = start, last;
+  for (const mid of mids) { last = addMedia(mid, track, at); at = last.start + last.dur; track = last.track; }
+}
+$('#binQ').addEventListener('input', renderBin);
+$('#binSort').addEventListener('change', renderBin);
+$('#binView').onclick = () => { binView = binView === 'grid' ? 'list' : 'grid'; try { localStorage.setItem('kadr.binView', binView); } catch {} renderBin(); };
 // Pointer drag from the bin (HTML5 drag-and-drop is off on Windows while native file drop is on).
 $('#binList').addEventListener('pointerdown', e => {
   const mi = e.target.closest('.mi');
-  if (!mi || e.button !== 0) return;
+  if (!mi) { if (e.button === 0) { binSel.clear(); paintBinSel(); } focusZone = 'bin'; return; }
+  if (e.button !== 0) return;
   const mid = mi.dataset.mid, x0 = e.clientX, y0 = e.clientY, ghost = $('#ghost');
+  const wasSel = binSel.has(mid) && !e.shiftKey && !(e.metaKey || e.ctrlKey);
+  if (!wasSel) binPick(mid, e); else focusZone = 'bin';
   let dragging = false;
   const mv = ev => {
     if (!dragging && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
     dragging = true;
+    const n = binSel.size;
     ghost.hidden = false;
-    ghost.textContent = P.media[mid].name;
+    ghost.textContent = n > 1 ? tr('nClips', { n }) : P.media[mid].name;
     ghost.style.left = ev.clientX + 12 + 'px';
     ghost.style.top = ev.clientY + 12 + 'px';
     $$('.row.over').forEach(r => r.classList.remove('over'));
@@ -813,24 +866,128 @@ $('#binList').addEventListener('pointerdown', e => {
     window.removeEventListener('pointermove', mv);
     ghost.hidden = true;
     $$('.row.over').forEach(r => r.classList.remove('over'));
-    if (!dragging) return;
+    if (!dragging) { if (wasSel) { binSel.clear(); binPick(mid, ev); } return; }
     const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.row');
-    if (row) addMedia(mid, row.dataset.track, snap1(Math.max(0, timeAt(ev.clientX)), snapPoints(null)));
+    if (row) addMany(picked(), row.dataset.track, snap1(Math.max(0, timeAt(ev.clientX)), snapPoints(null)));
   };
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', up, { once: true });
 });
-$('#binList').addEventListener('dblclick', e => {
+$('#binList').addEventListener('dblclick', e => { if (e.target.closest('.mi')) addMany(picked()); });
+$('#binList').addEventListener('contextmenu', e => {
+  e.preventDefault();
   const mi = e.target.closest('.mi');
-  if (mi) addMedia(mi.dataset.mid);
+  if (!mi) return ctxMenu(e, [['import', importMedia]]);
+  if (!binSel.has(mi.dataset.mid)) { binSel.clear(); binPick(mi.dataset.mid, {}); }
+  const ids = picked(), one = ids.length === 1 && P.media[ids[0]];
+  ctxMenu(e, [
+    ['addToTl', () => addMany(ids)],
+    one && ['rename', () => renameMedia(ids[0])],
+    one && ['revealFinder', () => TA.opener.revealItemInDir(one.path)],
+    ['-'],
+    [ids.length > 1 ? tr('delN', { n: ids.length }) : 'del', () => deleteMedia(ids), 'danger'],
+  ]);
 });
+async function deleteMedia(ids) {
+  if (!ids.length) return;
+  const uses = P.items.filter(i => ids.includes(i.media)).length;
+  if (uses && !(await TA.dialog.ask(tr('delUsed', { n: uses }), { kind: 'warning' }))) return;
+  snapshot();
+  for (const id of ids) delete P.media[id];
+  P.items = P.items.filter(i => !ids.includes(i.media));
+  if (sel && !item(sel)) sel = null;
+  binSel.clear();
+  refresh();
+}
+async function renameMedia(id) {
+  const name = await askText(tr('rename'), P.media[id].name);
+  if (!name || name === P.media[id].name) return;
+  snapshot();
+  P.media[id].name = name;
+  refresh();
+}
+function askText(title, value) {
+  return new Promise(res => {
+    $('#modal').hidden = false;
+    $('#mBox').innerHTML = `<h3>${esc(title)}</h3><input id="mText" value="${esc(value)}"><div class="acts"><button id="mNo">${tr('cancel')}</button><button class="primary" id="mOk">${tr('ok')}</button></div>`;
+    const inp = $('#mText'), done = v => { hideModal(); res(v); };
+    inp.select();
+    $('#mOk').onclick = () => done(inp.value.trim());
+    $('#mNo').onclick = () => done(null);
+    inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value.trim()); else if (e.key === 'Escape') done(null); };
+  });
+}
+// Right-click menu. items: [labelKeyOrText, run, 'danger'?] | ['-'] | falsy (skipped)
+function ctxMenu(e, items) {
+  const m = $('#ctx');
+  m.innerHTML = items.filter(Boolean).map((x, i) => x[0] === '-' ? '<hr>' : `<button data-i="${i}" class="${x[2] || ''}">${esc(tr(x[0]))}</button>`).join('');
+  const list = items.filter(Boolean);
+  m.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(e.clientX, innerWidth - r.width - 6) + 'px';
+  m.style.top = Math.min(e.clientY, innerHeight - r.height - 6) + 'px';
+  m.onclick = ev => { const b = ev.target.closest('button'); if (!b) return; m.hidden = true; list[+b.dataset.i][1](); };
+  setTimeout(() => window.addEventListener('pointerdown', ev => { if (!m.contains(ev.target)) m.hidden = true; }, { once: true }));
+}
+$('#rows').addEventListener('pointerdown', () => (focusZone = 'tl'), true);
+$('#rows').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const c = e.target.closest('.clip');
+  if (!c) return ctxMenu(e, [['k_paste', pasteClip], ['marker', addMarker]]);
+  select(c.dataset.id);
+  const it = item(c.dataset.id), vid = !isText(it) && media(it).kind === 'video';
+  ctxMenu(e, [['split', () => splitAt()], ['k_copy', copySel], ['k_cut', cutSel], ['k_paste', pasteClip], ['dup', duplicateSel],
+    vid && ['freeze', freezeFrame], !isText(it) && media(it).kind !== 'audio' && ['rotate90', rotateSel], ['-'], ['del', removeSel, 'danger']]);
+});
+
+/* ---------- freeze frame & rotate ---------- */
+async function freezeFrame() {
+  const cur = sel && item(sel);
+  const it = cur && !isText(cur) && media(cur).kind === 'video' && active(cur, t) ? cur
+    : P.items.find(i => i.track === 'v1' && active(i, t) && media(i).kind === 'video');
+  if (!it) return toast(tr('freezeHint'));
+  setPlaying(false);
+  const el = elFor(it), want = num(it.in, 0) + (t - it.start) * num(it.speed, 1);
+  if (Math.abs(el.currentTime - want) > 0.02 || el.readyState < 2) {
+    await new Promise(r => { el.addEventListener('seeked', r, { once: true }); el.currentTime = want; setTimeout(r, 1500); });
+  }
+  const c = document.createElement('canvas');
+  c.width = el.videoWidth; c.height = el.videoHeight;
+  c.getContext('2d').drawImage(el, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  let mid;
+  try {
+    const path = await inv('save_recording', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-ext': 'png' } });
+    [mid] = addToBin(await inv('probe', { paths: [path] }));
+  } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
+  if (!mid) return;
+  snapshot();
+  const len = 3, cut = t - it.start;
+  if (cut > 1 / P.fps && it.dur - cut > 1 / P.fps) splitItems([it]);
+  const fr = JSON.parse(JSON.stringify(it));
+  Object.assign(fr, { id: uid(), media: mid, start: t, dur: len, in: 0, speed: 1, fadeIn: 0, fadeOut: 0, volume: 0 });
+  delete fr.words;
+  if (it.track === 'v1' && magnet) fr.start = t - 1e-4; // sorts before the second half when the main track packs
+  else for (const x of P.items) if (x.track === it.track && x.start >= t - 1e-6) x.start += len;
+  P.items.push(fr);
+  sel = fr.id;
+  refresh();
+}
+function rotateSel() {
+  const it = sel && item(sel);
+  if (!it || isText(it) || media(it).kind === 'audio') return;
+  snapshot();
+  const r = num(it.rotate, 0) + 90;
+  it.rotate = r > 180 ? r - 360 : r;
+  refresh();
+}
 function addToBin(res) {
   const added = [];
   for (const m of res.ok) {
     const have = Object.entries(P.media).find(([, x]) => x.path === m.path);
     if (have) { added.push(have[0]); continue; }
     const id = uid();
-    P.media[id] = m;
+    P.media[id] = { ...m, added: Date.now() };
     added.push(id);
   }
   if (res.bad.length) toast(tr('unsupported') + ': ' + res.bad.join(' · '));
@@ -1147,6 +1304,8 @@ $('#bDel').onclick = removeSel;
 $('#bDup').onclick = duplicateSel;
 $('#bMarker').onclick = addMarker;
 $('#bMirror').onclick = mirrorSel;
+$('#bRotate').onclick = rotateSel;
+$('#bFreeze').onclick = freezeFrame;
 $('#bCrop').onclick = () => {
   const it = sel && item(sel);
   if (!it || isText(it) || media(it).kind === 'audio') return;
@@ -1205,13 +1364,13 @@ const KEYMAP = [
   ['g_edit', [
     [['mod+z'], 'undo', () => restore(undoStack, redoStack)], [['mod+shift+z', 'mod+y'], 'redo', () => restore(redoStack, undoStack)],
     [['mod+c'], 'k_copy', copySel], [['mod+x'], 'k_cut', cutSel], [['mod+v'], 'k_paste', pasteClip],
-    [['mod+d'], 'dup', duplicateSel], [['delete'], 'del', removeSel], [['esc'], 'k_deselect', () => select(null)]]],
+    [['mod+d'], 'dup', duplicateSel], [['delete'], 'del', () => (focusZone === 'bin' && binSel.size ? deleteMedia(picked()) : removeSel())], [['esc'], 'k_deselect', () => { select(null); binSel.clear(); paintBinSel(); }], [['mod+a'], 'k_selAllMedia', () => { binOrder().forEach(x => binSel.add(x)); paintBinSel(); focusZone = 'bin'; }]]],
   ['g_timeline', [
     [['c', 'mod+b', 's'], 'split', () => splitAt()], [['mod+shift+b'], 'k_splitAll', () => splitAt(true)],
     [['q'], 'delLeft', () => trimTo('left')], [['w'], 'delRight', () => trimTo('right')],
     [['v'], 'select', () => setTool('select')], [['b'], 'blade', () => setTool('blade')],
     [['['], 'k_selPrev', () => selectStep(-1)], [[']'], 'k_selNext', () => selectStep(1)],
-    [['p'], 'magnet', () => $('#bMagnet').click()], [['n'], 'snap', () => $('#bSnap').click()], [['m'], 'marker', addMarker],
+    [['p'], 'magnet', () => $('#bMagnet').click()], [['n'], 'snap', () => $('#bSnap').click()], [['m'], 'marker', addMarker], [['alt+shift+f'], 'freeze', freezeFrame], [['alt+r'], 'rotate90', rotateSel],
     [['mod+='], 'zoomIn', () => setZoom(pps * 1.4)], [['mod+-'], 'zoomOut', () => setZoom(pps / 1.4)],
     [['mod+0', 'shift+z'], 'fit', () => $('#bFit').click()]]],
   ['g_player', [
@@ -1245,6 +1404,19 @@ function showKeys() {
   $('#mClose').onclick = hideModal;
 }
 $('#bKeys').onclick = showKeys;
+// Window close / Cmd+Q: offer to save unsaved work first (Rust holds the close until quit_app).
+let quitting = false;
+TA.event.listen('quit-requested', async () => {
+  if (quitting) return;
+  if (!dirty || !P.items.length && !Object.keys(P.media).length) return inv('quit_app');
+  quitting = true;
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<h3>${tr('quitTitle')}</h3><p class="hint">${tr('quitAsk')}</p><div class="acts"><button id="qNo">${tr('dontSave')}</button><span class="flex"></span><button id="qCancel">${tr('cancel')}</button><button class="primary" id="qSave">${tr('save')}</button></div>`;
+  const done = () => { quitting = false; hideModal(); };
+  $('#qCancel').onclick = done;
+  $('#qNo').onclick = () => inv('quit_app');
+  $('#qSave').onclick = async () => { done(); await save(); if (!dirty) inv('quit_app'); };
+});
 window.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) return;
   if (!$('#modal').hidden) { if (e.key === 'Escape' && $('#mBox .ksheet')) hideModal(); return; }

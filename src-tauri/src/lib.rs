@@ -204,12 +204,14 @@ fn write_frame(state: State<AppState>, request: tauri::ipc::Request) -> R<()> {
 #[tauri::command]
 fn save_recording(app: AppHandle, request: tauri::ipc::Request) -> R<String> {
     let ext = request.headers().get("x-ext").and_then(|v| v.to_str().ok()).unwrap_or("m4a");
-    let ext = if ext == "webm" { "webm" } else { "m4a" };
+    let ext = match ext { "webm" => "webm", "png" => "png", _ => "m4a" };
+    let kind = if ext == "png" { "freeze" } else { "voiceover" };
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw body".into()) };
     let dir = app.path().app_data_dir().map_err(err)?.join("recordings");
     std::fs::create_dir_all(&dir).map_err(err)?;
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let file = dir.join(format!("voiceover-{secs}.{ext}"));
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_millis()).unwrap_or(0);
+    let file = dir.join(format!("{kind}-{secs}{nanos:03}.{ext}"));
     std::fs::write(&file, bytes).map_err(err)?;
     Ok(file.to_string_lossy().to_string())
 }
@@ -320,6 +322,35 @@ fn dev_log(msg: String) {
     if cfg!(debug_assertions) { eprintln!("[web] {msg}"); }
 }
 
+fn cleanup(st: &AppState) {
+    if let Some(mut c) = st.job.lock().unwrap().take() { let _ = c.kill(); }
+    for (_, d) in st.dirs.lock().unwrap().drain() { let _ = std::fs::remove_dir_all(d); }
+}
+
+#[tauri::command]
+fn quit_app(app: AppHandle, state: State<AppState>) {
+    cleanup(&state);
+    app.exit(0);
+}
+
+// macOS app menu. Our own Quit item (Cmd+Q) goes through the page so it can offer to save first;
+// the stock Quit terminates without an event we can hold.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem as P, Submenu};
+    let quit = MenuItem::with_id(app, "quit", "Quit Kadr", true, Some("CmdOrCtrl+Q"))?;
+    let kadr = Submenu::with_items(app, "Kadr", true, &[
+        &P::about(app, None, None)?, &P::separator(app)?, &P::services(app, None)?, &P::separator(app)?,
+        &P::hide(app, None)?, &P::hide_others(app, None)?, &P::show_all(app, None)?, &P::separator(app)?, &quit,
+    ])?;
+    let edit = Submenu::with_items(app, "Edit", true, &[
+        &P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?,
+        &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?,
+    ])?;
+    let window = Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?, &P::fullscreen(app, None)?])?;
+    Menu::with_items(app, &[&kadr, &edit, &window])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -331,15 +362,28 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, work_begin, work_end, write_frame, export_run,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app
         ])
-        .on_window_event(|w, e| {
-            if let tauri::WindowEvent::Destroyed = e {
-                let st = w.state::<AppState>();
-                if let Some(mut c) = st.job.lock().unwrap().take() { let _ = c.kill(); }
-                for (_, d) in st.dirs.lock().unwrap().drain() { let _ = std::fs::remove_dir_all(d); }
-            }
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_menu(app_menu(app.handle())?)?;
+            let _ = app;
+            Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Kadr");
+        .on_menu_event(|app, e| if e.id() == "quit" { let _ = app.emit("quit-requested", ()); })
+        .on_window_event(|w, e| match e {
+            // The page decides: it asks to save unsaved work, then calls quit_app.
+            tauri::WindowEvent::CloseRequested { api, .. } => { api.prevent_close(); let _ = w.emit("quit-requested", ()); }
+            tauri::WindowEvent::Destroyed => cleanup(&w.state::<AppState>()),
+            _ => {}
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Kadr")
+        .run(|app, e| {
+            // Cmd+Q / app menu Quit: same question first. quit_app exits with a code, so it passes.
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = e {
+                api.prevent_exit();
+                let _ = app.emit("quit-requested", ());
+            }
+        });
 }

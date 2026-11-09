@@ -4,7 +4,7 @@ const NAMES = ['plus', 'type', 'captions', 'undo-2', 'redo-2', 'mouse-pointer-2'
   'arrow-left-to-line', 'arrow-right-to-line', 'trash-2', 'bookmark', 'crop', 'flip-horizontal-2', 'flip-vertical-2', 'mic',
   'magnet', 'link-2', 'zoom-in', 'zoom-out', 'maximize-2', 'play', 'pause', 'skip-back', 'skip-forward', 'save',
   'folder-open', 'share', 'languages', 'film', 'music', 'image', 'copy', 'x', 'square', 'eye', 'volume-2', 'volume-x',
-  'rotate-ccw', 'chevron-down', 'monitor-play', 'sparkles', 'layers', 'wand-sparkles', 'keyboard', 'file-plus'];
+  'rotate-ccw', 'chevron-down', 'monitor-play', 'sparkles', 'layers', 'wand-sparkles', 'keyboard', 'file-plus', 'layout-grid', 'list', 'check', 'snowflake', 'rotate-cw-square'];
 const out = {};
 for (const n of NAMES) {
   const svg = readFileSync(`node_modules/lucide-static/icons/${n}.svg`, 'utf8');

@@ -30,6 +30,7 @@
     </nav>
     <section data-pane="media">
       <button class="wide accent-ghost" id="bImport" data-i="plus"><span data-t="import"></span></button>
+      <div class="binbar"><input id="binQ" type="search" data-ph="searchMedia"><select id="binSort"><option value="added" data-t="s_added"></option><option value="name" data-t="s_name"></option><option value="dur" data-t="s_dur"></option><option value="kind" data-t="s_kind"></option></select><button class="ib" id="binView" data-tt="viewMode"></button></div>
       <div id="binList"></div>
       <p class="hint" data-t="importHint"></p>
     </section>
@@ -85,6 +86,8 @@
     <button class="ib" id="bMarker" data-i="bookmark" data-tt="marker"></button>
     <button class="ib" id="bCrop" data-i="crop" data-tt="crop"></button>
     <button class="ib" id="bMirror" data-i="flip-horizontal-2" data-tt="mirror"></button>
+    <button class="ib" id="bRotate" data-i="rotate-cw-square" data-tt="rotate90"></button>
+    <button class="ib" id="bFreeze" data-i="snowflake" data-tt="freeze"></button>
     <span class="flex"></span>
     <button class="ib" id="bRec" data-i="mic" data-tt="record"></button>
     <span class="sep"></span>
@@ -106,6 +109,7 @@
   </div>
 </section>
 
+<div id="ctx" class="glass" hidden></div>
 <div id="modal" hidden><div class="glass box" id="mBox"></div></div>
 <div id="toast" class="glass" hidden></div>
 <div id="ghost" hidden></div>
