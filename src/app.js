@@ -3099,6 +3099,8 @@ function dimsFor(ratio) { // short side 1080, even numbers
 const recent = {
   get() { try { return JSON.parse(localStorage.getItem('kadr.recent') || '[]'); } catch { return []; } },
   add(f) { try { localStorage.setItem('kadr.recent', JSON.stringify([f, ...recent.get().filter(x => x !== f)].slice(0, 12))); } catch {} },
+  // off the start screen only: the project file itself stays on disk
+  remove(f) { try { localStorage.setItem('kadr.recent', JSON.stringify(recent.get().filter(x => x !== f))); localStorage.removeItem('kadr.rmeta:' + f); } catch {} },
   meta(f) { try { return JSON.parse(localStorage.getItem('kadr.rmeta:' + f) || 'null'); } catch { return null; } },
   // a 200px still of the preview + save time + length, shown on the start screen
   snap(f) {
@@ -3128,12 +3130,20 @@ async function newProj(welcome) {
       <label class="f"><span>${tr('resolution')}</span><select id="npRes">${RES.map(([n, v]) => `<option value="${v}"${v === res ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="f"><span>${tr('fps')}</span><select id="npFps">${[24, 25, 30, 50, 60].map(f => `<option${f === fps ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
     </div>
-    ${rec.length || hasRec ? `<div class="np-recent"><h4>${tr('recent')}</h4><div class="rgrid">${hasRec ? (m => `<button data-recover class="unsaved"><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${tr('unsavedWork')}</b><small>${m.t ? ago(m.t) : ''}</small></button>`)(recent.meta('recovery') || {}) : ''}${rec.map((f, i) => { const m = recent.meta(f) || {};
-      return `<button data-rec="${i}" title="${esc(f)}"><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${m.t ? ago(m.t) : ''}</small></button>`; }).join('')}</div></div>` : ''}
+    ${rec.length || hasRec ? `<div class="np-recent"><h4>${tr('recent')}</h4><div class="rgrid">${hasRec ? (m => `<button data-recover class="unsaved"><i class="rdel" data-del title="${tr('removeRecent')}">${icon('x')}</i><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${tr('unsavedWork')}</b><small>${m.t ? ago(m.t) : ''}</small></button>`)(recent.meta('recovery') || {}) : ''}${rec.map((f, i) => { const m = recent.meta(f) || {};
+      return `<button data-rec="${i}" title="${esc(f)}"><i class="rdel" data-del title="${tr('removeRecent')}">${icon('x')}</i><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${m.t ? ago(m.t) : ''}</small></button>`; }).join('')}</div></div>` : ''}
     <div class="acts">${welcome ? `<button id="npOpen">${tr('open')}…</button>` : ''}<span class="flex"></span><button id="npNo">${tr(welcome ? 'skip' : 'cancel')}</button><button class="primary" id="npGo">${tr('create')}</button></div></div>`;
   $('#mBox').onclick = e => {
     const b = e.target.closest('.fmt');
     if (b) { ratio = b.dataset.r; $$('.fmt').forEach(x => x.classList.toggle('on', x === b)); }
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const card = del.closest('button');
+      if (card.dataset.recover != null) clearRecovery(); else recent.remove(rec[+card.dataset.rec]);
+      const g = card.parentElement; card.remove();
+      if (!g.children.length) g.parentElement.remove();
+      return;
+    }
     const r = e.target.closest('[data-rec]');
     if (r) { hideModal(); openPath(rec[+r.dataset.rec]); }
     if (e.target.closest('[data-recover]')) { hideModal(); restoreRecovery(); }
