@@ -240,3 +240,8 @@ main { display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; gap: 8p
 .agrid button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .agrid button.on b { color: var(--accent); }
 .agrid svg { width: 18px; height: 18px; }
+#stage { position: relative; }
+.trkpick { position: absolute; inset: 0; cursor: crosshair; z-index: 5; }
+.trkpick .box { position: absolute; border: 2px solid var(--accent, #2dd4bf); background: rgb(45 212 191 / .12); cursor: move; border-radius: 4px; }
+.trkpick .bar { position: absolute; inset-inline: 0; bottom: 8px; margin: auto; width: max-content; display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 10px; background: rgb(15 17 22 / .92); cursor: default; }
+.trkpick .bar span { font-size: 13px; opacity: .85; }

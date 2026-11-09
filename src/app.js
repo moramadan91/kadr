@@ -219,6 +219,8 @@ function drawVisual(ctx, time) {
       const k = (src.videoWidth || src.naturalWidth || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
       ctx.save();
       ctx.globalAlpha = S.fadeAlpha(it, time - it.start) * num(it.opacity, 1);
+      const [tx, ty] = S.trkAt(it, time - it.start);
+      if (tx || ty) ctx.translate(tx * P.w, ty * P.h);
       if (it.flipH || it.flipV || num(it.rotate, 0)) {
         ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2);
         ctx.rotate(num(it.rotate, 0) * Math.PI / 180);
@@ -381,7 +383,7 @@ function drawTextItem(ctx, pr, it, lt) {
     let left = s.chars;
     shown = tokens.map(tk => { const v = tk.slice(0, Math.max(0, left)); left -= tk.length + 1; return v; });
   }
-  const lh = st.size * num(st.lineH, 1.3), cx = num(it.x, 0.5) * pr.w, cy = num(it.y, 0.5) * pr.h;
+  const lh = st.size * num(st.lineH, 1.3), tk = S.trkAt(it, lt), cx = (num(it.x, 0.5) + tk[0]) * pr.w, cy = (num(it.y, 0.5) + tk[1]) * pr.h;
   const blockW = Math.max(...lines.map(l => l.w)), top = cy - (lines.length * lh) / 2 + lh / 2;
   const pad = st.size * 0.35;
   ctx.translate(cx + s.dx, cy + s.dy);
@@ -805,6 +807,7 @@ function inspTabsFor(it) {
   return k === 'audio' ? ['tAudio', 'tSpeed'] : k === 'image' ? ['tVideo', 'tAnim', 'tAdjust'] : ['tVideo', 'tAudio', 'tSpeed', 'tAnim', 'tAdjust'];
 }
 
+const trkBtns = it => grp('tracking', `<button class="wide" id="trkGo">${icon('crosshair')} ${tr(it.trk ? 'trk_redo' : 'trk_go')}</button>` + (it.trk ? `<button class="wide" id="trkClear">${tr('trk_clear')}</button>` : ''));
 function inspector() {
   const body = $('#inspBody'), it = sel && item(sel), tabs = inspTabsFor(it);
   if (!tabs.includes(inspTab)) inspTab = tabs[0] || null;
@@ -841,6 +844,7 @@ function inspector() {
       (st.glowOn ? fld.range('style.glowSize', 'size', 2, 80, 1, it) : '')));
     h.push(grp('transform', fld.range('x', 'horiz', 0, 1, 0.01, it, 0.5) + fld.range('y', 'vert', 0, 1, 0.01, it, 0.5) +
       fld.range('rotate', 'rotation', -180, 180, 1, it) + fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1)));
+    h.push(trkBtns(it));
     if (it.track === 'c1') h.push(`<button class="wide" id="capAll">${tr('applyAllCaps')}</button>`);
   } else if (inspTab === 'tAnim') {
     if (isText(it)) {
@@ -858,6 +862,7 @@ function inspector() {
       fld.range('rotate', 'rotation', -180, 180, 1, it) +
       fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1) +
       `<div class="inl">${fld.check('flipH', 'flipH', it)}${fld.check('flipV', 'flipV', it)}</div>`));
+    if (it.track !== 'v1') h.push(trkBtns(it));
     h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
   } else if (inspTab === 'tAudio') {
@@ -878,6 +883,9 @@ function inspector() {
     const fake = { text: 'Aa', style: { ...presetStyle(b.dataset.tpreset, false), size: 96, strokeW: num(presetStyle(b.dataset.tpreset).strokeW, 0) * 1.1, shadowBlur: 10, shadowDist: 8, glowSize: 26 }, x: 0.5, y: 0.5, dur: 9 };
     b.appendChild(cardCanvas(ctx => drawTextItem(ctx, { w: 240, h: 180 }, fake, 5), 64, 48));
   });
+  const tg = $('#trkGo'), tc = $('#trkClear');
+  if (tg) tg.onclick = () => trackPick(it);
+  if (tc) tc.onclick = () => { snapshot(); delete it.trk; refresh(); };
   const ca = $('#capAll');
   if (ca) ca.onclick = () => {
     snapshot();
@@ -967,6 +975,134 @@ view.addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (changed) inspector(); }, { once: true });
 });
+
+/* ---------- motion tracking (template matching, no model) ---------- */
+// Video under the follower at time t: topmost active video clip that isn't the follower itself.
+function trackSource(f, time) {
+  const order = renderOrder(P, 'video');
+  for (let i = order.length - 1; i >= 0; i--)
+    for (const it of P.items) if (it !== f && it.track === order[i] && !isText(it) && active(it, time) && media(it).kind === 'video') return it;
+  return null;
+}
+// Pick the box on the preview: drag to draw, buttons to start or cancel.
+function trackPick(f) {
+  const src = trackSource(f, t);
+  if (!src) return toast(tr('trk_noVideo'));
+  setPlaying(false);
+  const st = $('#stage'), r = () => view.getBoundingClientRect(), sr = () => st.getBoundingClientRect();
+  const fp = isText(f) ? [num(f.x, 0.5) + S.trkAt(f, t - f.start)[0], num(f.y, 0.5) + S.trkAt(f, t - f.start)[1]] : [0.5, 0.5];
+  let b = { x: clamp(fp[0] - 0.12, 0, 0.76), y: clamp(fp[1] - 0.12 * P.w / P.h, 0, 1 - 0.24 * P.w / P.h), w: 0.24, h: 0.24 * P.w / P.h };
+  const ov = document.createElement('div');
+  ov.className = 'trkpick';
+  ov.innerHTML = `<i class="box"></i><div class="bar"><span>${tr('trk_hint')}</span><button class="primary" data-go>${tr('trk_start')}</button><button data-no>${tr('cancel')}</button></div>`;
+  st.appendChild(ov);
+  const box = ov.querySelector('.box');
+  const place = () => {
+    const R = r(), S0 = sr();
+    Object.assign(box.style, { left: R.left - S0.left + b.x * R.width + 'px', top: R.top - S0.top + b.y * R.height + 'px', width: b.w * R.width + 'px', height: b.h * R.height + 'px' });
+  };
+  place();
+  const ro = new ResizeObserver(place); ro.observe(st);
+  ov.addEventListener('pointerdown', e => {
+    if (e.target.closest('.bar')) return;
+    const R = r(), fx = x => clamp((x - R.left) / R.width, 0, 1), fy = y => clamp((y - R.top) / R.height, 0, 1);
+    const x0 = fx(e.clientX), y0 = fy(e.clientY), inside = x0 > b.x && x0 < b.x + b.w && y0 > b.y && y0 < b.y + b.h, b0 = { ...b };
+    const mv = ev => {
+      const x = fx(ev.clientX), y = fy(ev.clientY);
+      if (inside) b = { ...b0, x: clamp(b0.x + x - x0, 0, 1 - b0.w), y: clamp(b0.y + y - y0, 0, 1 - b0.h) };
+      else b = { x: Math.min(x0, x), y: Math.min(y0, y), w: Math.abs(x - x0), h: Math.abs(y - y0) };
+      place();
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', () => window.removeEventListener('pointermove', mv), { once: true });
+  });
+  const close = () => { ro.disconnect(); ov.remove(); };
+  ov.querySelector('[data-no]').onclick = close;
+  ov.querySelector('[data-go]').onclick = async () => {
+    close();
+    if (b.w * P.w < 12 || b.h * P.h < 12) return toast(tr('trk_small'));
+    try { await runTrack(f, src, b); } catch (e) { hideModal(); if (!cancelled) toast(String(e.message || e)); }
+  };
+}
+async function runTrack(f, src, box) {
+  cancelled = false;
+  const m = media(src), L = S.layout(src, m, P.w, P.h), C = S.srcCrop(src, m), FPS = 15, sp = num(src.speed, 1);
+  const bw = box.w * P.w, bh = box.h * P.h, sc = clamp(40 / Math.max(bw, bh), 0.03, 1); // template ~40px on its long side
+  // Frames cover the clip's on-screen box (L.cw x L.ch at L.ox,L.oy) at work scale, grey, decoded once by ffmpeg.
+  const W = Math.max(8, Math.round(L.cw * sc / 2) * 2), H = Math.max(8, Math.round(L.ch * sc / 2) * 2), kx = W / L.cw, ky = H / L.ch;
+  const lo = Math.max(f.start, src.start), hi = Math.min(f.start + f.dur, src.start + src.dur), t0 = clamp(t, lo, hi - 1 / FPS);
+  // shortcut: whole range is held in memory (W*H bytes per frame); stream it if clips get very long.
+  const vf = [];
+  if (C.any) vf.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
+  if (src.flipH) vf.push('hflip');
+  if (src.flipV) vf.push('vflip');
+  vf.push(`setpts=(PTS-STARTPTS)/${sp}`, `fps=${FPS}`, `scale=${L.sw}:${L.sh}`, `crop=${L.cw}:${L.ch}:${L.cx}:${L.cy}`, `scale=${W}:${H}`, 'format=gray');
+  progress(tr('trk_run'), null);
+  const buf = new Uint8Array(await inv('gray_frames', { args: ['-v', 'error', '-ss', String(num(src.in, 0) + (lo - src.start) * sp), '-t', String((hi - lo) * sp),
+    '-i', m.path, '-an', '-vf', vf.join(','), '-f', 'rawvideo', 'pipe:1'] }));
+  const N = Math.floor(buf.length / (W * H));
+  if (!N) throw new Error(tr('trk_noVideo'));
+  const frame = i => buf.subarray(i * W * H, (i + 1) * W * H);
+  const tw = Math.max(4, Math.round(bw * kx)), th = Math.max(4, Math.round(bh * ky));
+  const patch = (g, x, y) => { // template at integer top-left, zero-mean
+    const p = new Float32Array(tw * th);
+    let s = 0;
+    for (let j = 0; j < th; j++) for (let i = 0; i < tw; i++) s += p[j * tw + i] = g[clamp(y + j, 0, H - 1) * W + clamp(x + i, 0, W - 1)];
+    s /= p.length;
+    for (let i = 0; i < p.length; i++) p[i] -= s;
+    return p;
+  };
+  const norm = p => Math.sqrt(p.reduce((a, v) => a + v * v, 0)) || 1;
+  // Normalised cross-correlation in a window around (px,py); sub-pixel peak by parabola fit.
+  const R = 24;
+  const match = (g, tpl, tn, px, py) => {
+    const x0 = Math.round(px), y0 = Math.round(py), n = 2 * R + 1, sc2 = new Float32Array(n * n).fill(-2), NN = tw * th;
+    let best = -2, bi = 0, bj = 0;
+    for (let dj = -R; dj <= R; dj++) {
+      const y = y0 + dj;
+      if (y < 0 || y + th > H) continue;
+      for (let di = -R; di <= R; di++) {
+        const x = x0 + di;
+        if (x < 0 || x + tw > W) continue;
+        let s = 0, ss = 0, st = 0;
+        for (let j = 0; j < th; j++) { const o = (y + j) * W + x, q = j * tw; for (let i = 0; i < tw; i++) { const v = g[o + i]; s += v; ss += v * v; st += v * tpl[q + i]; } }
+        const r = st / (tn * Math.sqrt(Math.max(ss - s * s / NN, 1e-6)));
+        sc2[(dj + R) * n + di + R] = r;
+        if (r > best) { best = r; bi = di; bj = dj; }
+      }
+    }
+    const at = (i, j) => Math.abs(i) > R || Math.abs(j) > R ? -2 : sc2[(j + R) * n + i + R];
+    const sub = (a, b0, c0) => { const d = a - 2 * b0 + c0; return a > -2 && c0 > -2 && d < 0 ? clamp(0.5 * (a - c0) / d, -0.5, 0.5) : 0; };
+    return { x: x0 + bi + sub(at(bi - 1, bj), best, at(bi + 1, bj)), y: y0 + bj + sub(at(bi, bj - 1), best, at(bi, bj + 1)), r: best };
+  };
+  const i0 = clamp(Math.round((t0 - lo) * FPS), 0, N - 1), timeOf = i => lo + i / FPS;
+  const sx = Math.round((box.x * P.w - L.ox) * kx), sy = Math.round((box.y * P.h - L.oy) * ky), tpl0 = patch(frame(i0), sx, sy);
+  const pts = [[timeOf(i0) - f.start, 0, 0]];
+  let done = 0, lost = 0;
+  for (const dir of [1, -1]) {
+    let tpl = Float32Array.from(tpl0), tn = norm(tpl), px = sx, py = sy, vx = 0, vy = 0;
+    for (let i = i0 + dir; i >= 0 && i < N; i += dir) {
+      if (cancelled) throw new Error(tr('cancelled'));
+      const g = frame(i), hit = match(g, tpl, tn, px + vx, py + vy);
+      if (hit.r < 0.35) lost++; else { vx = (hit.x - px) * 0.7; vy = (hit.y - py) * 0.7; px = hit.x; py = hit.y; }
+      if (hit.r > 0.75) { // slow template refresh follows lighting/shape changes without drifting
+        const p = patch(g, Math.round(px), Math.round(py));
+        for (let k = 0; k < tpl.length; k++) tpl[k] = tpl[k] * 0.9 + p[k] * 0.1;
+        tn = norm(tpl);
+      }
+      pts.push([timeOf(i) - f.start, (px - sx) / kx / P.w, (py - sy) / ky / P.h]);
+      if (++done % 10 === 0) { progress(tr('trk_run'), done / N); await new Promise(r => setTimeout(r)); }
+    }
+  }
+  hideModal();
+  pts.sort((a, b) => a[0] - b[0]);
+  // light smoothing (3-tap) to kill sub-pixel jitter
+  const sm = pts.map((p, i) => i && i < pts.length - 1 ? [p[0], (pts[i - 1][1] + p[1] * 2 + pts[i + 1][1]) / 4, (pts[i - 1][2] + p[2] * 2 + pts[i + 1][2]) / 4] : p);
+  snapshot();
+  f.trk = { pts: sm.map(p => [+p[0].toFixed(4), +p[1].toFixed(5), +p[2].toFixed(5)]) };
+  refresh();
+  toast(lost > pts.length * 0.2 ? tr('trk_weak') : tr('trk_done'));
+}
 
 /* ---------- library ---------- */
 function setLibTab(tab) {
@@ -1293,7 +1429,7 @@ async function rasterizeTexts(Q, work) {
   for (let f = 0; f < N; f++) {
     if (cancelled) throw new Error(tr('cancelled'));
     const time = f / Q.fps, vis = visibleTexts(Q, time);
-    const key = vis.map(it => { const s = textState(it, time - it.start); return it.id + (s.anim ? 'a' + f : 'w' + s.word); }).join('|');
+    const key = vis.map(it => { const s = textState(it, time - it.start); return it.id + (s.anim || it.trk ? 'a' + f : 'w' + s.word); }).join('|');
     if (key === last) { list[list.length - 1].frames++; continue; }
     last = key;
     ctx.clearRect(0, 0, Q.w, Q.h);

@@ -83,5 +83,14 @@ const a3 = JSON.parse(run(ffprobe, ['-v', 'error', '-print_format', 'json', '-sh
 assert.strictEqual(a3.streams.length, 1); assert.strictEqual(a3.streams[0].codec_name, 'mp3');
 assert.ok(Math.abs(+a3.format.duration - 3.5) < 0.15, 'mp3 duration ' + a3.format.duration);
 
+// tracked overlay: expression offsets match trkAt
+const trk = { start: 1, trk: { pts: [[0, 0, 0], [1, 0.1, -0.05], [2, 0.3, 0]] } };
+assert.deepStrictEqual(S.trkAt(trk, 0.5).map(v => +v.toFixed(4)), [0.05, -0.025]);
+assert.deepStrictEqual(S.trkAt(trk, 9), [0.3, 0]);
+p.items[2].trk = { pts: [[0, 0, 0], [2, 0.2, 0.1]] };
+const tmov = path.join(dir, 'trk.mp4');
+run(ffmpeg, buildArgs(p, { out: tmov, textList }).args);
+assert.ok(fs.statSync(tmov).size > 1000);
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');

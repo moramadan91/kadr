@@ -81,7 +81,8 @@
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
         fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
-        fc.push(`[${base}][v${j}]overlay=x=${ox}:y=${oy}:eof_action=pass[b${j + 1}]`);
+        const tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
+        fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
         base = `b${j + 1}`;
       });
       if (o.textList) {

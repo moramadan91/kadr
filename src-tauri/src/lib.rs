@@ -237,6 +237,16 @@ fn model_path(app: &AppHandle) -> R<PathBuf> {
     Ok(app.path().app_data_dir().map_err(err)?.join("models").join(MODEL_NAME))
 }
 
+/// Raw frames for motion tracking: ffmpeg's stdout handed to JS as bytes.
+#[tauri::command]
+async fn gray_frames(args: Vec<String>) -> R<tauri::ipc::Response> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = command(&sidecar("ffmpeg")).args(&args).stdin(Stdio::null()).output().map_err(err)?;
+        if !out.status.success() { return Err(tail(&String::from_utf8_lossy(&out.stderr))); }
+        Ok(tauri::ipc::Response::new(out.stdout))
+    }).await.map_err(err)?
+}
+
 #[tauri::command]
 fn model_ready(app: AppHandle) -> R<bool> {
     Ok(model_path(&app)?.exists())
@@ -365,7 +375,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, work_begin, work_end, write_frame, export_run,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

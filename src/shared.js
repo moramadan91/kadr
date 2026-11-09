@@ -103,7 +103,34 @@
     return out;
   }
 
-  const api = { num, clamp, PRESETS, grade, srcCrop, layout, fadeAlpha, projectDur, scaleProject, parseWhisper, groupWords };
+  // Motion tracking: it.trk.pts = [[lt, fx, fy], ...] sorted by lt; offsets are fractions of the frame size.
+  function trkAt(it, lt) {
+    const p = it.trk && it.trk.pts;
+    if (!p || !p.length) return [0, 0];
+    if (lt <= p[0][0]) return [p[0][1], p[0][2]];
+    for (let i = 1; i < p.length; i++) if (lt <= p[i][0]) {
+      const a = p[i - 1], b = p[i], u = (lt - a[0]) / Math.max(1e-6, b[0] - a[0]);
+      return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+    }
+    const z = p[p.length - 1];
+    return [z[1], z[2]];
+  }
+  // Same curve as an ffmpeg expression of global time t: a flat sum of linear pieces (no deep nesting).
+  function trkExpr(it, size, axis) {
+    const p = it.trk && it.trk.pts;
+    if (!p || !p.length) return '0';
+    const k = axis + 1, T = x => (x + it.start).toFixed(4), V = x => (x * size).toFixed(2);
+    const parts = [`lt(t,${T(p[0][0])})*${V(p[0][k])}`, `gte(t,${T(p[p.length - 1][0])})*${V(p[p.length - 1][k])}`];
+    for (let i = 1; i < p.length; i++) {
+      const a = p[i - 1], b = p[i], d = b[0] - a[0];
+      if (d <= 0) continue;
+      const slope = (b[k] - a[k]) * size / d;
+      parts.push(`gte(t,${T(a[0])})*lt(t,${T(b[0])})*(${V(a[k])}+(t-${T(a[0])})*${slope.toFixed(3)})`);
+    }
+    return parts.join('+');
+  }
+
+  const api = { num, clamp, PRESETS, grade, srcCrop, layout, fadeAlpha, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);
