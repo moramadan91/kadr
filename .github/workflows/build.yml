@@ -37,8 +37,15 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # npm 10 runs install scripts, so ffmpeg-static downloads the binary for this OS.
-      - run: npm ci
+      # Install scripts download ffmpeg from GitHub releases, which sometimes answers 504: retry them with backoff.
+      - run: npm ci --ignore-scripts
+      - shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            npm rebuild && exit 0
+            echo "install scripts failed (try $i), retrying in $((i * 20))s"; sleep $((i * 20))
+          done
+          exit 1
 
       - run: node scripts/fetch-bins.mjs
 
