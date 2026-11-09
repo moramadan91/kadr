@@ -15,6 +15,7 @@ assert.deepStrictEqual(atempo(1), []);
 assert.deepStrictEqual(atempo(4), ['atempo=2', 'atempo=2']);
 assert.deepStrictEqual(atempo(0.25), ['atempo=0.5', 'atempo=0.5']);
 assert.ok(S.grade({}).identity);
+assert.strictEqual(S.trVal('-2*-3+(1-4)/2+mod(7,3)', 0), 5.5); // transition formula evaluator (no eval under the CSP)
 assert.ok(!S.grade({ preset: 'warm' }).identity);
 const L = S.layout({ fit: 'cover' }, { w: 1920, h: 1080 }, 1080, 1920);
 assert.strictEqual(L.cw, 1080); assert.strictEqual(L.ch, 1920); assert.strictEqual(L.ox, 0);
@@ -174,6 +175,7 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
   const want = { fade: () => { const c = at(2.5, 100, 100); return c[0] > 60 && c[2] > 60; }, black: () => Math.max(...at(2.47, 100, 100)) < 60, white: () => Math.min(...at(2.47, 100, 100)) > 190,
     slideL: () => blu(at(2.5, 160, 100)) && red(at(2.5, 30, 100)), slideU: () => blu(at(2.5, 100, 160)) && red(at(2.5, 100, 30)),
     wipeL: () => blu(at(2.5, 170, 100)) && red(at(2.5, 30, 100)), wipeR: () => blu(at(2.5, 30, 100)) && red(at(2.5, 170, 100)),
+    zoomIn: () => red(at(2.25, 100, 100)) && blu(at(2.75, 100, 100)), spin: () => red(at(2.25, 100, 100)) && blu(at(2.75, 100, 100)),
     circle: () => blu(at(2.5, 100, 100)) && red(at(2.5, 2, 2)), split: () => blu(at(2.5, 100, 100)) && red(at(2.5, 4, 100)) };
   for (const id of S.TRANS) {
     tp.items[1].trans = { id, dur: 1 };

@@ -234,6 +234,47 @@ fn lut_add(app: AppHandle, path: String) -> R<String> {
     Ok(dst.to_string_lossy().into_owned())
 }
 
+const AUDIO_EXT: [&str; 8] = ["wav", "mp3", "m4a", "aac", "ogg", "flac", "aif", "aiff"];
+fn is_audio(p: &Path) -> bool { p.extension().map_or(false, |x| AUDIO_EXT.iter().any(|e| x.eq_ignore_ascii_case(e))) }
+fn walk_audio(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() { if depth > 0 { walk_audio(&p, depth - 1, out); } } else if is_audio(&p) { out.push(p); }
+    }
+}
+
+/// Sound effects library: app data/sfx/<category>/<file>.
+#[tauri::command]
+fn sfx_library(app: AppHandle, srv: State<Arc<MediaServer>>) -> R<Value> {
+    let root = app.path().app_data_dir().map_err(err)?.join("sfx");
+    let mut files = vec![];
+    walk_audio(&root, 1, &mut files);
+    files.sort();
+    Ok(json!(files.iter().map(|f| {
+        let s = f.to_string_lossy().into_owned();
+        srv.allow(&s);
+        let cat = f.parent().filter(|d| *d != root).and_then(|d| d.file_name()).map(|x| x.to_string_lossy().into_owned()).unwrap_or_default();
+        json!({ "cat": cat, "name": f.file_stem().map(|x| x.to_string_lossy().into_owned()), "path": s })
+    }).collect::<Vec<_>>()))
+}
+
+/// Copy every sound under a folder into the library; each file's own folder becomes its category.
+#[tauri::command]
+fn sfx_import(app: AppHandle, dir: String) -> R<usize> {
+    let src = Path::new(&dir);
+    let root = app.path().app_data_dir().map_err(err)?.join("sfx");
+    let mut files = vec![];
+    walk_audio(src, 6, &mut files);
+    for f in &files {
+        let cat = f.parent().and_then(|d| d.file_name()).map(|x| x.to_string_lossy().into_owned()).unwrap_or_else(|| "Sounds".into());
+        let d = root.join(cat);
+        std::fs::create_dir_all(&d).map_err(err)?;
+        std::fs::copy(f, d.join(f.file_name().ok_or("bad name")?)).map_err(err)?;
+    }
+    Ok(files.len())
+}
+
 /// Remove a LUT the user imported (never one shipped with the app).
 #[tauri::command]
 fn lut_remove(app: AppHandle, path: String) -> R<()> {
@@ -577,7 +618,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {

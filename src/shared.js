@@ -524,13 +524,48 @@
   }
   // Transitions live on the incoming clip (it.trans = {id, dur}). The clip just before it on the same
   // track holds its last frame underneath until the transition ends, so total length never changes.
-  const TRANS = ['fade', 'black', 'white', 'slideL', 'slideR', 'slideU', 'slideD', 'wipeL', 'wipeR', 'wipeU', 'wipeD', 'circle', 'split'];
+  const TRANS = ['fade', 'black', 'white', 'slideL', 'slideR', 'slideU', 'slideD', 'wipeL', 'wipeR', 'wipeU', 'wipeD', 'circle', 'split', 'zoomIn', 'spin', 'shake', 'glitch'];
   const TR_SLIDE = { slideL: [1, 0], slideR: [-1, 0], slideU: [0, 1], slideD: [0, -1] }; // where the new clip comes in from
   const TR_DIP = { black: '#000000', white: '#ffffff' };
   // revealed part of the new clip at progress P, over its own box (X, Y in a W x H box): ffmpeg geq form
   const TR_GEQ = { wipeL: 'gte(X,W*(1-P))', wipeR: 'lte(X,W*P)', wipeU: 'gte(Y,H*(1-P))', wipeD: 'lte(Y,H*P)',
     circle: 'lte(hypot(X-W/2,Y-H/2),hypot(W,H)/2*P)', split: 'lte(abs(X-W/2),W/2*P)' };
   const ease3 = q => q * q * (3 - 2 * q); // smoothstep, same as the export's expression
+  // Cut-in-the-middle transitions: the outgoing clip (a) moves over the first half, the new clip (b)
+  // over the second. Formulas use U (0..1 through that half) and E (U eased); z = zoom inside the
+  // clip box, r = degrees, x = sideways shift as a share of the frame width, rgb = colour split.
+  // The same strings are ffmpeg expressions in the export and evaluated here for the preview.
+  const TR_MOVE = {
+    zoomIn: { a: { z: '1+0.8*E' }, b: { z: '1.8-0.8*E' } },
+    spin: { a: { z: '1+2*E*(2-E)', r: '90*E' }, b: { z: '3-2*E*E', r: '-90*(1-E)' } }, // zoom keeps the box covered while it turns (9:16 at 45° needs ~2x)
+    shake: { a: { z: '1+0.15*U', x: '0.06*sin(2*PI*3*U)*U' }, b: { z: '1.15-0.15*U', x: '0.06*sin(2*PI*3*U)*(1-U)' } },
+    glitch: { a: { z: '1.05', x: '0.04*(mod(floor(U*12)*7,3)-1)', rgb: 1 }, b: { z: '1.05', x: '0.04*(mod(floor(U*12)*5,3)-1)', rgb: 1 } },
+  };
+  const trSub = (e, u) => String(e).replace(/\bE\b/g, easeExpr(`(${u})`)).replace(/\bU\b/g, `(${u})`);
+  // Tiny evaluator for those formulas (the app's CSP forbids eval): numbers, + - * /, unary minus,
+  // brackets, PI and the functions below.
+  const TR_F = { sin: Math.sin, cos: Math.cos, floor: Math.floor, pow: Math.pow, mod: (a, b) => a - b * Math.floor(a / b), clip: (v, a, b) => Math.min(b, Math.max(a, v)) };
+  function trEval(src) {
+    const tk = src.match(/\d*\.?\d+(?:e[-+]?\d+)?|[A-Za-z_]\w*|[-+*/(),]/g) || [];
+    let i = 0;
+    const peek = () => tk[i], eat = x => { if (tk[i] !== x) throw new Error('expected ' + x + ' in ' + src); i++; };
+    const prim = () => {
+      const t = tk[i++];
+      if (t === '(') { const v = sum(); eat(')'); return v; }
+      if (t === '-') return -prim();
+      if (t === '+') return prim();
+      if (/^[\d.]/.test(t)) return +t;
+      if (t === 'PI') return Math.PI;
+      if (TR_F[t]) { eat('('); const a = [sum()]; while (peek() === ',') { i++; a.push(sum()); } eat(')'); return TR_F[t](...a); }
+      throw new Error('bad token ' + t + ' in ' + src);
+    };
+    const prod = () => { let v = prim(); while (peek() === '*' || peek() === '/') v = tk[i++] === '*' ? v * prim() : v / prim(); return v; };
+    const sum = () => { let v = prod(); while (peek() === '+' || peek() === '-') v = tk[i++] === '+' ? v + prod() : v - prod(); return v; };
+    const v = sum();
+    if (i !== tk.length) throw new Error('trailing input in ' + src);
+    return v;
+  }
+  const trVal = (e, u) => e == null ? null : trEval(trSub(e, u));
   const easeExpr = q => `(3*pow(${q},2)-2*pow(${q},3))`;
   // same shapes as TR_GEQ, as a canvas clip path
   function transClip(ctx, id, p, x, y, w, h) {
@@ -561,7 +596,7 @@
   const BLEND_FF = { multiply: ['multiply'], screen: ['screen'], overlay: ['overlay'], darken: ['darken'], lighten: ['lighten'], softlight: ['softlight'],
     hardlight: ['hardlight'], difference: ['difference'], exclusion: ['exclusion'], addition: ['addition'], dodge: ['dodge', 1], burn: ['burn', 1] };
 
-  const api = { BLEND_FF, TRANS, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  const api = { TR_MOVE, trSub, trVal, BLEND_FF, TRANS, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);

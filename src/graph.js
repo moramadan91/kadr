@@ -118,8 +118,20 @@
         if (TI) { // the incoming side, in clip time
           const d = TI.d, c = S.TR_DIP[TI.id];
           if (TI.id === 'fade') ch.push(`fade=t=in:st=0:d=${d3(d)}:alpha=1`);
+          else if (S.TR_MOVE[TI.id]) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`); // new clip takes over at the middle
           else if (c) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`, `fade=t=in:st=${d3(d / 2)}:d=${d3(d / 2)}:color=${c.replace('#', '0x')}`);
           else if (S.TR_GEQ[TI.id]) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${S.TR_GEQ[TI.id].replace(/P/g, S.easeExpr(`clip(T/${d3(d)},0,1)`))})':enable='lt(t,${d3(d)})'`);
+        }
+        { // zoom / spin / colour split on either side of a cut-in-the-middle transition
+          const MA = TO && S.TR_MOVE[TO.id] && S.TR_MOVE[TO.id].a, MB = TI && S.TR_MOVE[TI.id] && S.TR_MOVE[TI.id].b;
+          const sides = [MB && [MB, `clip((t-${d3(TI.d / 2)})/${d3(TI.d / 2)},0,1)`, `lt(t,${d3(TI.d)})`], MA && [MA, `clip((t-${d3(it.dur)})/${d3(TO.d / 2)},0,1)`, `gte(t,${d3(it.dur)})`]].filter(Boolean);
+          const part = (k, def, op) => sides.filter(([M]) => M[k] != null).map(([M, u, on]) => `if(${on},${S.trSub(M[k], u)},${def})`).join(op);
+          const Z = part('z', 1, '*'), R = part('r', 0, '+');
+          if (Z) ch.push(`scale=w='max(2,trunc(iw*(${Z})/2)*2)':h='max(2,trunc(ih*(${Z})/2)*2)':eval=frame`); // rotate (below) or crop brings it back to the box
+          if (Z && !R) ch.push(`crop=${L.cw}:${L.ch}:(iw-ow)/2:(ih-oh)/2`);
+          if (R) ch.push(`rotate=a='(${R})*PI/180':ow=${L.cw}:oh=${L.ch}:c=black@0`);
+          const G = sides.filter(([M]) => M.rgb).map(([, , on]) => on).join('+');
+          if (G) { const px = Math.max(2, Math.round(L.cw * 0.012)); ch.push('format=gbrap', `rgbashift=rh=-${px}:bh=${px}:enable='${G}'`, 'format=yuva420p'); }
         }
         if (TO && S.TR_DIP[TO.id]) ch.push(`fade=t=out:st=${f3(it.dur)}:d=${d3(TO.d / 2)}:color=${S.TR_DIP[TO.id].replace('#', '0x')}`);
         let ox = L.ox, oy = L.oy;
@@ -161,6 +173,9 @@
           if (dy) ty = term(ty, `${dy * sign > 0 ? '+' : '-'}H*${f}`); };
         if (TI && S.TR_SLIDE[TI.id]) slide(it.start, TI.d, 1, TI.id);
         if (TO && S.TR_SLIDE[TO.id]) slide(it.start + it.dur, TO.d, -1, TO.id);
+        const shift = (M, s0, h) => { if (M && M.x != null) tx = term(tx, `+W*if(between(t,${d3(s0)},${d3(s0 + h)}),${S.trSub(M.x, `clip((t-${d3(s0)})/${d3(h)},0,1)`)},0)`); };
+        if (TI && S.TR_MOVE[TI.id]) shift(S.TR_MOVE[TI.id].b, it.start + TI.d / 2, TI.d / 2);
+        if (TO && S.TR_MOVE[TO.id]) shift(S.TR_MOVE[TO.id].a, it.start + it.dur, TO.d / 2);
         const BM = it.blend && S.BLEND_FF[it.blend];
         if (BM) { // blend mode: place the layer on a clear frame, blend it with everything below, keep only where the layer is
           const [bx, lg] = BM[1] ? [`lg${j}`, `bx${j}`] : [`bx${j}`, `lg${j}`];

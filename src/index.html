@@ -32,6 +32,7 @@
       <button data-tab="filters" data-i="sparkles"><span data-t="filters"></span></button>
       <button data-tab="trans" data-i="arrow-right-left"><span data-t="transitions"></span></button>
       <button data-tab="layers" data-i="layers"><span data-t="layersTab"></span></button>
+      <button data-tab="sounds" data-i="volume-2"><span data-t="sfxTab"></span></button>
     </nav>
     <section data-pane="media">
       <button class="wide accent-ghost" id="bImport" data-i="plus"><span data-t="import"></span></button>
@@ -61,6 +62,11 @@
     <section data-pane="layers" hidden>
       <p class="hint" data-t="layersHint"></p>
       <div id="layerCards" class="trcards"></div>
+    </section>
+    <section data-pane="sounds" hidden>
+      <div class="binbar"><input id="sfxQ" type="search" data-ph="sfxSearch"><select id="sfxCat"></select><button class="ib" id="sfxImport" data-i="folder-open" data-tt="sfxImport"></button></div>
+      <div id="sfxList"></div>
+      <p class="hint" data-t="sfxHint"></p>
     </section>
   </aside>
 

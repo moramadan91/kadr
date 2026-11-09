@@ -456,3 +456,16 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .clip .trn svg { width: 12px; height: 12px; }
 .clip.off { opacity: .4; background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(0, 0, 0, .25) 6px 12px); }
 .hidebtn.on { border-color: var(--accent); color: var(--accent); }
+/* sound effects list */
+#sfxList { display: grid; gap: 2px; margin: 8px 0 12px; }
+.sfx { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 7px; font-size: 12px; }
+.sfx:hover { background: rgba(255, 255, 255, .05); }
+.sfx span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sfx [data-add] { opacity: 0; } .sfx:hover [data-add] { opacity: 1; }
+.tv-zoomIn b, .tv-spin b, .tv-shake b, .tv-glitch b { animation-name: tvDipB; }
+.tv-zoomIn::before, .tv-spin::before, .tv-shake::before, .tv-glitch::before { content: ''; position: absolute; inset: 0; background: inherit; z-index: 1; animation: 2.2s ease-in infinite; }
+.tv-zoomIn::before { animation-name: tvZoomA; } .tv-spin::before { animation-name: tvSpinA; } .tv-shake::before { animation-name: tvShakeA; } .tv-glitch::before { animation-name: tvGlitchA; }
+@keyframes tvZoomA { 0%, 25% { transform: scale(1); opacity: 1; } 45% { transform: scale(1.8); opacity: 1; } 46%, 100% { opacity: 0; } }
+@keyframes tvSpinA { 0%, 25% { transform: rotate(0) scale(1); opacity: 1; } 45% { transform: rotate(90deg) scale(3); opacity: 1; } 46%, 100% { opacity: 0; } }
+@keyframes tvShakeA { 0%, 25% { transform: none; opacity: 1; } 30% { transform: translateX(6%); } 35% { transform: translateX(-6%); } 40% { transform: translateX(5%); } 45% { transform: translateX(-4%); opacity: 1; } 46%, 100% { opacity: 0; } }
+@keyframes tvGlitchA { 0%, 25% { transform: none; filter: none; opacity: 1; } 30% { transform: translateX(-4%); filter: hue-rotate(90deg); } 36% { transform: translateX(4%); filter: hue-rotate(200deg); } 42% { transform: translateX(-2%); filter: saturate(3); opacity: 1; } 46%, 100% { opacity: 0; } }

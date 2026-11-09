@@ -583,7 +583,12 @@ function drawVisual(ctx, time, ov) {
       // transitions: TI = this clip coming in, TO = this clip's held tail going out
       const TI = !tail && !pv ? S.transIn(P, it) : null, trIn = TI && lt < TI.d ? TI : null;
       const qi = trIn ? clamp(lt / trIn.d, 0, 1) : 1, qo = tail ? clamp((time - end) / TO.d, 0, 1) : 0;
-      if (trIn && S.TR_DIP[trIn.id] && qi < 0.5) { ctx.restore(); continue; }
+      if (trIn && (S.TR_DIP[trIn.id] || S.TR_MOVE[trIn.id]) && qi < 0.5) { ctx.restore(); continue; }
+      // zoom / spin / shake / glitch: [formulas, progress through this side's half]
+      const mv = [trIn && S.TR_MOVE[trIn.id] && [S.TR_MOVE[trIn.id].b, (qi - 0.5) * 2], tail && S.TR_MOVE[TO.id] && [S.TR_MOVE[TO.id].a, Math.min(1, qo * 2)]].filter(Boolean);
+      const mz = mv.reduce((z, [M, u]) => z * (M.z != null ? S.trVal(M.z, u) : 1), 1), mr = mv.reduce((r, [M, u]) => r + (M.r != null ? S.trVal(M.r, u) : 0), 0);
+      const mx = mv.reduce((x, [M, u]) => x + (M.x != null ? S.trVal(M.x, u) : 0), 0);
+      if (mx) ctx.translate(mx * P.w, 0);
       if (trIn && trIn.id === 'fade') ctx.globalAlpha *= qi;
       const sl = trIn && S.TR_SLIDE[trIn.id] ? [S.TR_SLIDE[trIn.id], 1 - S.ease3(qi)] : tail && S.TR_SLIDE[TO.id] ? [S.TR_SLIDE[TO.id], -S.ease3(qo)] : null;
       if (sl) ctx.translate(sl[0][0] * P.w * sl[1], sl[0][1] * P.h * sl[1]);
@@ -596,6 +601,10 @@ function drawVisual(ctx, time, ov) {
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
       if (trIn && S.TR_GEQ[trIn.id]) S.transClip(ctx, trIn.id, S.ease3(qi), L.ox, L.oy, L.cw, L.ch);
+      if (mz !== 1 || mr) { // inside the clip's own box, as the export crops it
+        ctx.beginPath(); ctx.rect(L.ox, L.oy, L.cw, L.ch); ctx.clip();
+        ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2); ctx.rotate(mr * Math.PI / 180); ctx.scale(mz, mz); ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
+      }
       const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
       const dc = mk ? maskBox(L) : ctx;
       if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
@@ -2392,6 +2401,8 @@ function setLibTab(tab) {
   libTab = tab;
   if (tab === 'trans') renderTrans();
   if (tab === 'layers') renderLayers();
+  if (tab === 'sounds') loadSfx();
+  else if (!sfxAudio.paused) sfxAudio.pause();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $$('#lib [data-pane]').forEach(p => (p.hidden = p.dataset.pane !== tab));
 }
@@ -2664,6 +2675,46 @@ function addFill(id) {
   refresh();
 }
 $('#layerCards').addEventListener('click', e => { const b = e.target.closest('[data-layer]'); if (b) addFill(b.dataset.layer); });
+
+/* ---------- sound effects pane ---------- */
+let sfxLib = null;
+const sfxAudio = new Audio();
+async function loadSfx(force) {
+  if (!sfxLib || force) { try { sfxLib = await inv('sfx_library'); } catch { sfxLib = []; } }
+  const cats = [...new Set(sfxLib.map(s => s.cat))], cur = $('#sfxCat').value;
+  $('#sfxCat').innerHTML = `<option value="">${tr('sfxAll')} (${sfxLib.length})</option>` + cats.map(c => `<option${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  renderSfx();
+}
+function renderSfx() {
+  const q = $('#sfxQ').value.trim().toLowerCase(), c = $('#sfxCat').value;
+  const list = (sfxLib || []).map((s, i) => [s, i]).filter(([s]) => (!c || s.cat === c) && (!q || (s.name + ' ' + s.cat).toLowerCase().includes(q)));
+  $('#sfxList').innerHTML = !sfxLib || !sfxLib.length ? `<p class="hint">${tr('sfxEmpty')}</p>` : list.map(([s, i]) =>
+    `<div class="sfx" data-sfx="${i}" title="${esc(s.cat)}"><button class="ib" data-play>${icon(sfxAudio.dataset.i === String(i) && !sfxAudio.paused ? 'pause' : 'play')}</button><span>${esc(s.name)}</span><button class="ib" data-add title="${tr('sfxAdd')}">${icon('plus')}</button></div>`).join('');
+}
+async function addSfx(s) {
+  const [mid] = addToBin(await inv('probe', { paths: [s.path] }));
+  const m = mid && P.media[mid];
+  if (!m) return;
+  const free = P.tracks.filter(x => x.kind === 'audio').map(x => x.id).find(a => !P.items.some(i => i.track === a && i.start < t + m.dur && i.start + i.dur > t)) || 'a2';
+  addMedia(mid, free, t);
+}
+$('#sfxList').addEventListener('click', e => {
+  const row = e.target.closest('[data-sfx]'), s = row && sfxLib[+row.dataset.sfx];
+  if (!s) return;
+  if (e.target.closest('[data-add]')) return addSfx(s);
+  if (sfxAudio.dataset.i === row.dataset.sfx && !sfxAudio.paused) sfxAudio.pause();
+  else { sfxAudio.src = urlOf(s); sfxAudio.dataset.i = row.dataset.sfx; sfxAudio.play().catch(() => {}); }
+  renderSfx();
+});
+$('#sfxList').addEventListener('dblclick', e => { const row = e.target.closest('[data-sfx]'); if (row) addSfx(sfxLib[+row.dataset.sfx]); });
+sfxAudio.onended = sfxAudio.onpause = () => renderSfx();
+$('#sfxQ').addEventListener('input', renderSfx);
+$('#sfxCat').addEventListener('change', renderSfx);
+$('#sfxImport').addEventListener('click', async () => {
+  const d = await TA.dialog.open({ directory: true });
+  if (!d) return;
+  try { const n = await inv('sfx_import', { dir: d }); toast(tr('sfxImported', { n })); loadSfx(true); } catch (e) { toast(tr('error') + ': ' + cleanErr(e)); }
+});
 
 /* ---------- freeze frame & rotate ---------- */
 async function freezeFrame() {
