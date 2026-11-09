@@ -204,8 +204,28 @@ function imgFor(m) {
   if (!im) { im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => (needsDraw = true); im.src = url; imgs.set(url, im); }
   return im;
 }
+// Denoise: each source's sound is cleaned once (denoise_audio, cached), then played and exported in its place.
+const dnOk = new Map(), dnReady = new Set(); // media id -> promise of the clean file; ids whose file is ready
+function ensureDn(mid) {
+  if (!dnOk.has(mid)) dnOk.set(mid, inv('denoise_audio', { path: P.media[mid].path }).then(path => {
+    P.media[mid].dn = path; dnReady.add(mid); needsDraw = true; return path;
+  }, e => { dnOk.delete(mid); throw e; }));
+  return dnOk.get(mid);
+}
+const dnPrep = () => Promise.all([...new Set(P.items.filter(i => i.denoise && media(i)).map(i => i.media))].map(ensureDn));
+function dnEl(it) {
+  const key = chainKey(it) + '|dn', url = urlOf({ path: media(it).dn });
+  let el = els.get(key);
+  if (el && el.dataset.src === url) return el;
+  if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
+  el = document.createElement('audio');
+  el.preload = 'auto';
+  el.dataset.src = el.src = url;
+  els.set(key, el);
+  return el;
+}
 function gcEls() {
-  for (const [id, el] of els) if (!item(id)) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); els.delete(id); }
+  for (const [id, el] of els) if (!item(id.split('|')[0])) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); els.delete(id); }
 }
 function syncMedia() {
   // One controller per element: the active piece, else the next one coming up.
@@ -216,14 +236,24 @@ function syncMedia() {
     const k = chainKey(it), c = ctl.get(k);
     if (!c || (!active(c, t) && (active(it, t) || (it.start > t && (c.start <= t || it.start < c.start))))) ctl.set(k, it);
   }
+  const driven = new Set();
   for (const it of ctl.values()) {
-    const el = elFor(it), on = active(it, t), lt = clamp(t - it.start, 0, it.dur);
+    if (it.denoise && !dnOk.has(it.media)) ensureDn(it.media).catch(() => {});
+    const dn = it.denoise && dnReady.has(it.media);
+    driveEl(elFor(it), it, dn);
+    if (dn) { const d = dnEl(it); driven.add(d); driveEl(d, it, false); }
+  }
+  for (const [k, e] of els) if (k.endsWith('|dn') && !driven.has(e) && !e.paused) e.pause();
+}
+function driveEl(el, it, silent) {
+  {
+    const on = active(it, t), lt = clamp(t - it.start, 0, it.dur);
     const sp = clamp(S.rateAt(it, lt), 0.0625, 16), want = num(it.in, 0) + S.srcAt(it, lt);
     if (el.preservesPitch !== !it.pitch) el.preservesPitch = !it.pitch;
     // Warm-up: just before a cut, run the next clip muted at a crawl from its in-point, so the decoder is
     // already going when the cut arrives (WebKit needs ~0.6 s to start a paused video).
     const warm = !on && playing && it.start > t && it.start - t < 0.8;
-    const rate = warm ? 0.0625 : sp, mute = !!it.muted || !on;
+    const rate = warm ? 0.0625 : sp, mute = silent || !!it.muted || !on;
     if (el.playbackRate !== rate) el.playbackRate = rate;
     if (el.muted !== mute) el.muted = mute;
     const vol = clamp(num(it.volume, 1) * S.fadeAlpha(it, t - it.start), 0, 1);
@@ -292,6 +322,27 @@ function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh) {
   catch (e) { if (!drawGraded.warned) { drawGraded.warned = true; inv('dev_log', { msg: 'grade failed: ' + e }); } ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh); }
 }
 
+// Logo removal preview: the box is filled from the pixel rows just above and below it, blended
+// top to bottom (export uses ffmpeg delogo, which interpolates from all four edges).
+const dlc = document.createElement('canvas');
+dlc.width = 8; dlc.height = 2;
+function drawDelogo(ctx, it, src, m, k, C, L, u, v) {
+  const b = S.logoBox(it.logo, m), dc = dlc.getContext('2d');
+  dc.clearRect(0, 0, 8, 2);
+  drawGraded(dc, it, src, b.x * k, (b.y - 1) * k, b.w * k, k, 0, 0, 8, 1);
+  drawGraded(dc, it, src, b.x * k, (b.y + b.h) * k, b.w * k, k, 0, 1, 8, 1);
+  const dx = L.ox + (b.x - C.x) / u - L.cx, dy = L.oy + (b.y - C.y) / v - L.cy;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(L.ox, L.oy, L.cw, L.ch); ctx.clip();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(dlc, 0, 0, 8, 2, dx, dy, b.w / u, b.h / v);
+  if (ctx === vctx && sel === it.id && inspTab === 'tVideo' && !playing) {
+    ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = '#2ee6d6';
+    ctx.strokeRect(dx, dy, b.w / u, b.h / v);
+  }
+  ctx.restore();
+}
+
 // ov = {id, lt}: draw that clip at its own local time (animation preview) whatever the playhead says.
 function drawVisual(ctx, time, ov) {
   ctx.fillStyle = '#000';
@@ -318,6 +369,7 @@ function drawVisual(ctx, time, ov) {
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
       drawGraded(ctx, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch);
+      if (it.logo && it.logo.on) drawDelogo(ctx, it, src, m, k, C, L, u, v);
       ctx.restore();
     }
   }
@@ -1127,7 +1179,7 @@ function refresh() {
 /* ---------- inspector ---------- */
 const getPath = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
 function setPath(o, k, v) { const ks = k.split('.'); const last = ks.pop(); ks.reduce((a, x) => (a[x] ??= {}), o)[last] = v; }
-const showVal = (k, v) => /Dur$/.test(k) ? (+v).toFixed(2) + 's' : k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|bgAlpha|crop\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW|spacing|Blur|Dist|glowSize/.test(k) ? String(v | 0) : (+v).toFixed(2);
+const showVal = (k, v) => /Dur$/.test(k) ? (+v).toFixed(2) + 's' : k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|bgAlpha|crop\.|logo\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW|spacing|Blur|Dist|glowSize/.test(k) ? String(v | 0) : (+v).toFixed(2);
 
 const fld = {
   range: (k, label, min, max, step, it, d = 0) =>
@@ -1274,9 +1326,15 @@ function inspector() {
     if (it.track !== 'v1') h.push(trkBtns(it));
     h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
+    const lo = it.logo && it.logo.on;
+    h.push(grp('logoSec', `<div class="inl">${fld.check('logo.on', 'logoOn', it)}</div>` + (lo ?
+      `<div class="row2">${fld.range('logo.x', 'posX', 0, 0.99, 0.005, it)}${fld.range('logo.y', 'posY', 0, 0.99, 0.005, it)}</div>` +
+      `<div class="row2">${fld.range('logo.w', 'lgW', 0.02, 1, 0.005, it, 0.18)}${fld.range('logo.h', 'lgH', 0.02, 1, 0.005, it, 0.1)}</div>` : '') +
+      `<p class="hint">${tr('logoHint')}</p>`));
   } else if (inspTab === 'tAudio') {
     if (media(it).kind === 'audio') h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing);
     h.push(fld.range('volume', 'volume', 0, 2, 0.01, it, 1), `<div class="inl">${fld.check('muted', 'mute', it)}</div>`);
+    h.push(grp('dnSec', `<div class="inl">${fld.check('denoise', 'denoise', it)}</div><p class="hint">${tr(it.denoise && !dnReady.has(it.media) ? 'dnWork' : 'denoiseHint')}</p>`));
     if (media(it).kind === 'audio') h.push(fades);
   } else if (inspTab === 'tSpeed') {
     const cv = S.hasCurve(it) ? it.curve : null, sub = cv ? 'curve' : spdSub;
@@ -1436,6 +1494,15 @@ $('#inspBody').addEventListener('input', e => {
     kfSet(it, k, kfLt(it), v);
   } else {
     setPath(it, k, v); // caption text with a new word count simply loses the highlight (see drawTextItem)
+  }
+  if (k === 'logo.on') {
+    if (v && it.logo.w == null) Object.assign(it.logo, { x: 0.78, y: 0.04, w: 0.18, h: 0.1 });
+    inspector();
+  }
+  if (k === 'denoise' && v && !dnReady.has(it.media)) {
+    ensureDn(it.media).then(() => { toast(tr('dnDone')); if (sel === it.id) inspector(); },
+      er => { it.denoise = false; if (sel === it.id) inspector(); toast(tr('dnFail') + ': ' + cleanErr(er)); });
+    inspector();
   }
   const show = document.querySelector(`[data-show="${k}"]`);
   if (show && e.target.type === 'range') show.textContent = showVal(k, v);
@@ -2335,6 +2402,7 @@ async function doExport(o) {
   try {
     if (o.video) {
       progress(tr('p_texts'), 0);
+      await dnPrep();
       const Q = S.scaleProject(P, o.k);
       Q.fps = o.fps;
       work = await inv('work_begin');
@@ -2346,6 +2414,7 @@ async function doExport(o) {
     }
     if (o.audio && !cancelled) {
       progress(tr('p_audioExport'), 0);
+      await dnPrep();
       work = await inv('work_begin');
       const { args, duration } = G.buildArgs(P, { out: o.audio, audioExport: o.audio.split('.').pop() });
       await inv('export_run', { id: work.id, args, concat: null, duration });
@@ -2379,6 +2448,7 @@ async function autoCaptions() {
     }
     progress(tr('p_audio'), 0);
     work = await inv('work_begin');
+    await dnPrep();
     const { args } = G.buildArgs(P, { out: work.path + '/mix.wav', audioOnly: true });
     const json = await inv('transcribe', { id: work.id, audioArgs: args, lang: $('#capLang').value });
     work = null;

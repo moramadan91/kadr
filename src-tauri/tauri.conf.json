@@ -50,6 +50,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "resources/rnnoise.rnnn": "rnnoise.rnnn"
+    },
     "externalBin": [
       "binaries/ffmpeg",
       "binaries/ffprobe"

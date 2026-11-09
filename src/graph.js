@@ -91,6 +91,7 @@
         const smax = (kf && kf.scale ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1)) * (LP && LP.smax || 1);
         const L = S.layout({ ...it, scale: smax }, m, W, H);
         const ch = timeChain(it, fps);
+        if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
         if (it.flipH) ch.push('hflip');
         if (it.flipV) ch.push('vflip');
@@ -147,7 +148,8 @@
 
     const al = [];
     aud.forEach((it, j) => {
-      const k = input(it), v = num(it.volume, 1), fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
+      const am = p.media[it.media], dn = it.denoise && am.dn; // denoised: the cleaned copy of the same source
+      const k = dn ? (args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', am.dn), n++) : input(it), v = num(it.volume, 1), fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
       const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS'];
       let src = `${k}:a`;
       if (S.hasCurve(it)) { // curve: short constant-speed pieces joined back together

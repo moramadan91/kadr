@@ -247,6 +247,35 @@ async fn gray_frames(args: Vec<String>) -> R<tauri::ipc::Response> {
     }).await.map_err(err)?
 }
 
+/// Speech denoise (RNNoise, bundled model): the whole source's audio, cleaned once into a cached FLAC
+/// that both the preview and the export play instead of the original sound.
+#[tauri::command]
+async fn denoise_audio(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String) -> R<String> {
+    use std::hash::{Hash, Hasher};
+    let meta = std::fs::metadata(&path).map_err(err)?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (&path, meta.len(), meta.modified().ok()).hash(&mut h);
+    let dir = app.path().app_data_dir().map_err(err)?.join("denoise");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let out = dir.join(format!("{:016x}.flac", h.finish()));
+    let res = app.path().resource_dir().map_err(err)?;
+    let o = out.clone();
+    if !out.exists() {
+        tauri::async_runtime::spawn_blocking(move || -> R<()> {
+            let tmp = o.with_extension("part.flac");
+            // relative model path: Windows drive colons would need escaping inside the filter string
+            let r = command(&sidecar("ffmpeg")).current_dir(&res)
+                .args(["-hide_banner", "-y", "-i", &path, "-vn", "-af", "highpass=f=70,arnndn=m=rnnoise.rnnn", "-c:a", "flac"])
+                .arg(&tmp).stdin(Stdio::null()).output().map_err(err)?;
+            if !r.status.success() { return Err(tail(&String::from_utf8_lossy(&r.stderr))); }
+            std::fs::rename(&tmp, &o).map_err(err)
+        }).await.map_err(err)??;
+    }
+    let s = out.to_string_lossy().into_owned();
+    srv.allow(&s);
+    Ok(s)
+}
+
 #[tauri::command]
 fn model_ready(app: AppHandle) -> R<bool> {
     Ok(model_path(&app)?.exists())
@@ -452,7 +481,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, denoise_audio,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {

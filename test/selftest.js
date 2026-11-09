@@ -119,5 +119,18 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
   assert.ok(Math.abs(v.x - 600) < 1e-6, 'slide starts 0.6 frame right ' + v.x);
 }
 
+// denoise (bundled RNNoise model, same filter as denoise_audio) + logo removal export
+{
+  const dn = path.join(dir, 'tone.dn.flac');
+  execFileSync(ffmpeg, ['-y', '-i', tone, '-vn', '-af', 'highpass=f=70,arnndn=m=rnnoise.rnnn', '-c:a', 'flac', dn], { cwd: path.join(__dirname, '../src-tauri/resources'), stdio: 'ignore' });
+  p.media.m3.dn = dn; p.items[3].denoise = true;
+  p.items[0].logo = { on: true, x: 0.95, y: 0, w: 0.2, h: 0.1 }; // past the edge: clamped inside the frame
+  const b = S.logoBox(p.items[0].logo, p.media.m1);
+  assert.ok(b.x >= 1 && b.x + b.w <= 1278 && b.y >= 1, 'logo box inside frame ' + JSON.stringify(b));
+  const a = buildArgs(p, { out: path.join(dir, 'clean.mp4'), textList }).args;
+  assert.ok(a.includes(dn) && a.join(' ').includes('delogo='), 'denoised input + delogo in graph');
+  run(ffmpeg, a);
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');
