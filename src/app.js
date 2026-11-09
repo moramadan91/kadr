@@ -132,14 +132,19 @@ function syncMedia() {
   for (const it of ctl.values()) {
     const el = elFor(it), sp = num(it.speed, 1), on = active(it, t);
     const want = num(it.in, 0) + (t - it.start) * sp;
-    // Write only on change: WebKit restarts its pipeline on every playbackRate assignment.
-    if (el.playbackRate !== sp) el.playbackRate = sp;
-    if (el.muted !== !!it.muted) el.muted = !!it.muted;
+    // Warm-up: just before a cut, run the next clip muted at a crawl from its in-point, so the decoder is
+    // already going when the cut arrives (WebKit needs ~0.6 s to start a paused video).
+    const warm = !on && playing && it.start > t && it.start - t < 0.8;
+    const rate = warm ? 0.0625 : sp, mute = !!it.muted || !on;
+    if (el.playbackRate !== rate) el.playbackRate = rate;
+    if (el.muted !== mute) el.muted = mute;
     const vol = clamp(num(it.volume, 1) * S.fadeAlpha(it, t - it.start), 0, 1);
     if (Math.abs(el.volume - vol) > 0.005) el.volume = vol;
     if (on && playing) {
       if (el.paused) { if (Math.abs(el.currentTime - want) > 0.15) el.currentTime = want; el.play().catch(() => {}); }
       else if (Math.abs(el.currentTime - want) > 0.3) el.currentTime = want;
+    } else if (warm) {
+      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - num(it.in, 0)) > 0.05) el.currentTime = num(it.in, 0); el.play().catch(() => {}); }
     } else {
       if (!el.paused) el.pause();
       if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
