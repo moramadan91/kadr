@@ -5,3 +5,4 @@ src-tauri/binaries/
 .DS_Store
 *.kadr
 Kadr_*.dmg
+.vercel/

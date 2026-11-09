@@ -1,0 +1,193 @@
+import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm';
+import { ScrollTrigger } from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/ScrollTrigger/+esm';
+import Lenis from 'https://cdn.jsdelivr.net/npm/lenis@1.1.13/+esm';
+
+gsap.registerPlugin(ScrollTrigger);
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+
+/* ---------- language ---------- */
+const EN = {
+  skip: 'Skip to content', name: 'Kadr', nFeatures: 'Features', nTour: 'Tour', nInstall: 'Install', nFaq: 'FAQ', nDownload: 'Download',
+  tag: 'Completely free · Mac & Windows',
+  h1: 'Edit video your way, no subscription.',
+  lead: 'Cutting and a real timeline, auto captions timed word by word, text and motion, color, and export up to 4K. All on your computer.',
+  mac: 'Download for Mac', macSub: 'Apple Silicon · M1 and later', win: 'Download for Windows', winSub: 'Windows 10 and 11 · 64-bit',
+  auto: 'Updates itself automatically.', ver: 'Version {v} · ',
+  fEye: 'Features', fTitle: 'Everything you need for reels and videos.', fSub: 'Built for Arabic content from day one, not translated after.',
+  f1: 'Automatic Arabic captions', f1p: 'Transcribes speech and times every word, and you can fix any word. It runs on your computer; your audio never leaves it.',
+  f2: 'Timeline and cutting', f2p: 'Magnetic main track, cut and split, markers, plus video, audio and text tracks.',
+  f3: 'Text and motion', f3p: 'Ready-made styles with in and out animation, and Arabic shaped correctly.',
+  f4: 'Color and filters', f4p: 'Presets plus light and saturation controls. The preview matches the export exactly.',
+  f5: 'Export up to 4K', f5p: 'H.264 and HEVC, hardware accelerated on Mac.',
+  f6: 'Voiceover recording', f6p: 'Record narration in the app and it lands on the timeline.',
+  f7: 'Automatic updates', f7p: 'Every new version reaches you on its own, signed and verified.',
+  tEye: 'A tour of the app', tTitle: 'Everything where you expect it.',
+  s1: 'Timeline', s1p: 'Drag in video, images and audio. The main track is magnetic so there are no gaps, and S splits a clip.',
+  s2: 'Library and captions', s2p: 'Import your files, pick a text style, or press Auto captions to transcribe Arabic speech.',
+  s3: 'Live preview', s3p: 'See filters and text while you work at real playback speed, in 9:16, 16:9 or 1:1.',
+  s4: 'Inspector', s4p: 'Size, position, opacity, crop, speed, animation and color for every clip.',
+  s5: 'Export', s5p: 'Pick quality up to 4K, frame rate and codec. You get exactly what you saw.',
+  iEye: 'Install', iTitle: 'One minute and you are in.', iSub: 'Kadr is free and not sold through the Apple or Microsoft stores, so your system asks once.',
+  iMac: 'Mac', iWin: 'Windows',
+  m1: 'Open the <b>.dmg</b> file and drag Kadr into <b>Applications</b>.',
+  m2: 'Open Kadr. If it says the developer cannot be verified, click <b>Done</b>.',
+  m3: 'Go to <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.',
+  mNote: 'A Mac with Apple silicon (M1 or later) and macOS 12 or later.',
+  w1: 'Run the <b>setup.exe</b> file.',
+  w2: 'If you see <b>Windows protected your PC</b>, click <b>More info</b>, then <b>Run anyway</b>.',
+  w3: 'Pick a language and finish the setup.', wNote: 'Windows 10 or 11, 64-bit.',
+  qEye: 'FAQ', qTitle: 'Before you ask.',
+  q1: 'Is it really free?', a1: 'Yes. No subscription, no ads, and no watermark on your videos.',
+  q2: 'Do I need internet?', a2: 'No. Editing and export work offline. You only need internet for updates and to download the caption model once (about 466 MB).',
+  q3: 'Which computers does it run on?', a3: 'Macs with Apple silicon (M1 or later) on macOS 12 or later, and Windows 10 or 11, 64-bit.',
+  q4: 'How do updates arrive?', a4: 'When you open Kadr it checks for a new version and asks you. Say yes and it downloads, restarts and opens the new version.',
+  q5: 'Are my videos uploaded anywhere?', a5: 'No. Your files, audio and transcription all stay on your computer.',
+  endT: 'Try Kadr today.', foot: 'Kadr · free, no ads', all: 'All versions',
+};
+const AR = { ver: 'نسخة {v} · ' };
+$$('[data-t]').forEach(el => (AR[el.dataset.t] = el.hasAttribute('data-html') ? el.innerHTML : el.textContent));
+const T = { ar: AR, en: EN };
+let lang = 'ar', version = '';
+try { lang = localStorage.getItem('kadr.lang') || (navigator.language.startsWith('ar') ? 'ar' : 'en'); } catch (e) {}
+
+// Word-level split: Arabic letters must stay joined, so never split by character.
+// Words after the first comma get the accent color.
+const splitWords = el => {
+  let after = false;
+  el.innerHTML = el.textContent.trim().split(/\s+/).map(w => {
+    const html = `<span class="w${after ? ' acc' : ''}"><span class="wi">${w}</span></span>`;
+    if (/[،,]$/.test(w)) after = true;
+    return html;
+  }).join(' ');
+};
+
+function applyLang() {
+  const d = T[lang];
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  $$('[data-t]').forEach(el => {
+    const v = d[el.dataset.t];
+    if (v == null) return;
+    if (el.hasAttribute('data-html')) el.innerHTML = lang === 'ar' ? v : v.replace(/<b>/g, '<b><bdi>').replace(/<\/b>/g, '</bdi></b>');
+    else el.textContent = v;
+    if (el.classList.contains('split')) splitWords(el);
+  });
+  $('#lang span').textContent = lang === 'ar' ? 'English' : 'عربي';
+  document.title = lang === 'ar' ? 'كادر — محرر فيديو مجاني للماك والويندوز' : 'Kadr — free video editor for Mac and Windows';
+  $('#ver').textContent = version ? d.ver.replace('{v}', version) : '';
+  $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
+}
+$('#lang').onclick = () => {
+  lang = lang === 'ar' ? 'en' : 'ar';
+  try { localStorage.setItem('kadr.lang', lang); } catch (e) {}
+  applyLang();
+  ScrollTrigger.refresh();
+};
+
+// Visitor's own OS goes first and gets the solid button.
+const first = $(/Windows/i.test(navigator.userAgent) ? '#win' : '#mac');
+first.classList.add('main');
+first.parentNode.prepend(first);
+applyLang();
+
+// Static tour crops (mobile / reduced motion): one zoomed crop of the screenshot per step.
+$$('.spot').forEach((s, i) => {
+  const [x, y, w, h] = s.dataset.r.split(',').map(Number);
+  const c = document.createElement('div');
+  c.className = 'crop';
+  c.style.backgroundSize = `${(100 / w) * 100}% auto`;
+  c.style.backgroundPosition = `${(x / (100 - w)) * 100}% ${(y / (100 - h)) * 100}%`;
+  c.style.aspectRatio = `${w * 1920} / ${h * 1080}`;
+  c.style.height = `min(240px, calc((100vw - 82px) * ${(h * 1080) / (w * 1920)}))`;
+  Object.assign(s.style, { left: x + '%', top: y + '%', width: w + '%', height: h + '%' });
+  $$('.step')[i].prepend(c);
+});
+
+// Download buttons point straight at the latest release files.
+fetch('https://api.github.com/repos/moramadan91/kadr/releases/latest')
+  .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+  .then(rel => {
+    for (const [id, re] of [['#mac', /\.dmg$/i], ['#win', /setup\.exe$/i]]) {
+      const a = rel.assets.find(x => re.test(x.name));
+      if (a) $(id).href = a.browser_download_url;
+    }
+    version = rel.tag_name.replace(/^v/, '');
+    $('#ver').textContent = T[lang].ver.replace('{v}', version);
+    $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
+  })
+  .catch(() => {}); // buttons already open the releases page
+
+/* ---------- motion: Lenis drives scroll, GSAP drives everything else, one loop ---------- */
+const lenis = new Lenis({ lerp: 0.1, anchors: { offset: -80 } });
+lenis.on('scroll', ScrollTrigger.update);
+gsap.ticker.add(t => lenis.raf(t * 1000));
+gsap.ticker.lagSmoothing(0);
+
+const mm = gsap.matchMedia();
+mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 901px)' }, ctx => {
+  const { motion, wide } = ctx.conditions;
+  if (!motion) return; // reduced motion: everything is already visible and static
+
+  // Intro: words rise, then lead, buttons and the app screenshot.
+  const intro = gsap.timeline({ defaults: { ease: 'power3.out' } });
+  intro.from('.hero h1 .wi', { yPercent: 110, duration: 0.9, stagger: 0.07 })
+    .from('.hero .reveal', { y: 18, autoAlpha: 0, duration: 0.6, stagger: 0.08 }, '-=0.5')
+    .from('.stage-in', { y: 80, autoAlpha: 0, duration: 1.1 }, '-=0.6');
+
+  // The screenshot tilts flat as you scroll toward it.
+  gsap.to('.stage-in', {
+    rotateX: 0, scale: 1, ease: 'none',
+    scrollTrigger: { trigger: '.stage', start: 'top 85%', end: 'top 15%', scrub: true },
+  });
+
+  // Section headings: word reveal on enter.
+  $$('.sec h2.split, .tour h2.split').forEach(h => {
+    gsap.from(h.querySelectorAll('.wi'), {
+      yPercent: 110, duration: 0.8, ease: 'power3.out', stagger: 0.06,
+      scrollTrigger: { trigger: h, start: 'top 85%' },
+    });
+  });
+
+  // Cards come in in batches.
+  gsap.set('.bento .card, .os-grid .card, .faq details', { y: 30, autoAlpha: 0 });
+  ScrollTrigger.batch('.bento .card, .os-grid .card, .faq details', {
+    start: 'top 90%',
+    onEnter: b => gsap.to(b, { y: 0, autoAlpha: 1, duration: 0.6, ease: 'power2.out', stagger: 0.08, overwrite: true }),
+  });
+
+  // Caption card: the highlighted word walks along, like the real captions.
+  const words = $$('.words span');
+  gsap.timeline({ scrollTrigger: { trigger: '.c-cap', start: 'top 70%' } })
+    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 0)), null, 0)
+    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 1)), null, 0.4)
+    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 2)), null, 0.8)
+    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 3)), null, 1.2);
+
+  // Tour: pin the screenshot, walk the spotlight through five areas while you scroll.
+  if (!wide) return;
+  const spots = $$('.spot'), steps = $$('.step'), img = $('#zoom');
+  const zoomTo = i => {
+    const [x, y, w, h] = spots[i].dataset.r.split(',').map(Number);
+    return { scale: i === 0 ? 1 : 1.12, transformOrigin: `${x + w / 2}% ${y + h / 2}%` };
+  };
+  const setStep = i => steps.forEach((s, j) => s.classList.toggle('on', i === j));
+  setStep(0);
+  const tl = gsap.timeline({
+    defaults: { ease: 'power2.inOut', duration: 1 },
+    scrollTrigger: {
+      trigger: '.tour-pin', start: 'center center', end: '+=' + spots.length * 70 + '%',
+      pin: true, scrub: true,
+      onUpdate: self => setStep(Math.min(spots.length - 1, Math.floor(self.progress * spots.length * 0.999))),
+    },
+  });
+  tl.to(spots[0], { autoAlpha: 1, duration: 0.5 });
+  for (let i = 1; i < spots.length; i++) {
+    tl.to(spots[i - 1], { autoAlpha: 0 }, '+=0.5')
+      .to(spots[i], { autoAlpha: 1 }, '<')
+      .to(img, zoomTo(i), '<');
+  }
+  tl.to({}, { duration: 0.5 });
+});
+
+window.addEventListener('load', () => ScrollTrigger.refresh());
+document.fonts.ready.then(() => ScrollTrigger.refresh());
