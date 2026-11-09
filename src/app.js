@@ -185,16 +185,18 @@ function chainKey(it) {
 const pxOk = new Map(), pxPath = new Map();
 function pxKey(it) {
   const m = media(it);
-  return JSON.stringify([m.path, num(it.in, 0), it.dur, it.curve, !!it.pitch, P.fps]);
+  return JSON.stringify([m.path, num(it.in, 0), it.dur, it.curve, !!it.pitch, P.fps, smoothSlow(it) && num(it.speed, 1)]);
 }
+// smooth slow-mo previews from the proxy too: the export's motion-interpolated frames, made once
+const smoothSlow = it => !!it.smooth && (S.hasCurve(it) ? it.curve.pts.some(p => p[1] < 1) : num(it.speed, 1) < 1);
 function proxyFor(it) {
-  if (!S.hasCurve(it) || media(it).kind !== 'video') return null;
+  if (!(S.hasCurve(it) || smoothSlow(it)) || media(it).kind !== 'video') return null;
   const key = pxKey(it);
   if (pxPath.has(key)) return pxPath.get(key);
   if (!pxOk.has(key)) {
     const m = media(it), k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
     const q = { w: ev(m.w), h: ev(m.h), fps: P.fps, media: { m }, tracks: [{ id: 'v', kind: 'video' }],
-      items: [{ id: 'x', track: 'v', media: 'm', start: 0, dur: it.dur, in: num(it.in, 0), curve: it.curve, pitch: it.pitch, fit: 'cover' }] };
+      items: [{ id: 'x', track: 'v', media: 'm', start: 0, dur: it.dur, in: num(it.in, 0), curve: it.curve, speed: it.speed, smooth: it.smooth, pitch: it.pitch, fit: 'cover' }] };
     let args;
     try { args = G.buildArgs(q, { out: '__OUT__', codec: 'proxy' }).args.filter(a => a !== '-progress' && a !== 'pipe:1'); } catch { args = null; }
     pxOk.set(key, args ? inv('proxy_render', { args }).then(path => { pxPath.set(key, path); needsDraw = true; return path; }, () => null) : Promise.resolve(null));
@@ -395,19 +397,37 @@ const GL = (() => {
   // (N*N) x N strip — x = blue slice * N + red, y = green — read with trilinear blending.
   gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision highp float; varying vec2 uv; uniform sampler2D tex; uniform sampler2D lut; uniform vec4 rect;
     uniform vec3 slope; uniform vec3 icpt; uniform float sat; uniform float useLut; uniform float n; uniform vec3 key; uniform vec2 kuv;
+    uniform float fxId; uniform vec4 fxv; uniform vec2 bsz; uniform float ft;
     vec3 lut3(vec3 v){ vec3 s = clamp(v, 0., 1.) * (n - 1.); float b0 = floor(s.b), b1 = min(b0 + 1., n - 1.);
       vec2 a = vec2((b0 * n + s.r + .5) / (n * n), (s.g + .5) / n), b = vec2((b1 * n + s.r + .5) / (n * n), (s.g + .5) / n);
       return mix(texture2D(lut, a).rgb, texture2D(lut, b).rgb, s.b - b0); }
-    void main(){ vec4 c = texture2D(tex, rect.xy + uv * rect.zw);
+    vec4 grade(vec2 u){ vec4 c = texture2D(tex, rect.xy + clamp(u, 0., 1.) * rect.zw);
       if (key.z > 0.) { // chroma key: x = similarity, y = blend, z = on; kuv holds the key's CbCr
         vec2 p = vec2(dot(c.rgb, vec3(-.1146, -.3854, .5)), dot(c.rgb, vec3(.5, -.4542, -.0458)));
         float d = length(p - kuv) / 1.4142;
         c.a *= key.y > 0.0001 ? clamp((d - key.x) / key.y, 0., 1.) : step(key.x, d);
       }
-      if (useLut > .5) { gl_FragColor = vec4(lut3(c.rgb), c.a); return; }
+      if (useLut > .5) return vec4(lut3(c.rgb), c.a);
       vec3 v = clamp(c.rgb * slope + icpt, 0., 1.);
       mat3 m = mat3(.213 + .787 * sat, .213 - .213 * sat, .213 - .213 * sat, .715 - .715 * sat, .715 + .285 * sat, .715 - .715 * sat, .072 - .072 * sat, .072 - .072 * sat, .072 + .928 * sat);
-      gl_FragColor = vec4(clamp(m * v, 0., 1.), c.a); }`));
+      return vec4(clamp(m * v, 0., 1.), c.a); }
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){ // clip effects (S.fxVals / S.fxChain): 1 blur 2 shake 3 zoom pulse 4 grain 5 vignette 6 rgb split 7 glitch 8 vhs 9 pixelate 10 invert 11 flash 12 letterbox
+      int id = int(fxId + .5); vec2 u = uv; vec4 c;
+      if (id == 2 || id == 3) u = .5 + (u - .5) / fxv.z + fxv.xy;
+      if (id == 9) { vec2 b = fxv.x / bsz; u = (floor(u / b) + .5) * b; }
+      if (id == 1) { float ws = 0.; c = vec4(0.);
+        for (int i = -3; i <= 3; i++) for (int j = -3; j <= 3; j++) { float w = exp(-float(i * i + j * j) / 4.5); c += grade(u + vec2(float(i), float(j)) * fxv.x / 3. / bsz) * w; ws += w; }
+        c /= ws; }
+      else if (id >= 6 && id <= 8) { vec2 o = vec2(fxv.x / bsz.x, 0.); c = grade(u); c.r = grade(u + o).r; c.b = grade(u - o).b; }
+      else c = grade(u);
+      if (id == 4 || id == 8) c.rgb += (hash(floor(uv * bsz) + ft) - .5) * fxv.y;
+      if (id == 5) { float d = length((uv - .5) * bsz) / (.5 * length(bsz)), k = cos(fxv.x * d); c.rgb *= d > 1. ? 0. : k * k * k * k; }
+      if (id == 8) c.rgb = mix(vec3(dot(c.rgb, vec3(.299, .587, .114))), c.rgb, fxv.z);
+      if (id == 10) c.rgb = 1. - c.rgb;
+      if (id == 11) c.rgb += fxv.x;
+      if (id == 12 && (uv.y < fxv.x || uv.y > 1. - fxv.x)) c = vec4(0., 0., 0., 1.);
+      gl_FragColor = vec4(clamp(c.rgb, 0., 1.), c.a); }`));
   gl.linkProgram(prog);
   gl.useProgram(prog);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -420,7 +440,7 @@ const GL = (() => {
   gl.bindTexture(gl.TEXTURE_2D, frameTex);
   texParams();
   const U = n => gl.getUniformLocation(prog, n);
-  const u = { key: U('key'), kuv: U('kuv'), rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat'), useLut: U('useLut'), n: U('n'), tex: U('tex'), lut: U('lut') };
+  const u = { fxId: U('fxId'), fxv: U('fxv'), bsz: U('bsz'), ft: U('ft'), key: U('key'), kuv: U('kuv'), rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat'), useLut: U('useLut'), n: U('n'), tex: U('tex'), lut: U('lut') };
   gl.uniform1i(u.tex, 0); gl.uniform1i(u.lut, 1);
   const luts = new Map(); // baked table -> texture (a few recent ones)
   const lutTex = L => {
@@ -455,6 +475,9 @@ const GL = (() => {
     const K = g.chroma;
     gl.uniform3f(u.key, K ? K.sim : 0, K ? K.blend : 0, K ? 1 : 0);
     if (K) gl.uniform2f(u.kuv, K.uv[0], K.uv[1]);
+    const F = g.fx;
+    gl.uniform1f(u.fxId, F ? F.i : 0);
+    if (F) { gl.uniform4f(u.fxv, ...F.v); gl.uniform2f(u.bsz, dw, dh); gl.uniform1f(u.ft, Math.floor(g.ft * 30)); }
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     ctx.drawImage(c, dx, dy, dw, dh);
   };
@@ -483,10 +506,11 @@ function lutFor(it) {
   return c;
 }
 // drawImage with the item's grade applied.
-function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh) {
+function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh, lt = 0) {
   const g = S.grade(it), adv = S.hasColor(it);
   if (S.hasKey(it)) g.chroma = { sim: num(it.chroma.sim, 0.3), blend: num(it.chroma.blend, 0.1), uv: S.keyUV(it.chroma.color) };
-  if ((g.identity && !adv && !g.chroma) || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+  g.fx = S.fxVals(it, lt, dw, dh); g.ft = lt;
+  if ((g.identity && !adv && !g.chroma && !g.fx) || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
   const W = src.videoWidth || src.naturalWidth || src.width, H = src.videoHeight || src.naturalHeight || src.height;
   try { GL(ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g, adv ? lutFor(it) : null); }
   catch (e) { if (!drawGraded.warned) { drawGraded.warned = true; inv('dev_log', { msg: 'grade failed: ' + e }); } ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh); }
@@ -608,7 +632,7 @@ function drawVisual(ctx, time, ov) {
       const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
       const dc = mk ? maskBox(L) : ctx;
       if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
-      drawGraded(dc, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch);
+      drawGraded(dc, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch, lt);
       if (it.logo && it.logo.on) drawDelogo(dc, it, src, m, k, C, L, u, v);
       if (mk) {
         dc.restore();
@@ -1042,6 +1066,7 @@ function loop(now) {
   lastTick = now;
   syncMedia();
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
+  if (inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
   requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
@@ -1277,6 +1302,7 @@ function select(id) {
   paintSel();
   inspTab = null;
   inspector();
+  if (libTab === 'filters' || libTab === 'effects') renderLookCards();
 }
 // Cmd/Ctrl/Shift-click adds or removes a clip from the selection.
 function toggleSel(id) {
@@ -1580,7 +1606,7 @@ function inspector() {
       const list = V ? ['none', ...Object.keys({ in: S.VA_IN, out: S.VA_OUT, loop: S.VA_LOOP }[animSub])] : { in: ANIM_IN, out: ANIM_OUT, loop: ANIM_LOOP }[animSub];
       const curA = ({ slide: 'slideUp' })[it[key]] || it[key] || 'none';
       h.push(`<div class="seg">${['in', 'out', 'loop'].map(x => `<button data-asub="${x}" class="${x === animSub ? 'on' : ''}">${tr('an_' + x)}${(x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) && (x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) !== 'none' ? ' •' : ''}</button>`).join('')}</div>`);
-      h.push(`<div class="agrid">${list.map(a => `<button data-anim="${a}" class="${a === curA ? 'on' : ''}">${a === 'none' ? icon('x') : V ? icon('image') : `<b>Aa</b>`}<span>${tr('an_' + a)}</span></button>`).join('')}</div>`);
+      h.push(`<div class="agrid">${list.map(a => `<button data-anim="${a}" class="${a === curA ? 'on' : ''}">${a === 'none' ? icon('x') : `<canvas data-a="${a}" width="120" height="80"></canvas>`}<span>${tr('an_' + a)}</span></button>`).join('')}</div>`);
       if (animSub !== 'loop' && curA !== 'none') h.push(fld.range(animSub === 'in' ? 'inDur' : 'outDur', 'animDur', 0.1, 3, 0.05, it, animSub === 'in' ? 0.5 : 0.4));
       if (V) h.push(fades);
     }
@@ -1602,6 +1628,11 @@ function inspector() {
       fld.range('opacity', 'opacity', 0, 1, 0.01, ai, 1) +
       `<div class="inl">${fld.check('flipH', 'flipH', it)}${fld.check('flipV', 'flipV', it)}</div>`));
     h.push(grp('blendSec', fld.select('blend', 'blendMode', ['normal', ...Object.keys(BLENDS)].map(x => [x, tr('bm_' + x)]), it) + `<p class="hint">${tr('blendHint')}</p>`));
+    h.push(grp('fxSec', fld.select('fx.id', 'effect', [['', tr('fx_none')], ...S.FX.map(x => [x, tr('fx_' + x)])], it) +
+      (S.fxOf(it) ? fld.range('fx.a', 'fxAmt', 0, 1, 0.01, it, 0.5) : '')));
+    if (media(it).kind === 'video') h.push(grp('stabSec', it.stabFrom ? `<button class="wide" id="stabOff">${icon('x')}${tr('stabOff')}</button>` :
+      fld.select('stabLvl', 'stabLvl', [[1, tr('stab1')], [2, tr('stab2')], [3, tr('stab3')]], { stabLvl: num(it.stabLvl, 2) }) +
+      (stabBusy.has(it.media) ? `<p class="hint work">${tr('stabWork')}</p>` : `<button class="wide" id="stabGo">${icon('vibrate')}${tr('stabGo')}</button>`) + `<p class="hint">${tr('stabHint')}</p>`));
     if (it.track !== 'v1') h.push(trkBtns(it));
     if (!FM) h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
@@ -1727,7 +1758,9 @@ function inspector() {
   bind('#autoAdj', () => autoAdjust(it));
   bind('#keyPick', () => keyPick(it));
   bind('#hideBtn', () => toggleHidden());
-  bind('#fillSwap', () => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
+  bind('#stabGo', () => stabilize(it));
+  bind('#stabOff', () => { snapshot(); it.media = it.stabFrom; delete it.stabFrom; dirty = true; refresh(); });
+  bind('#fillSwap',() => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
   bind('#colMatch', () => colorMatchPick(it));
 }
 $('#inspBody').addEventListener('click', e => {
@@ -2400,6 +2433,7 @@ async function runTrack(f, src, box) {
 function setLibTab(tab) {
   libTab = tab;
   if (tab === 'trans') renderTrans();
+  if (tab === 'filters' || tab === 'effects') renderLookCards();
   if (tab === 'layers') renderLayers();
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
@@ -2757,6 +2791,25 @@ function rotateSel() {
   it.rotate = r > 180 ? r - 360 : r;
   refresh();
 }
+// Stabilize: the source is processed once (video_stab, cached) and the clip switches to the steady copy;
+// "remove" switches back. The original stays in the bin.
+const stabBusy = new Set();
+async function stabilize(it) {
+  const m = media(it), from = it.media, lvl = num(it.stabLvl, 2);
+  if (stabBusy.has(from)) return;
+  stabBusy.add(from); inspector();
+  try {
+    const path = await inv('video_stab', { path: m.path, level: lvl });
+    const [id] = addToBin(await inv('probe', { paths: [path] }));
+    if (!id) throw new Error('probe');
+    P.media[id].name = m.name.replace(/\.[^.]+$/, '') + ' · ' + tr('stabTag');
+    snapshot();
+    for (const x of P.items) if (x.media === from && (x.id === it.id || msel.has(x.id))) { x.stabFrom = from; x.media = id; }
+    dirty = true; toast(tr('stabDone'));
+  } catch (e) { toast(tr('stabFail') + ': ' + cleanErr(e)); }
+  stabBusy.delete(from);
+  refresh();
+}
 function addToBin(res) {
   const added = [];
   for (const m of res.ok) {
@@ -2811,18 +2864,93 @@ function renderLibCards() {
     b.appendChild(cardCanvas(ctx => { ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180); drawTextItem(ctx, { w: 240, h: 180 }, fake, 5); }));
     ts.appendChild(b);
   }
-  const fc = $('#filterCards');
-  fc.innerHTML = '';
-  for (const p of Object.keys(S.PRESETS)) {
-    const b = document.createElement('button');
-    b.className = 'card';
-    b.dataset.preset = p;
-    const scene = cardCanvas(sampleScene);
-    b.appendChild(cardCanvas(ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180)));
-    b.insertAdjacentHTML('beforeend', `<span class="cap">${tr('p_' + p)}</span>`);
-    fc.appendChild(b);
+  renderLookCards();
+  renderStickers();
+}
+// The selected clip's current picture (cover-cropped to 240x180), or null.
+function clipThumb(it = sel && item(sel)) {
+  const m = it && !isText(it) && media(it);
+  if (!m || m.kind === 'audio' || m.fill) return null;
+  const src = m.kind === 'image' ? imgFor(m) : els.get(chainKey(it));
+  const W = src && (src.videoWidth || src.naturalWidth), H = src && (src.videoHeight || src.naturalHeight);
+  if (!W || !H) return null;
+  const k = Math.max(240 / W, 180 / H);
+  return cardCanvas(ctx => ctx.drawImage(src, (240 - W * k) / 2, (180 - H * k) / 2, W * k, H * k));
+}
+// Filter and effect cards show the selected clip (or a sample picture) with each look applied.
+const FX_SHOW = { shake: 0.3, zoomPulse: 0.125, flash: 1 / 6, glitch: 1.1 }; // a moment where the effect shows
+function renderLookCards() {
+  const scene = clipThumb() || cardCanvas(sampleScene), it = sel && item(sel);
+  const fill = (box, list, attr, paint, cap, on) => {
+    box.innerHTML = '';
+    for (const x of list) {
+      const b = document.createElement('button');
+      b.className = 'card' + (on === x ? ' on' : '');
+      b.dataset[attr] = x;
+      b.appendChild(cardCanvas(paint(x)));
+      b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>`);
+      box.appendChild(b);
+    }
+  };
+  fill($('#filterCards'), Object.keys(S.PRESETS), 'preset', p => ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180), 'p_', it && it.preset);
+  fill($('#fxCards'), S.FX, 'fx', f => ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
+}
+$('#fxCards').addEventListener('click', e => {
+  const c = e.target.closest('[data-fx]'), it = sel && item(sel);
+  if (!c) return;
+  if (!it || isText(it) || media(it).kind === 'audio') return toast(tr('fxPick'));
+  snapshot();
+  if (it.fx && it.fx.id === c.dataset.fx) delete it.fx; // second click removes it
+  else it.fx = { id: c.dataset.fx, a: num(it.fx && it.fx.a, 0.5) };
+  inspTab = 'tVideo'; dirty = true;
+  refresh(); renderLookCards();
+});
+// Animation grid: every preset plays on a small copy of the clip (or a word for text), looping.
+let athumb = { id: null, c: null };
+function animThumbs(now) {
+  const cs = $$('#inspBody .agrid canvas'), it = sel && item(sel);
+  if (!cs.length || !it) return;
+  const V = !isText(it);
+  if (V && athumb.id !== it.id) athumb = { id: it.id, c: null };
+  const pic = V && (athumb.c || (athumb.c = clipThumb(it)) || cardCanvas(sampleScene));
+  for (const c of cs) {
+    const a = c.dataset.a, g = c.getContext('2d'), W = c.width, H = c.height;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.clearRect(0, 0, W, H);
+    if (V) {
+      const per = animSub === 'loop' ? 2.4 : 1.6, u = Math.min(1, (now % per) / (per * 0.6));
+      const f = animSub === 'in' ? S.VA_IN[a] : animSub === 'out' ? S.VA_OUT[a] : S.VA_LOOP[a] && S.VA_LOOP[a].f;
+      if (!f) continue;
+      const d = animSub === 'loop' ? f(now % per, per) : f(u), s = num(d.s, 1) * 0.62;
+      g.translate(W / 2 + (d.dx || 0) * W, H / 2 + (d.dy || 0) * H); g.rotate((d.r || 0) * Math.PI / 180);
+      g.globalAlpha = clamp(num(d.o, 1), 0, 1);
+      g.drawImage(pic, -W * s / 2, -H * s / 2, W * s, H * s);
+    } else {
+      const D = 3, fake = { text: LANG === 'ar' ? 'أهلاً' : 'Aa', style: { ...presetStyle('plain'), size: 30 }, x: 0.5, y: 0.5, dur: D, inDur: 0.5, outDur: 0.4,
+        anim: animSub === 'in' ? a : 'none', out: animSub === 'out' ? a : 'none', loop: animSub === 'loop' ? a : 'none' };
+      const lt = animSub === 'in' ? now % 1.4 : animSub === 'out' ? Math.min(D - 1e-3, D - 0.9 + now % 1.3) : 0.6 + now % 2.4;
+      drawTextItem(g, { w: W, h: H }, fake, lt);
+    }
   }
 }
+// Stickers: emoji placed as text layers, so they scale, animate and export like any text.
+const STICKERS = {
+  st_react: '😂 😍 🤯 😱 🥳 😎 🤔 😭 🥹 😡 🤩 😴 🙄 😇 🤫 🫡 👏 👍 👎 🙏 💪 👀 🫶 👋',
+  st_hot: '🔥 💯 ❤️ 💔 ✨ ⭐ 🌟 💥 💫 ⚡ 🎉 🎊 🎁 🏆 👑 💎 💰 🚀 🎯 📈 💡 🔔 📌 📍',
+  st_mark: '➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ 🔴 🟢 🔵 🟡 ⭕ ❌ ✅ ❗ ❓ ⚠️ 🚫 💬 💭 🆕 🆓 🔝 ✔️ 🔊',
+  st_life: '☀️ 🌙 🌈 ☁️ 🌊 🌹 🌸 🍀 ☕ 🍕 🍔 🍩 🎂 🍿 🎵 🎬 📸 🎥 🎤 🎮 ⚽ ✈️ 🚗 🏠',
+};
+function renderStickers() {
+  $('#stickerList').innerHTML = Object.entries(STICKERS).map(([k, v]) => `<div class="gh">${tr(k)}</div><div class="stk">${v.split(' ').map(e => `<button data-st="${e}">${e}</button>`).join('')}</div>`).join('');
+}
+$('#stickerList').addEventListener('click', e => {
+  const b = e.target.closest('[data-st]');
+  if (!b) return;
+  snapshot();
+  const it = { id: uid(), type: 'text', track: 't1', start: t, dur: 3, text: b.dataset.st, style: { ...presetStyle('plain'), size: Math.round(Math.min(P.w, P.h) * 0.22) }, x: 0.5, y: 0.5, anim: 'pop', out: 'fade', sticker: true };
+  P.items.push(it);
+  sel = it.id; inspTab = 'tAnim'; dirty = true;
+  refresh();
+});
 $('#textStyles').addEventListener('click', e => { const c = e.target.closest('[data-style]'); if (c) addText(c.dataset.style); });
 $('#filterCards').addEventListener('click', e => {
   const c = e.target.closest('[data-preset]'), it = sel && item(sel);

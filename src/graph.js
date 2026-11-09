@@ -107,6 +107,7 @@
           ch.push(`lutrgb=r=${e(g.ch[0])}:g=${e(g.ch[1])}:b=${e(g.ch[2])}`);
           if (Math.abs(g.s - 1) > 1e-4) ch.push(`hue=s=${g.s.toFixed(4)}`);
         }
+        ch.push(...S.fxChain(it, L.cw, L.ch));
         const mk = o.masks && o.masks[it0.id];
         if (mk) { // mask: grey PNG at the box size, its brightness becomes the clip's alpha
           const mi = n++;

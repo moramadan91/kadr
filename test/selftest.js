@@ -185,8 +185,20 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
     assert.ok(red(at(1.5, 100, 100)) && blu(at(3.5, 100, 100)), 'before/after ' + id);
     if (want[id]) assert.ok(want[id](), 'mid ' + id + ' ' + at(2.5, 100, 100));
   }
-  // blend modes: half-size blue layer over the red clip; outside it the red stays as it was
+  // clip effects: every one renders; a few checked by colour on the red clip
   delete tp.items[1].trans;
+  for (const id of S.FX) {
+    tp.items[0].fx = { id, a: 0.8 };
+    const a = buildArgs(tp, { out }).args;
+    assert.ok(a.join(' ').includes(S.fxChain(tp.items[0], 200, 200)[0]), 'fx in graph ' + id);
+    assert.ok(S.fxVals(tp.items[0], 0.5, 200, 200).i === S.FX.indexOf(id) + 1, 'fx preview id ' + id);
+    run(ffmpeg, a);
+    if (id === 'invert') { const c = at(1, 100, 100); assert.ok(c[0] < 90 && c[1] > 150 && c[2] > 150, 'invert ' + c); }
+    if (id === 'letterbox') assert.ok(Math.max(...at(1, 100, 4)) < 30 && red(at(1, 100, 100)), 'letterbox');
+    if (id === 'vignette') assert.ok(at(1, 1, 1)[0] < at(1, 100, 100)[0] - 40, 'vignette corner ' + at(1, 1, 1));
+  }
+  delete tp.items[0].fx;
+  // blend modes: half-size blue layer over the red clip; outside it the red stays as it was
   tp.tracks.unshift({ id: 'v2', kind: 'video' });
   tp.items.push({ id: 'L', track: 'v2', media: 'b', start: 0, dur: 2, scale: 0.5 });
   for (const [mode, ok] of [['screen', c => c[0] > 200 && c[2] > 200 && c[1] < 60], ['multiply', c => Math.max(...c) < 40], ['dodge', c => c[0] > 200 && c[1] < 60]]) {

@@ -413,6 +413,43 @@ async fn audio_fx(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String
     Ok(s)
 }
 
+/// Stabilize (vidstab, two passes) the whole source once per file and strength into a cached copy
+/// that then stands in for the original in both the preview and the export.
+#[tauri::command]
+async fn video_stab(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String, level: u32) -> R<String> {
+    use std::hash::{Hash, Hasher};
+    let (shk, smooth) = match level { 1 => (4, 10), 3 => (10, 45), _ => (7, 25) };
+    let meta = std::fs::metadata(&path).map_err(err)?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (&path, meta.len(), meta.modified().ok(), shk, smooth).hash(&mut h);
+    let key = format!("{:016x}", h.finish());
+    let dir = app.path().app_data_dir().map_err(err)?.join("stab");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let out = dir.join(format!("{key}.mp4"));
+    if !out.exists() {
+        let (o, d) = (out.clone(), dir.clone());
+        tauri::async_runtime::spawn_blocking(move || -> R<()> {
+            // relative .trf name (cwd = cache dir): drive colons would need escaping inside the filter string
+            let trf = format!("{key}.trf");
+            let run = |a: Vec<String>| -> R<()> {
+                let r = command(&sidecar("ffmpeg")).current_dir(&d).args(&a).stdin(Stdio::null()).output().map_err(err)?;
+                if r.status.success() { Ok(()) } else { Err(tail(&String::from_utf8_lossy(&r.stderr))) }
+            };
+            let s = |x: &str| x.to_string();
+            run(vec![s("-hide_banner"), s("-y"), s("-i"), path.clone(), s("-vf"), format!("vidstabdetect=shakiness={shk}:accuracy=15:result={trf}"), s("-f"), s("null"), s("-")])?;
+            let tmp = o.with_extension("part.mp4");
+            run(vec![s("-hide_banner"), s("-y"), s("-i"), path.clone(), s("-vf"), format!("vidstabtransform=input={trf}:smoothing={smooth}:optzoom=1:interpol=bicubic,unsharp=5:5:0.6:3:3:0.3"),
+                s("-c:v"), s("libx264"), s("-preset"), s("medium"), s("-crf"), s("16"), s("-pix_fmt"), s("yuv420p"), s("-c:a"), s("aac"), s("-b:a"), s("256k"),
+                s("-movflags"), s("+faststart"), tmp.to_string_lossy().into_owned()])?;
+            let _ = std::fs::remove_file(d.join(&trf));
+            std::fs::rename(&tmp, &o).map_err(err)
+        }).await.map_err(err)??;
+    }
+    let s = out.to_string_lossy().into_owned();
+    srv.allow(&s);
+    Ok(s)
+}
+
 #[tauri::command]
 fn model_ready(app: AppHandle) -> R<bool> {
     Ok(model_path(&app)?.exists())
@@ -618,7 +655,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {

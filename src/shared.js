@@ -596,7 +596,63 @@
   const BLEND_FF = { multiply: ['multiply'], screen: ['screen'], overlay: ['overlay'], darken: ['darken'], lighten: ['lighten'], softlight: ['softlight'],
     hardlight: ['hardlight'], difference: ['difference'], exclusion: ['exclusion'], addition: ['addition'], dodge: ['dodge', 1], burn: ['burn', 1] };
 
-  const api = { TR_MOVE, trSub, trVal, BLEND_FF, TRANS, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  // Clip effects (amount a 0..1). The preview runs them in the WebGL grade shader from fxVals (ids are
+  // FX index + 1); the export runs fxChain as ffmpeg filters in clip time, on the clip's w x h box.
+  const FX = ['blur', 'shake', 'zoomPulse', 'grain', 'vignette', 'rgbSplit', 'glitch', 'vhs', 'pixelate', 'invert', 'flash', 'letterbox'];
+  const fxOf = it => it && it.fx && FX.includes(it.fx.id) ? { id: it.fx.id, a: clamp(num(it.fx.a, 0.5), 0, 1) } : null;
+  const fxShake = (m, t) => [m * Math.sin(t * 37) * Math.sin(t * 13), m * Math.sin(t * 29 + 1) * Math.sin(t * 7)];
+  const FXE = { // shared time curves: [js, ffmpeg] of clip time t
+    pulse: [t => Math.pow(Math.max(0, Math.sin(2 * Math.PI * 2 * t)), 4), 'pow(max(0,sin(2*PI*2*t)),4)'],
+    flash: [t => Math.pow(Math.max(0, Math.sin(2 * Math.PI * 1.5 * t)), 8), 'pow(max(0,sin(2*PI*1.5*t)),8)'],
+    burst: [t => (Math.floor(t * 8) * 7919) % 13 > 8 ? 1 : 0, 'gt(mod(floor(t*8)*7919,13),8)'],
+  };
+  const fxSplit = (a, w, k) => Math.max(1, Math.round(a * k * w));
+  function fxVals(it, t, w, h) {
+    const f = fxOf(it);
+    if (!f) return null;
+    const a = f.a, v = [0, 0, 1, 0];
+    switch (f.id) {
+      case 'blur': v[0] = a * 0.02 * w; break;
+      case 'shake': { const m = a * 0.03, [dx, dy] = fxShake(m, t); v[0] = dx; v[1] = dy; v[2] = 1 / (1 - 2 * m); break; }
+      case 'zoomPulse': v[2] = 1 + 0.12 * a * FXE.pulse[0](t); break;
+      case 'grain': v[1] = a * 0.31; break;
+      case 'vignette': v[0] = 0.2 + a * 0.9; break;
+      case 'rgbSplit': v[0] = fxSplit(a, w, 0.02); break;
+      case 'glitch': v[0] = FXE.burst[0](t) * fxSplit(a, w, 0.05); break;
+      case 'vhs': v[0] = fxSplit(a, w, 0.008); v[1] = a * 0.2; v[2] = 1 - 0.35 * a; break;
+      case 'pixelate': v[0] = Math.max(2, Math.round(a * 0.05 * w)); break;
+      case 'flash': v[0] = 0.6 * a * FXE.flash[0](t); break;
+      case 'letterbox': v[0] = Math.round(a * 0.16 * h) / h; break;
+    }
+    return { i: FX.indexOf(f.id) + 1, v };
+  }
+  function fxChain(it, w, h) {
+    const f = fxOf(it);
+    if (!f) return [];
+    const a = f.a, ev = x => Math.max(2, Math.round(x / 2) * 2), r3 = x => (+x).toFixed(3);
+    switch (f.id) {
+      case 'blur': return [`gblur=sigma=${r3(a * 0.01 * w)}`];
+      case 'shake': { const m = a * 0.03, z = 1 / (1 - 2 * m);
+        return [`scale=${ev(w * z)}:${ev(h * z)}`, `crop=${w}:${h}:x='(iw-ow)/2+${r3(m)}*sin(t*37)*sin(t*13)*iw':y='(ih-oh)/2+${r3(m)}*sin(t*29+1)*sin(t*7)*ih'`]; }
+      case 'zoomPulse': { const Z = `(1+${r3(0.12 * a)}*${FXE.pulse[1]})`;
+        return [`scale=w='trunc(iw*${Z}/2)*2':h='trunc(ih*${Z}/2)*2':eval=frame`, `crop=${w}:${h}:(iw-ow)/2:(ih-oh)/2`]; }
+      case 'grain': return [`noise=alls=${Math.round(a * 40)}:allf=t+u`];
+      case 'vignette': return [`vignette=angle=${r3(0.2 + a * 0.9)}`];
+      case 'rgbSplit': { const o = fxSplit(a, w, 0.02); return ['format=gbrap', `rgbashift=rh=-${o}:bh=${o}`]; }
+      case 'glitch': { const o = fxSplit(a, w, 0.05); return ['format=gbrap', `rgbashift=rh=-${o}:bh=${o}:enable='${FXE.burst[1]}'`]; }
+      case 'vhs': { const o = fxSplit(a, w, 0.008);
+        return ['format=gbrap', `rgbashift=rh=-${o}:bh=${o}`, `noise=alls=${Math.round(a * 25)}:allf=t+u`, `hue=s=${r3(1 - 0.35 * a)}`]; }
+      case 'pixelate': { const b = Math.max(2, Math.round(a * 0.05 * w));
+        return [`scale=${Math.max(1, Math.round(w / b))}:${Math.max(1, Math.round(h / b))}:flags=neighbor`, `scale=${w}:${h}:flags=neighbor`]; }
+      case 'invert': return ['negate'];
+      case 'flash': return [`eq=brightness='${r3(0.6 * a)}*${FXE.flash[1]}':eval=frame`];
+      case 'letterbox': { const b = Math.round(a * 0.16 * h);
+        return b < 1 ? [] : [`drawbox=x=0:y=0:w=iw:h=${b}:color=black:t=fill`, `drawbox=x=0:y=ih-${b}:w=iw:h=${b}:color=black:t=fill`]; }
+    }
+    return [];
+  }
+
+  const api = { FX, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);

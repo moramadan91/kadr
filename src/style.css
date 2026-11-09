@@ -469,3 +469,9 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 @keyframes tvSpinA { 0%, 25% { transform: rotate(0) scale(1); opacity: 1; } 45% { transform: rotate(90deg) scale(3); opacity: 1; } 46%, 100% { opacity: 0; } }
 @keyframes tvShakeA { 0%, 25% { transform: none; opacity: 1; } 30% { transform: translateX(6%); } 35% { transform: translateX(-6%); } 40% { transform: translateX(5%); } 45% { transform: translateX(-4%); opacity: 1; } 46%, 100% { opacity: 0; } }
 @keyframes tvGlitchA { 0%, 25% { transform: none; filter: none; opacity: 1; } 30% { transform: translateX(-4%); filter: hue-rotate(90deg); } 36% { transform: translateX(4%); filter: hue-rotate(200deg); } 42% { transform: translateX(-2%); filter: saturate(3); opacity: 1; } 46%, 100% { opacity: 0; } }
+.agrid canvas { width: 100%; height: auto; aspect-ratio: 3/2; border-radius: 6px; display: block; background: #12161c; }
+.agrid button:has(canvas) { padding: 5px 5px 7px; }
+.card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.stk { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 10px; }
+.stk button { aspect-ratio: 1; font-size: 24px; line-height: 1; padding: 0; border-radius: 8px; background: var(--well); border: 1px solid var(--stroke); cursor: pointer; }
+.stk button:hover { border-color: var(--accent); transform: scale(1.08); }
