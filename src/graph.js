@@ -55,7 +55,11 @@
       let base = 'b0';
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
       vis.forEach((it, j) => {
-        const k = input(it), m = p.media[it.media], L = S.layout(it, m, W, H), g = S.grade(it), C = S.srcCrop(it, m);
+        const k = input(it), m = p.media[it.media], g = S.grade(it), C = S.srcCrop(it, m);
+        const kf = S.hasKf(it) ? it.kf : null, has = f => !!(kf && kf[f] && kf[f].length);
+        // keyframed scale: lay out at the largest scale, then shrink per frame
+        const smax = has('scale') ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1);
+        const L = S.layout({ ...it, scale: smax }, m, W, H);
         const ch = [`setpts=(PTS-STARTPTS)/${num(it.speed, 1)}`, `fps=${fps}`];
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
         if (it.flipH) ch.push('hflip');
@@ -69,19 +73,36 @@
         ch.push('format=yuva420p');
         let ox = L.ox, oy = L.oy;
         const rot = num(it.rotate, 0) * Math.PI / 180;
-        if (rot) { // rotate about the box centre; the bigger canvas stays centred on the same point
+        // keyframed: rotate on a fixed square canvas first, then shrink per frame (rotate can't take changing sizes)
+        let bw = L.cw, bh = L.ch;
+        if (kf && (has('rotate') || rot)) {
+          bw = bh = even(Math.hypot(L.cw, L.ch));
+          ch.push(`rotate=a='${has('rotate') ? `(${S.pwExpr(kf.rotate, 0, true)})*PI/180` : rot.toFixed(6)}':ow=${bw}:oh=${bh}:c=black@0`);
+        }
+        if (has('opacity')) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*clip(${S.pwExpr(kf.opacity, 0, true, 'T')},0,1)'`);
+        if (has('scale')) {
+          const sc = S.pwExpr(kf.scale, 0, true);
+          ch.push(`scale=w='max(2,trunc(${bw}*(${sc})/${smax}/2)*2)':h='max(2,trunc(${bh}*(${sc})/${smax}/2)*2)':eval=frame`);
+          // pad back to a fixed size every frame: overlay keeps stale pixels when its input size changes
+          ch.push(`pad=w=${bw}:h=${bh}:x='(ow-iw)/2':y='(oh-ih)/2':color=black@0:eval=frame`);
+        }
+        if (kf) {} else if (rot) { // rotate about the box centre; the bigger canvas stays centred on the same point
           const rw = even(Math.abs(L.cw * Math.cos(rot)) + Math.abs(L.ch * Math.sin(rot))), rh = even(Math.abs(L.cw * Math.sin(rot)) + Math.abs(L.ch * Math.cos(rot)));
-          ch.push(`rotate=a=${rot.toFixed(6)}:ow=${rw}:oh=${rh}:c=none`);
+          ch.push(`rotate=a=${rot.toFixed(6)}:ow=${rw}:oh=${rh}:c=black@0`);
           ox = Math.round(L.ox + (L.cw - rw) / 2); oy = Math.round(L.oy + (L.ch - rh) / 2);
         }
         const opacity = num(it.opacity, 1);
-        if (opacity < 1) ch.push(`colorchannelmixer=aa=${opacity.toFixed(3)}`);
+        if (!has('opacity') && opacity < 1) ch.push(`colorchannelmixer=aa=${opacity.toFixed(3)}`);
         const fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
         if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
         fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
-        const tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
+        let tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
+        if (kf) { // centre-based so size changes (scale/rotate canvas) stay anchored
+          const px = has('x') ? S.pwExpr(kf.x, it.start, true) : num(it.x, 0), py = has('y') ? S.pwExpr(kf.y, it.start, true) : num(it.y, 0);
+          tx = `'W/2+(${px})-w/2${it.trk ? '+' + S.trkExpr(it, W, 0) : ''}'`; ty = `'H/2+(${py})-h/2${it.trk ? '+' + S.trkExpr(it, H, 1) : ''}'`;
+        }
         fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
         base = `b${j + 1}`;
       });

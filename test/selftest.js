@@ -92,5 +92,21 @@ const tmov = path.join(dir, 'trk.mp4');
 run(ffmpeg, buildArgs(p, { out: tmov, textList }).args);
 assert.ok(fs.statSync(tmov).size > 1000);
 
+// keyframes: shared curve + export moves/fades the image
+const kfi = { kf: { x: [[0, -300], [1.9, 300]], opacity: [[0, 1], [1.9, 0.3]] } };
+assert.strictEqual(S.kfVal(kfi.kf.x, 0.95), 0);
+assert.strictEqual(S.animAt(kfi, 3).x, 300);
+assert.ok(/gte\(t,1\.0000\)/.test(S.pwExpr(kfi.kf.x, 1, true)));
+delete p.items[2].trk;
+Object.assign(p.items[2], { rotate: 0, x: 0, y: -400, kf: { x: [[0, -300], [1.9, 300]], scale: [[0, 0.2], [1.9, 0.35]], rotate: [[0, 0], [1.9, 45]], opacity: [[0, 1], [1.9, 0.5]] } });
+const kmov = path.join(dir, 'kf.mp4');
+run(ffmpeg, buildArgs(p, { out: kmov, textList }).args);
+const px = (time, x, y) => { const b = execFileSync(ffmpeg, ['-v', 'error', '-ss', String(time), '-i', kmov, '-frames:v', '1', '-vf', `crop=2:2:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']); return [...b.subarray(0, 3)]; };
+const isRed = c => c[0] > 180 && c[1] < 90 && c[2] < 90;
+assert.ok(isRed(px(0.55, 540 - 300, 960 - 400)), 'early: image on the left ' + px(0.55, 240, 560));
+assert.ok(!isRed(px(2.35, 540 - 300, 960 - 400)), 'late: image moved away');
+const late = px(2.35, 540 + 290, 960 - 400);
+assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque red on the right ' + late);
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');

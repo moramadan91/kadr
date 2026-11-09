@@ -215,15 +215,15 @@ function drawVisual(ctx, time) {
       if (m.kind === 'audio') continue;
       const src = m.kind === 'image' ? imgFor(m) : elFor(it);
       if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) continue;
-      const L = S.layout(it, m, P.w, P.h), C = S.srcCrop(it, m);
+      const a = S.animAt(it, time - it.start), L = S.layout(a, m, P.w, P.h), C = S.srcCrop(it, m);
       const k = (src.videoWidth || src.naturalWidth || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
       ctx.save();
-      ctx.globalAlpha = S.fadeAlpha(it, time - it.start) * num(it.opacity, 1);
+      ctx.globalAlpha = S.fadeAlpha(it, time - it.start) * clamp(num(a.opacity, 1), 0, 1);
       const [tx, ty] = S.trkAt(it, time - it.start);
       if (tx || ty) ctx.translate(tx * P.w, ty * P.h);
-      if (it.flipH || it.flipV || num(it.rotate, 0)) {
+      if (it.flipH || it.flipV || num(a.rotate, 0)) {
         ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2);
-        ctx.rotate(num(it.rotate, 0) * Math.PI / 180);
+        ctx.rotate(num(a.rotate, 0) * Math.PI / 180);
         ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
@@ -357,9 +357,10 @@ function textState(it, lt) {
 
 // pr: project (P, or a scaled copy for export) — sizes come from it.
 function drawTextItem(ctx, pr, it, lt) {
+  it = S.animAt(it, lt);
   const st = { ...textDefaults(it.track === 'c1'), ...it.style }, s = textState({ ...it, style: st }, lt);
   const tokens = caseText(it.text, st.caseMode).split(/\s+/).filter(Boolean);
-  const alpha = s.alpha * num(it.opacity, 1);
+  const alpha = s.alpha * clamp(num(it.opacity, 1), 0, 1);
   if (alpha <= 0 || !tokens.length || s.sc <= 0) return;
   const rtl = /[֐-ࣿ]/.test(it.text);
   ctx.save();
@@ -390,7 +391,7 @@ function drawTextItem(ctx, pr, it, lt) {
   const pad = st.size * 0.35;
   ctx.translate(cx + s.dx, cy + s.dy);
   ctx.rotate(s.rot + num(it.rotate, 0) * Math.PI / 180);
-  ctx.scale(s.sc, s.sc);
+  ctx.scale(s.sc * num(it.scale, 1), s.sc * num(it.scale, 1));
   ctx.translate(-cx, -cy);
   if (s.wipe < 1 || s.wipeOut > 0) { // reveal along the reading direction
     const L = cx - blockW / 2 - pad, full = blockW + pad * 2, a = full * s.wipeOut, b = full * s.wipe;
@@ -474,6 +475,7 @@ function draw() {
   if (animPreview && (!ap || ap.id !== sel || inspTab !== 'tAnim')) animPreview = null;
   for (const it of visibleTexts(P, t)) if (!animPreview || it.id !== animPreview.id) drawTextItem(vctx, P, it, t - it.start);
   if (animPreview) drawTextItem(vctx, P, ap, animPreviewLt(ap));
+  syncKfUI();
 }
 // Animation preview: plays just the chosen animation on the selected text, looping, while the rest of the frame holds still.
 let animPreview = null;
@@ -597,7 +599,7 @@ function renderTimeline() {
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = P.tracks.map(x => `<div class="head"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(tr('tr_' + x.id))}</div>`).join('');
   $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${it.id === sel ? ' sel' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div><span>${clipLabel(it)}</span><div class="h r"></div></div>`).join('')
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${it.id === sel ? ' sel' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div><span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -672,6 +674,7 @@ $('#rows').addEventListener('pointerdown', e => {
       it.dur = o.dur - shift;
       if (m) it.in = num(o.in, 0) + shift * sp;
       if (o.words) it.words = o.words.map(w => ({ ...w, s: w.s - shift, e: w.e - shift }));
+      if (o.kf || o.trk) { const c = JSON.parse(JSON.stringify(o)); S.shiftTimes(c, shift); it.kf = c.kf; it.trk = c.trk; }
     } else {
       const max = m ? o.start + (m.dur - num(o.in, 0)) / sp : Infinity;
       it.dur = clamp(snap1(o.start + o.dur + d, pts), o.start + 1 / P.fps, max) - o.start;
@@ -772,6 +775,7 @@ function splitItems(ok) {
   for (const it of ok) {
     const cut = t - it.start, b = JSON.parse(JSON.stringify(it));
     b.id = uid(); b.start = t; b.dur = it.dur - cut; b.fadeIn = 0;
+    S.shiftTimes(b, cut);
     it.dur = cut; it.fadeOut = 0;
     if (sourceBound(it)) b.in = num(it.in, 0) + cut * num(it.speed, 1);
     if (it.words) {
@@ -795,6 +799,7 @@ function trimTo(side) {
     if (side === 'right') { it.dur = cut; continue; }
     if (sourceBound(it)) it.in = num(it.in, 0) + cut * num(it.speed, 1);
     if (it.words) it.words = it.words.filter(x => x.s >= cut).map(x => ({ ...x, s: x.s - cut, e: x.e - cut }));
+    S.shiftTimes(it, cut);
     it.start = t;
     it.dur -= cut;
   }
@@ -872,8 +877,59 @@ function inspTabsFor(it) {
   return k === 'audio' ? ['tAudio', 'tSpeed'] : k === 'image' ? ['tVideo', 'tAnim', 'tAdjust'] : ['tVideo', 'tAudio', 'tSpeed', 'tAnim', 'tAdjust'];
 }
 
+/* ---------- keyframes ---------- */
+const KF_DEF = it => ({ x: isText(it) ? 0.5 : 0, y: isText(it) ? 0.5 : 0, scale: 1, rotate: 0, opacity: 1 });
+const kfLt = it => clamp(t - it.start, 0, it.dur);
+const kfTol = () => 0.5 / P.fps;
+const kfTimes = it => it.kf ? [...new Set(S.KF.flatMap(k => (it.kf[k] || []).map(q => q[0])))].sort((a, b) => a - b) : [];
+const kfHere = it => kfTimes(it).some(x => Math.abs(x - kfLt(it)) < kfTol());
+function kfSet(it, k, lt, v) {
+  it.kf ??= {};
+  const p = (it.kf[k] ??= []), i = p.findIndex(q => Math.abs(q[0] - lt) < kfTol());
+  if (i >= 0) p[i][1] = v; else { p.push([+lt.toFixed(4), v]); p.sort((a, b) => a[0] - b[0]); }
+}
+// Add a key for every animatable property at the playhead, or remove the key that is there.
+function kfToggle(it) {
+  snapshot();
+  const lt = kfLt(it);
+  if (kfHere(it)) {
+    for (const k of S.KF) if (it.kf[k]) { it.kf[k] = it.kf[k].filter(q => Math.abs(q[0] - lt) >= kfTol()); if (!it.kf[k].length) delete it.kf[k]; }
+    if (!S.hasKf(it)) delete it.kf;
+  } else {
+    const a = S.animAt(it, lt), d = KF_DEF(it);
+    for (const k of S.KF) kfSet(it, k, lt, num(a[k], d[k]));
+  }
+  refresh();
+}
+function kfJump(it, dir) {
+  const lt = kfLt(it), ts = kfTimes(it);
+  const n = dir > 0 ? ts.find(x => x > lt + kfTol()) : [...ts].reverse().find(x => x < lt - kfTol());
+  if (n != null) { seek(it.start + n); syncKfUI(true); }
+}
+// Animated props shown in the inspector follow the playhead.
+let kfSyncT = -1;
+function syncKfUI(force) {
+  const it = sel && item(sel);
+  if (!it || editing || (!force && t === kfSyncT)) return;
+  kfSyncT = t;
+  const b = document.querySelector('#inspBody [data-kf="tog"]');
+  if (b) b.classList.toggle('on', kfHere(it));
+  if (!S.hasKf(it)) return;
+  const a = S.animAt(it, kfLt(it)), d = KF_DEF(it);
+  for (const k of S.KF) {
+    const el = document.querySelector(`#inspBody [data-k="${k}"]`), v = num(a[k], d[k]);
+    if (!el) continue;
+    el.value = el.type === 'number' ? +v.toFixed(3) : v;
+    const sh = document.querySelector(`#inspBody [data-show="${k}"]`);
+    if (sh) sh.textContent = showVal(k, v);
+  }
+}
+const kfBar = it => `<div class="kfbar" dir="ltr"><button class="ib" data-kf="prev" title="${tr('kf_prev')}">${icon('chevron-left')}</button>` +
+  `<button class="kfb${kfHere(it) ? ' on' : ''}" data-kf="tog" title="${tr('kf_tip')}">${icon('diamond')}<span>${tr('keyframe')}</span></button>` +
+  `<button class="ib" data-kf="next" title="${tr('kf_next')}">${icon('chevron-right')}</button></div>`;
 const trkBtns = it => grp('tracking', `<button class="wide" id="trkGo">${icon('crosshair')} ${tr(it.trk ? 'trk_redo' : 'trk_go')}</button>` + (it.trk ? `<button class="wide" id="trkClear">${tr('trk_clear')}</button>` : ''));
 function inspector() {
+  kfSyncT = -1;
   const body = $('#inspBody'), it = sel && item(sel), tabs = inspTabsFor(it);
   if (!tabs.includes(inspTab)) inspTab = tabs[0] || null;
   $('#inspTabs').innerHTML = tabs.map(x => `<button data-itab="${x}" class="${x === inspTab ? 'on' : ''}">${tr(x)}</button>`).join('');
@@ -909,8 +965,9 @@ function inspector() {
       (st.shadowOn ? `<div class="row2">${fld.range('style.shadowBlur', 'blur', 0, 60, 1, it)}${fld.range('style.shadowDist', 'distance', 0, 40, 1, it)}</div>` : '')));
     h.push(grp('glow', `<div class="inl">${fld.check('style.glowOn', 'glow', it)}${fld.color('style.glowColor', 'color', it)}</div>` +
       (st.glowOn ? fld.range('style.glowSize', 'size', 2, 80, 1, it) : '')));
-    h.push(grp('transform', fld.range('x', 'horiz', 0, 1, 0.01, it, 0.5) + fld.range('y', 'vert', 0, 1, 0.01, it, 0.5) +
-      fld.range('rotate', 'rotation', -180, 180, 1, it) + fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1)));
+    const ai = S.animAt(it, kfLt(it));
+    h.push(grp('transform', kfBar(it) + fld.range('x', 'horiz', 0, 1, 0.01, ai, 0.5) + fld.range('y', 'vert', 0, 1, 0.01, ai, 0.5) +
+      fld.range('scale', 'scale', 0.1, 4, 0.01, ai, 1) + fld.range('rotate', 'rotation', -180, 180, 1, ai) + fld.range('opacity', 'opacity', 0, 1, 0.01, ai, 1)));
     h.push(trkBtns(it));
     if (it.track === 'c1') h.push(`<button class="wide" id="capAll">${tr('applyAllCaps')}</button>`);
   } else if (inspTab === 'tAnim') {
@@ -923,11 +980,12 @@ function inspector() {
     } else h.push(fades);
   } else if (inspTab === 'tVideo') {
     h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing);
-    h.push(grp('scale', fld.select('fit', 'fit_', [['cover', tr('cover')], ['contain', tr('contain')]], it) +
-      fld.range('scale', 'scale', 0.1, 3, 0.01, it, 1) +
-      `<div class="row2">${fld.number('x', 'posX', 1, it)}${fld.number('y', 'posY', 1, it)}</div>` +
-      fld.range('rotate', 'rotation', -180, 180, 1, it) +
-      fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1) +
+    const ai = S.animAt(it, kfLt(it));
+    h.push(grp('scale', kfBar(it) + fld.select('fit', 'fit_', [['cover', tr('cover')], ['contain', tr('contain')]], it) +
+      fld.range('scale', 'scale', 0.1, 3, 0.01, ai, 1) +
+      `<div class="row2">${fld.number('x', 'posX', 1, ai)}${fld.number('y', 'posY', 1, ai)}</div>` +
+      fld.range('rotate', 'rotation', -180, 180, 1, ai) +
+      fld.range('opacity', 'opacity', 0, 1, 0.01, ai, 1) +
       `<div class="inl">${fld.check('flipH', 'flipH', it)}${fld.check('flipV', 'flipV', it)}</div>`));
     if (it.track !== 'v1') h.push(trkBtns(it));
     h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
@@ -986,6 +1044,8 @@ $('#inspBody').addEventListener('input', e => {
     it.dur = clamp(v, 1 / P.fps, max);
   } else if (k === 'start') {
     it.start = Math.max(0, v);
+  } else if (it.kf && it.kf[k] && S.KF.includes(k)) {
+    kfSet(it, k, kfLt(it), v);
   } else {
     setPath(it, k, v); // caption text with a new word count simply loses the highlight (see drawTextItem)
   }
@@ -1000,6 +1060,8 @@ $('#inspBody').addEventListener('input', e => {
 $('#inspBody').addEventListener('click', e => {
   const it = sel && item(sel);
   if (!it) return;
+  const kb = e.target.closest('[data-kf]');
+  if (kb) { const a = kb.dataset.kf; return a === 'tog' ? kfToggle(it) : kfJump(it, a === 'next' ? 1 : -1); }
   const sub = e.target.closest('[data-asub]');
   if (sub) {
     animSub = sub.dataset.asub;
@@ -1042,13 +1104,14 @@ view.addEventListener('pointerdown', e => {
   const it = sel && item(sel);
   if (!it || !active(it, t) || (media(it) && media(it).kind === 'audio')) return;
   const r = view.getBoundingClientRect(), k = P.w / r.width, x0 = e.clientX, y0 = e.clientY;
-  const ox = num(it.x, isText(it) ? 0.5 : 0), oy = num(it.y, isText(it) ? 0.5 : 0);
+  const a0 = S.animAt(it, kfLt(it)), ox = num(a0.x, isText(it) ? 0.5 : 0), oy = num(a0.y, isText(it) ? 0.5 : 0);
   let changed = false;
   const mv = ev => {
     const dx = (ev.clientX - x0) * k, dy = (ev.clientY - y0) * k;
     if (!changed) { snapshot(); changed = true; }
     if (isText(it)) { it.x = clamp(ox + dx / P.w, 0, 1); it.y = clamp(oy + dy / P.h, 0, 1); }
     else { it.x = Math.round(ox + dx); it.y = Math.round(oy + dy); }
+    for (const k of ['x', 'y']) if (it.kf && it.kf[k]) kfSet(it, k, kfLt(it), it[k]);
     needsDraw = true;
   };
   window.addEventListener('pointermove', mv);
@@ -1539,7 +1602,7 @@ async function rasterizeTexts(Q, work) {
   for (let f = 0; f < N; f++) {
     if (cancelled) throw new Error(tr('cancelled'));
     const time = f / Q.fps, vis = visibleTexts(Q, time);
-    const key = vis.map(it => { const s = textState(it, time - it.start); return it.id + (s.anim || it.trk ? 'a' + f : 'w' + s.word); }).join('|');
+    const key = vis.map(it => { const s = textState(it, time - it.start); return it.id + (s.anim || it.trk || S.hasKf(it) ? 'a' + f : 'w' + s.word); }).join('|');
     if (key === last) { list[list.length - 1].frames++; continue; }
     last = key;
     ctx.clearRect(0, 0, Q.w, Q.h);

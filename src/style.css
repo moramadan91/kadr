@@ -270,3 +270,11 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 .split.h::after { inset: 3px 40%; }
 .split:hover::after, .split.on::after { opacity: .8; }
 body.resizing, body.resizing * { cursor: inherit !important; user-select: none; }
+
+.kfbar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.kfbar .ib { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; }
+.kfb { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; height: 30px; border-radius: 8px; background: var(--well); border: 1px solid var(--stroke); cursor: pointer; }
+.kfb svg { width: 14px; height: 14px; }
+.kfb.on { border-color: var(--accent); color: var(--accent); }
+.kfb.on svg { fill: var(--accent); }
+.clip .kfd { position: absolute; bottom: 3px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: #fff; border: 1px solid rgba(0,0,0,.5); pointer-events: none; }

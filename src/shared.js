@@ -69,6 +69,7 @@
     for (const it of q.items) {
       if (typeof it.x === 'number' && it.type !== 'text') it.x *= k;
       if (typeof it.y === 'number' && it.type !== 'text') it.y *= k;
+      if (it.kf && it.type !== 'text') for (const f of ['x', 'y']) if (it.kf[f]) it.kf[f] = it.kf[f].map(([t, v]) => [t, v * k]);
       if (it.style) for (const f of ['size', 'strokeW', 'spacing', 'shadowBlur', 'shadowDist', 'glowSize']) if (typeof it.style[f] === 'number') it.style[f] *= k;
     }
     return q;
@@ -115,22 +116,49 @@
     const z = p[p.length - 1];
     return [z[1], z[2]];
   }
-  // Same curve as an ffmpeg expression of global time t: a flat sum of linear pieces (no deep nesting).
-  function trkExpr(it, size, axis) {
-    const p = it.trk && it.trk.pts;
-    if (!p || !p.length) return '0';
-    const k = axis + 1, T = x => (x + it.start).toFixed(4), V = x => (x * size).toFixed(2);
-    const parts = [`lt(t,${T(p[0][0])})*${V(p[0][k])}`, `gte(t,${T(p[p.length - 1][0])})*${V(p[p.length - 1][k])}`];
-    for (let i = 1; i < p.length; i++) {
-      const a = p[i - 1], b = p[i], d = b[0] - a[0];
+  // Piecewise curve [[lt, v], ...] as an ffmpeg expression: a flat sum of pieces (no deep nesting).
+  // off shifts lt into the filter's clock (item start for overlay's global t, 0 for local t); tv names that clock.
+  function pwExpr(pts, off, smooth, tv = 't') {
+    const T = x => (x + off).toFixed(4), V = v => (+v).toFixed(4), n = pts.length;
+    if (n === 1) return V(pts[0][1]);
+    const parts = [`lt(${tv},${T(pts[0][0])})*${V(pts[0][1])}`, `gte(${tv},${T(pts[n - 1][0])})*${V(pts[n - 1][1])}`];
+    for (let i = 1; i < n; i++) {
+      const a = pts[i - 1], b = pts[i], d = b[0] - a[0];
       if (d <= 0) continue;
-      const slope = (b[k] - a[k]) * size / d;
-      parts.push(`gte(t,${T(a[0])})*lt(t,${T(b[0])})*(${V(a[k])}+(t-${T(a[0])})*${slope.toFixed(3)})`);
+      const u = `(${tv}-${T(a[0])})/${d.toFixed(4)}`, f = smooth ? `(${u})*(${u})*(3-2*(${u}))` : u;
+      parts.push(`gte(${tv},${T(a[0])})*lt(${tv},${T(b[0])})*(${V(a[1])}+${V(b[1] - a[1])}*${f})`);
     }
     return parts.join('+');
   }
+  function trkExpr(it, size, axis) {
+    const p = it.trk && it.trk.pts;
+    return p && p.length ? pwExpr(p.map(q => [q[0], q[axis + 1] * size]), it.start, false) : '0';
+  }
 
-  const api = { num, clamp, PRESETS, grade, srcCrop, layout, fadeAlpha, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr };
+  // Keyframes: it.kf = { x|y|scale|rotate|opacity: [[lt, v], ...] } sorted by lt, smoothstep between keys.
+  const KF = ['x', 'y', 'scale', 'rotate', 'opacity'];
+  function kfVal(p, lt) {
+    if (lt <= p[0][0]) return p[0][1];
+    for (let i = 1; i < p.length; i++) if (lt <= p[i][0]) {
+      const a = p[i - 1], b = p[i], u = (lt - a[0]) / Math.max(1e-6, b[0] - a[0]);
+      return a[1] + (b[1] - a[1]) * u * u * (3 - 2 * u);
+    }
+    return p[p.length - 1][1];
+  }
+  const hasKf = it => !!(it.kf && KF.some(k => it.kf[k] && it.kf[k].length));
+  function animAt(it, lt) { // item with its keyframed props resolved at local time lt
+    if (!hasKf(it)) return it;
+    const o = { ...it };
+    for (const k of KF) if (it.kf[k] && it.kf[k].length) o[k] = kfVal(it.kf[k], lt);
+    return o;
+  }
+  // Keyframes and tracking are pinned to the content: dropping d seconds from the front moves them back by d.
+  function shiftTimes(it, d) {
+    if (it.kf) for (const k of KF) if (it.kf[k]) it.kf[k] = it.kf[k].map(([t, v]) => [+(t - d).toFixed(4), v]);
+    if (it.trk) it.trk = { pts: it.trk.pts.map(([t, x, y]) => [+(t - d).toFixed(4), x, y]) };
+  }
+
+  const api = { num, clamp, PRESETS, grade, srcCrop, layout, fadeAlpha, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);
