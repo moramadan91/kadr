@@ -79,9 +79,23 @@ function restore(from, to) {
 
 /* ---------- media elements ---------- */
 const els = new Map(), imgs = new Map();
+const mediaHold = document.body.appendChild(Object.assign(document.createElement('div'), { ariaHidden: 'true' }));
+mediaHold.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:.01;pointer-events:none;z-index:-1';
+// Pieces of one clip that play back to back (a split) share one media element, so a cut plays through
+// without restarting the decoder (WebKit takes ~0.6 s to start a paused video).
+const chainKeys = new Map();
+function chainKey(it) {
+  let k = chainKeys.get(it);
+  if (k) return k;
+  const sp = num(it.speed, 1), eps = 1e-4;
+  const prev = P.items.find(p => p !== it && p.track === it.track && p.media === it.media && num(p.speed, 1) === sp &&
+    Math.abs(p.start + p.dur - it.start) < eps && Math.abs(num(p.in, 0) + p.dur * sp - num(it.in, 0)) < eps);
+  chainKeys.set(it, k = prev ? chainKey(prev) : it.id);
+  return k;
+}
 function elFor(it) {
-  const m = media(it), url = urlOf(m);
-  let el = els.get(it.id);
+  const m = media(it), url = urlOf(m), key = chainKey(it);
+  let el = els.get(key);
   if (el && el.dataset.src === url) return el;
   el = document.createElement(m.kind === 'audio' ? 'audio' : 'video');
   el.preload = 'auto';
@@ -92,7 +106,9 @@ function elFor(it) {
   el.src = url;
   el.addEventListener('seeked', () => (needsDraw = true));
   el.addEventListener('loadeddata', () => (needsDraw = true));
-  els.set(it.id, el);
+  // WebKit only feeds fresh frames to drawImage from a <video> that is in the document.
+  if (m.kind !== 'audio') mediaHold.appendChild(el);
+  els.set(key, el);
   return el;
 }
 function imgFor(m) {
@@ -102,23 +118,33 @@ function imgFor(m) {
   return im;
 }
 function gcEls() {
-  for (const [id, el] of els) if (!item(id)) { el.pause(); el.removeAttribute('src'); el.load(); els.delete(id); }
+  for (const [id, el] of els) if (!item(id)) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); els.delete(id); }
 }
 function syncMedia() {
+  // One controller per element: the active piece, else the next one coming up.
+  const ctl = new Map();
   for (const it of P.items) {
     const m = media(it);
     if (!m || m.kind === 'image') continue;
+    const k = chainKey(it), c = ctl.get(k);
+    if (!c || (!active(c, t) && (active(it, t) || (it.start > t && (c.start <= t || it.start < c.start))))) ctl.set(k, it);
+  }
+  for (const it of ctl.values()) {
     const el = elFor(it), sp = num(it.speed, 1), on = active(it, t);
     const want = num(it.in, 0) + (t - it.start) * sp;
-    el.playbackRate = sp;
-    el.muted = !!it.muted;
-    el.volume = clamp(num(it.volume, 1) * S.fadeAlpha(it, t - it.start), 0, 1);
+    // Write only on change: WebKit restarts its pipeline on every playbackRate assignment.
+    if (el.playbackRate !== sp) el.playbackRate = sp;
+    if (el.muted !== !!it.muted) el.muted = !!it.muted;
+    const vol = clamp(num(it.volume, 1) * S.fadeAlpha(it, t - it.start), 0, 1);
+    if (Math.abs(el.volume - vol) > 0.005) el.volume = vol;
     if (on && playing) {
-      if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
+      if (el.paused) { if (Math.abs(el.currentTime - want) > 0.15) el.currentTime = want; el.play().catch(() => {}); }
       else if (Math.abs(el.currentTime - want) > 0.3) el.currentTime = want;
     } else {
       if (!el.paused) el.pause();
       if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
+      // Preroll: park the next clip on its first frame so the cut starts without a seek.
+      else if (!on && playing && it.start > t && it.start - t < 1.5 && !el.seeking && Math.abs(el.currentTime - num(it.in, 0)) > 0.05) el.currentTime = num(it.in, 0);
     }
   }
 }
@@ -302,8 +328,12 @@ new ResizeObserver(fitView).observe($('#stage'));
 
 /* ---------- transport ---------- */
 function loop(now) {
+  chainKeys.clear();
   if (playing) {
-    t += (now - lastTick) / 1000;
+    // The playing clip is the clock (no seeks fighting the decoder); wall time only if it stalls > 0.8 s.
+    const tc = clockTime();
+    if (tc !== null && tc !== clock.tc) { clock.tc = tc; clock.at = now; }
+    t = tc !== null && now - clock.at < 800 ? Math.max(t, tc) : t + (now - lastTick) / 1000;
     if (t >= total()) { t = total(); setPlaying(false); }
     needsDraw = true;
     follow();
@@ -312,6 +342,17 @@ function loop(now) {
   syncMedia();
   if (needsDraw) { needsDraw = false; draw(); updatePlayhead(); }
   requestAnimationFrame(loop);
+}
+const clock = { tc: null, at: 0 };
+function clockTime() {
+  let best = null;
+  for (const it of P.items) {
+    const m = media(it), el = els.get(chainKey(it));
+    if (!m || m.kind === 'image' || !el || el.paused || el.ended || el.seeking || el.readyState < 3 || !active(it, t)) continue;
+    if (best && best.it.track === 'v1') continue;
+    best = { it, el };
+  }
+  return best && best.it.start + (best.el.currentTime - num(best.it.in, 0)) / num(best.it.speed, 1);
 }
 function setPlaying(v) {
   playing = v && total() > 0;
