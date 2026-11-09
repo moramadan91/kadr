@@ -7,9 +7,9 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 
 /* ---------- language ---------- */
 const EN = {
-  skip: 'Skip to content', name: 'Kadr', nFeatures: 'Features', nTour: 'Tour', nInstall: 'Install', nFaq: 'FAQ', nDownload: 'Download',
+  skip: 'Skip to content', name: 'Kadr', nFeatures: 'Features', nTour: 'Tour', nInstall: 'Install', nFaq: 'FAQ',
   tag: 'Completely free · Mac & Windows',
-  h1: 'Edit video your way, no subscription.',
+  h1: 'Edit video your way, open source, no subscriptions.',
   lead: 'Cutting and a real timeline, auto captions timed word by word, text and motion, color, and export up to 4K. All on your computer.',
   mac: 'Download for Mac', macSub: 'Apple Silicon · M1 and later', win: 'Download for Windows', winSub: 'Windows 10 and 11 · 64-bit',
   auto: 'Updates itself automatically.', ver: 'Version {v} · ',
@@ -84,9 +84,8 @@ $('#lang').onclick = () => {
   ScrollTrigger.refresh();
 };
 
-// Visitor's own OS goes first and gets the solid button.
+// Visitor's own OS goes first; both buttons look the same until hovered.
 const first = $(/Windows/i.test(navigator.userAgent) ? '#win' : '#mac');
-first.classList.add('main');
 first.parentNode.prepend(first);
 applyLang();
 
@@ -116,6 +115,21 @@ fetch('https://api.github.com/repos/moramadan91/kadr/releases/latest')
     $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
   })
   .catch(() => {}); // buttons already open the releases page
+
+// Tour: a static list. Hover, focus or tap a step: it gets the turquoise frame and the
+// screenshot spotlights and zooms into that part of the app (CSS transitions do the motion).
+{
+  const spots = $$('.spot'), steps = $$('.step'), img = $('#zoom');
+  const show = i => {
+    steps.forEach((s, j) => s.classList.toggle('on', i === j));
+    spots.forEach((s, j) => s.classList.toggle('on', i === j));
+    const [x, y, w, h] = spots[i].dataset.r.split(',').map(Number);
+    img.style.transformOrigin = `${x + w / 2}% ${y + h / 2}%`;
+    img.style.transform = `scale(${i === 0 ? 1 : 1.12})`;
+  };
+  steps.forEach((s, i) => { s.addEventListener('pointerenter', () => show(i)); s.addEventListener('focus', () => show(i)); s.addEventListener('click', () => show(i)); });
+  show(0);
+}
 
 /* ---------- motion: Lenis drives scroll, GSAP drives everything else, one loop ---------- */
 const lenis = new Lenis({ lerp: 0.1, anchors: { offset: -80 } });
@@ -163,30 +177,6 @@ mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 9
     .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 2)), null, 0.8)
     .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 3)), null, 1.2);
 
-  // Tour: pin the screenshot, walk the spotlight through five areas while you scroll.
-  if (!wide) return;
-  const spots = $$('.spot'), steps = $$('.step'), img = $('#zoom');
-  const zoomTo = i => {
-    const [x, y, w, h] = spots[i].dataset.r.split(',').map(Number);
-    return { scale: i === 0 ? 1 : 1.12, transformOrigin: `${x + w / 2}% ${y + h / 2}%` };
-  };
-  const setStep = i => steps.forEach((s, j) => s.classList.toggle('on', i === j));
-  setStep(0);
-  const tl = gsap.timeline({
-    defaults: { ease: 'power2.inOut', duration: 1 },
-    scrollTrigger: {
-      trigger: '.tour-pin', start: 'center center', end: '+=' + spots.length * 70 + '%',
-      pin: true, scrub: true,
-      onUpdate: self => setStep(Math.min(spots.length - 1, Math.floor(self.progress * spots.length * 0.999))),
-    },
-  });
-  tl.to(spots[0], { autoAlpha: 1, duration: 0.5 });
-  for (let i = 1; i < spots.length; i++) {
-    tl.to(spots[i - 1], { autoAlpha: 0 }, '+=0.5')
-      .to(spots[i], { autoAlpha: 1 }, '<')
-      .to(img, zoomTo(i), '<');
-  }
-  tl.to({}, { duration: 0.5 });
 });
 
 window.addEventListener('load', () => ScrollTrigger.refresh());
