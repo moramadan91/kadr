@@ -81,7 +81,7 @@ function applyLang() {
     if (el.classList.contains('split')) splitWords(el);
   });
   $('#lang span').textContent = lang === 'ar' ? 'English' : 'عربي';
-  document.title = lang === 'ar' ? 'ماكوت — محرر فيديو مجاني للماك والويندوز' : 'Maqto — free video editor for Mac and Windows';
+  document.title = lang === 'ar' ? 'ماكتو — محرر فيديو مجاني للماك والويندوز' : 'Maqto — free video editor for Mac and Windows';
   showVer();
 }
 // The current release number sits under each download button; it comes from the latest GitHub release.
@@ -143,10 +143,19 @@ fetch('https://api.github.com/repos/moramadan91/kadr/releases/latest')
 }
 
 /* ---------- motion: Lenis drives scroll, GSAP drives everything else, one loop ---------- */
-const lenis = new Lenis({ lerp: 0.1, anchors: { offset: -80 } });
+const lenis = new Lenis({ lerp: 0.1 });
 lenis.on('scroll', ScrollTrigger.update);
 gsap.ticker.add(t => lenis.raf(t * 1000));
 gsap.ticker.lagSmoothing(0);
+// In-page links: scroll with Lenis ourselves (a native hash jump skipped the scroll triggers, so the cards stayed hidden).
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href^="#"]'), id = a && a.getAttribute('href');
+  const el = id && id.length > 1 && document.querySelector(id);
+  if (!el) return;
+  e.preventDefault();
+  lenis.scrollTo(el, { offset: -80 });
+  history.replaceState(null, '', id);
+});
 
 const mm = gsap.matchMedia();
 mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 901px)' }, ctx => {
@@ -180,7 +189,13 @@ mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 9
   ScrollTrigger.batch('.bento .card, .os-grid .card, .faq details', {
     start: 'top 90%',
     onEnter: b => gsap.to(b, { y: 0, autoAlpha: 1, duration: 0.6, ease: 'power2.out', stagger: 0.08, overwrite: true }),
+    onEnterBack: b => gsap.to(b, { y: 0, autoAlpha: 1, duration: 0.4, overwrite: true }),
   });
+  // Safety net: a card on screen when scrolling stops is never left hidden.
+  ScrollTrigger.addEventListener('scrollEnd', () => $$('.bento .card, .os-grid .card, .faq details').forEach(c => {
+    const r = c.getBoundingClientRect();
+    if (r.top < innerHeight && r.bottom > 0 && +getComputedStyle(c).opacity < 0.05) gsap.to(c, { y: 0, autoAlpha: 1, duration: 0.5 });
+  }));
 
   // Caption card: the highlighted word walks along, like the real captions.
   const words = $$('.words span');

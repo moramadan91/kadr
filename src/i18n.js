@@ -1,7 +1,7 @@
 // UI strings. Add a key to both languages.
 window.KadrI18n = {
   ar: {
-    appName: 'ماكوت', untitled: 'مشروع بدون اسم',
+    appName: 'ماكتو', untitled: 'مشروع بدون اسم',
     media: 'الوسائط', text: 'نصوص', captions: 'كابشن', filters: 'فلاتر',
     import: 'استيراد', importHint: 'اسحب فيديو أو صوت أو صورة هنا. دبل كليك أو اسحب للتايملاين.',
     addText: 'إضافة نص', textStyles: 'ستايلات جاهزة', defaultText: 'اكتب هنا',
@@ -48,7 +48,7 @@ window.KadrI18n = {
     trk_noVideo: 'حط المؤشر فوق كليب فيديو تحت العنصر الأول', trk_small: 'المربع صغير قوي',
     freeze: 'تثبيت الفريم (فريز)', freezeHint: 'وقّف المؤشر على كليب فيديو الأول', rotate90: 'لف ٩٠°', rotation: 'اللف',
     quitTitle: 'تحفظ المشروع؟', quitAsk: 'فيه تعديلات ما اتحفظتش. لو خرجت من غير حفظ هتضيع.', dontSave: 'اخرج من غير حفظ',
-    new: 'جديد', welcome: 'أهلاً في ماكوت', welcomeSub: 'اختار مقاس الفيديو وابدأ، أو افتح مشروع قديم.', f_vertical: 'طولي', f_wide: 'عرضي', f_square: 'مربع',
+    new: 'جديد', welcome: 'أهلاً في ماكتو', welcomeSub: 'اختار مقاس الفيديو وابدأ، أو افتح مشروع قديم.', f_vertical: 'طولي', f_wide: 'عرضي', f_square: 'مربع',
     f_portrait: 'بورتريه', f_classic: 'كلاسيك', f_classicV: 'كلاسيك طولي', f_cinema: 'سينما', custom: 'مقاس مخصص', np_name: 'الاسم', untitled: 'مشروع بدون اسم',
     recent: 'آخر المشاريع', skip: 'تخطّي', create: 'ابدأ', exportTo: 'التصدير في', video: 'فيديو', bitrate: 'الجودة (بت ريت)', q_low: 'أقل حجم', q_rec: 'مقترح',
     q_high: 'أعلى جودة', format: 'الصيغة', audioFile: 'ملف صوت منفصل', duration: 'المدة', size: 'الحجم تقريباً', pickFolder: 'اختار مكان التصدير',
@@ -61,7 +61,7 @@ window.KadrI18n = {
     exportTitle: 'تصدير الفيديو', resolution: 'الدقة', fps: 'الفريمات', codec: 'الترميز (كوديك)', hw: 'تسريع بكارت الشاشة', exportGo: 'تصدير',
     cancel: 'إلغاء', exported: 'اتصدّر', reveal: 'افتح المكان', saved: 'اتحفظ',
     p_export: 'تصدير', p_texts: 'تجهيز النصوص', p_model: 'تحميل نموذج الكابشن', p_audio: 'تجهيز الصوت', p_asr: 'تفريغ الكلام',
-    updAsk: 'فيه نسخة جديدة من ماكوت ({v}). تحدّث دلوقتي؟ البرنامج هيقفل ويفتح تاني.', updTitle: 'تحديث جديد', p_update: 'تحميل التحديث',
+    updAsk: 'فيه نسخة جديدة من ماكتو ({v}). تحدّث دلوقتي؟ البرنامج هيقفل ويفتح تاني.', updTitle: 'تحديث جديد', p_update: 'تحميل التحديث',
     emptyTl: 'التايملاين فاضي', cutHint: 'حط المؤشر جوه كليب عشان تقصه', needAudio: 'حط فيديو أو صوت في التايملاين الأول',
     replaceCaps: 'هيتمسح الكابشن الحالي ويتعمل من جديد. نكمل؟', noSpeech: 'ملقتش كلام في الصوت', capsDone: 'اتعمل {n} كابشن',
     modelAsk: 'الكابشن التلقائي محتاج نموذج Whisper (حوالي 466 ميجا) مرة واحدة بس. يتحمّل من huggingface.co ويتحفظ على جهازك، والصوت نفسه مش بيطلع من جهازك. أحمّله؟',
