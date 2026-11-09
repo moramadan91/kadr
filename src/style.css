@@ -255,3 +255,9 @@ main { display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; gap: 8p
 #binList.list .mi .th .del { inset-inline-end: auto; inset-inline-start: 3px; }
 #binDel { display: flex; align-items: center; gap: 3px; color: #ff6b6b; }
 #binDel[hidden] { display: none; }
+
+.grp > .ghx { display: flex; align-items: center; justify-content: space-between; }
+.pTog { width: 26px; height: 22px; padding: 0; display: grid; place-items: center; }
+.pTog svg { transition: transform .15s; }
+.pTog.open svg { transform: rotate(180deg); }
+.tpresets.collapsed button:nth-child(n+9) { display: none; }

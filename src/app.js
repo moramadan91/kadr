@@ -364,11 +364,13 @@ function drawTextItem(ctx, pr, it, lt) {
   const rtl = /[֐-ࣿ]/.test(it.text);
   ctx.save();
   ctx.font = `${st.italic ? 'italic ' : ''}${st.weight} ${st.size}px "${st.font}"`;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = num(st.spacing, 0) + 'px';
+  // Letter spacing splits Arabic joins (kashida/tatweel gaps), so Arabic gets it between words instead.
+  const arab = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(it.text);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = (arab ? 0 : num(st.spacing, 0)) + 'px';
   ctx.textBaseline = 'middle';
   ctx.direction = 'ltr';
   ctx.textAlign = rtl ? 'right' : 'left';
-  const space = ctx.measureText(' ').width, maxW = pr.w * 0.86;
+  const space = ctx.measureText(' ').width + (arab ? num(st.spacing, 0) * 3 : 0), maxW = pr.w * 0.86;
   const widths = tokens.map(tk => ctx.measureText(tk).width);
   const lines = [];
   let cur = [], w = 0;
@@ -845,7 +847,9 @@ function inspector() {
     const st = { ...textDefaults(it.track === 'c1'), ...it.style };
     it.style = st;
     h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`, timing);
-    h.push(grp('presets', `<div class="tpresets">${TEXT_STYLES.map(x => `<button data-tpreset="${x.id}" title="${x.id}"></button>`).join('')}</div>`));
+    const pOpen = (() => { try { return localStorage.getItem('kadr.presetsOpen') === '1'; } catch { return false; } })();
+    h.push(`<div class="grp"><div class="gh ghx"><span>${tr('presets')}</span><button class="ib pTog${pOpen ? ' open' : ''}" data-ptog title="${tr(pOpen ? 'showLess' : 'showMore')}">${icon('chevron-down')}</button></div>` +
+      `<div class="tpresets${pOpen ? '' : ' collapsed'}">${TEXT_STYLES.map(x => `<button data-tpreset="${x.id}" title="${x.id}"></button>`).join('')}</div></div>`);
     h.push(grp('font', fld.select('style.font', 'font', FONTS.map(f => [f, f]), it) +
       `<div class="row2">${fld.range('style.size', 'size', 20, 260, 1, it)}${fld.select('style.weight', 'weight', [400, 600, 800, 900].map(w => [w, tr('w' + w)]), it)}</div>` +
       `<div class="inl">${fld.check('style.italic', 'italic', it)}${fld.check('style.underline', 'underline', it)}</div>` +
@@ -964,6 +968,13 @@ $('#inspBody').addEventListener('click', e => {
     it[{ in: 'anim', out: 'out', loop: 'loop' }[animSub]] = an.dataset.anim;
     refresh();
     if (an.dataset.anim !== 'none') startAnimPreview(it); else animPreview = null;
+    return;
+  }
+  if (e.target.closest('[data-ptog]')) {
+    const g = $('#inspBody .tpresets'), open = g.classList.toggle('collapsed') === false;
+    const b = e.target.closest('[data-ptog]');
+    b.classList.toggle('open', open); b.title = tr(open ? 'showLess' : 'showMore');
+    try { localStorage.setItem('kadr.presetsOpen', open ? '1' : '0'); } catch {}
     return;
   }
   const pr = e.target.closest('[data-tpreset]');
