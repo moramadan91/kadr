@@ -173,6 +173,13 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
 .shots figcaption b { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font: 800 14px/1 var(--display); margin-top: 2px; }
 .shots figcaption bdi { color: var(--ink); font-weight: 600; }
 
+.mshots { display: grid; gap: 16px; margin-top: 16px; }
+.mshots figure { display: grid; gap: 10px; }
+.mshots figure:first-child .shot { max-width: 300px; }
+.mshots figcaption, .shots figcaption { display: flex; gap: 10px; align-items: flex-start; color: var(--mute); font-size: 15px; }
+.mshots figcaption b, .shots figcaption b { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font: 800 14px/1 var(--display); margin-top: 2px; }
+.mshots figcaption bdi, .shots figcaption bdi { color: var(--ink); font-weight: 600; }
+
 /* faq */
 .faq { display: grid; gap: 10px; max-width: 860px; }
 .faq details { padding: 0; }

@@ -33,6 +33,8 @@ const EN = {
   m1: 'Open the <b>.dmg</b> file and drag Kadr into <b>Applications</b>.',
   m2: 'Open Kadr. If it says the developer cannot be verified, click <b>Done</b>.',
   m3: 'Go to <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.',
+  mA: 'In <b>System Settings</b>, pick <b>Privacy &amp; Security</b> in the sidebar.',
+  mB: 'Scroll to <b>Security</b> and find <b>“Kadr” was blocked</b>. Click <b>Open Anyway</b> and confirm with your password or Touch ID. You only do this once.',
   mNote: 'A Mac with Apple silicon (M1 or later) and macOS 12 or later.',
   w1: 'Run the <b>setup.exe</b> file.',
   w2: 'If you see <b>Windows protected your PC</b>, click <b>More info</b>, then <b>Run anyway</b>.',
