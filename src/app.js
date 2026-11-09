@@ -50,12 +50,21 @@ function wantFont(spec) {
 }
 let fontTab = 'all';
 function fontPicker(it) {
-  $('#modal').hidden = false;
-  $('#mBox').innerHTML = `<div class="fpick"><div class="fph"><h3>${tr('font')}</h3><button class="ib" id="fpX">${icon('x')}</button></div>
-    <input id="fpQ" type="search" placeholder="${tr('fontSearch')}" dir="auto">
-    <div class="seg">${['all', 'ar', 'sys', 'lib'].map(x => `<button data-ft="${x}" class="${x === fontTab ? 'on' : ''}">${tr('ft_' + x)}</button>`).join('')}</div>
-    <div id="fpL" class="fpl"></div><p class="hint">${tr('fontNote')}</p></div>`;
-  paintIcons($('#mBox'));
+  // compact dropdown under the font button; closes on outside click or Esc
+  if ($('#fpop')) return closeFontPop();
+  const pop = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fpop' }));
+  pop.innerHTML = `<div class="fpq">${icon('search')}<input id="fpQ" type="search" placeholder="${tr('fontSearch')}" dir="auto"></div>
+    <div class="ftabs">${['all', 'ar', 'sys', 'lib'].map(x => `<button data-ft="${x}" class="${x === fontTab ? 'on' : ''}">${tr('ft_' + x)}</button>`).join('')}</div>
+    <div id="fpL" class="fpl"></div><p class="fpn">${tr('fontNote')}</p>`;
+  const r = $('#fontBtn').getBoundingClientRect(), w = 300, h = 420;
+  pop.style.left = clamp(r.right - w, 8, innerWidth - w - 8) + 'px';
+  pop.style.top = (r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  paintIcons(pop);
+  const away = e => { if (!pop.contains(e.target) && !e.target.closest('#fontBtn')) closeFontPop(); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); closeFontPop(); } };
+  document.addEventListener('pointerdown', away, true);
+  window.addEventListener('keydown', onKey, true);
+  pop._off = () => { document.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', onKey, true); };
   const cur = it.style.font;
   const list = () => {
     const q = $('#fpQ').value.trim().toLowerCase(), have = f => fontReady(f);
@@ -74,8 +83,7 @@ function fontPicker(it) {
   list();
   $('#fpQ').oninput = list;
   $('#fpQ').focus();
-  $('#fpX').onclick = hideModal;
-  $('#mBox').querySelector('.seg').onclick = e => { const b = e.target.closest('[data-ft]'); if (!b) return; fontTab = b.dataset.ft; $$('#mBox [data-ft]').forEach(x => x.classList.toggle('on', x === b)); list(); };
+  pop.querySelector('.ftabs').onclick = e => { const b = e.target.closest('[data-ft]'); if (!b) return; fontTab = b.dataset.ft; $$('#fpop [data-ft]').forEach(x => x.classList.toggle('on', x === b)); list(); };
   $('#fpL').onclick = async e => {
     const r = e.target.closest('[data-font]');
     if (!r || r.classList.contains('busy')) return;
@@ -86,11 +94,12 @@ function fontPicker(it) {
     }
     snapshot();
     it.style.font = f;
-    hideModal();
+    closeFontPop();
     await document.fonts.load(`${it.style.weight || 400} 40px "${f}"`).catch(() => {});
     refresh();
   };
 }
+function closeFontPop() { const p = $('#fpop'); if (p) { p._off(); p.remove(); } }
 const ACCENT = '#2ee6d6';
 const ROW = 46;
 const IN_T = 0.35, OUT_T = 0.25;
