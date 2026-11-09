@@ -227,6 +227,73 @@ function imgFor(m) {
   if (!im) { im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => (needsDraw = true); im.src = url; imgs.set(url, im); }
   return im;
 }
+// Blend modes (Photoshop names -> canvas); the export uses ffmpeg's blend filter with the same modes.
+const BLENDS = { multiply: 'multiply', screen: 'screen', overlay: 'overlay', darken: 'darken', lighten: 'lighten', softlight: 'soft-light',
+  hardlight: 'hard-light', difference: 'difference', exclusion: 'exclusion', addition: 'lighter', dodge: 'color-dodge', burn: 'color-burn' };
+// Transition tail: the outgoing clip's last frame, grabbed once with its own decoder (the playback
+// element may already be showing the next piece of the same file).
+const tails = new Map();
+function tailFrame(it) {
+  const m = media(it), at = num(it.in, 0) + S.srcAt(it, Math.max(0, it.dur - 0.5 / P.fps)), key = it.media + '@' + at.toFixed(3);
+  let c = tails.get(it.id);
+  if (c && c._key === key) return c._ok ? c : null;
+  if (!c) tails.set(it.id, c = document.createElement('canvas'));
+  Object.assign(c, { _key: key, _ok: false });
+  const v = document.createElement('video');
+  v.crossOrigin = 'anonymous'; v.muted = true; v.preload = 'auto';
+  v.onloadeddata = () => { v.currentTime = Math.min(at, v.duration - 0.01); };
+  v.onseeked = () => {
+    if (c._key === key) {
+      const s = Math.min(1, 1280 / v.videoWidth);
+      c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s); c._w = c.width;
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      c._ok = true; needsDraw = true;
+    }
+    v.removeAttribute('src'); v.load();
+  };
+  v.src = urlOf(m);
+  return null;
+}
+// Fill layers (solid colour or gradient), drawn at frame size. Points are 0..1 of the layer box.
+const FILL_DEF = { type: 'linear', c1: '#000000', a1: 0, c2: '#000000', a2: 0.85, x1: 0.5, y1: 0.35, x2: 0.5, y2: 1, mid: 0.5 };
+const fills = new Map();
+function hexA(hex, a) { const n = parseInt(String(hex).slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${clamp(num(a, 1), 0, 1)})`; }
+function paintFill(g, f, w, h) {
+  f = { ...FILL_DEF, ...f };
+  g.clearRect(0, 0, w, h);
+  if (f.type === 'solid') { g.fillStyle = hexA(f.c1, 1); return g.fillRect(0, 0, w, h); }
+  const gr = f.type === 'radial'
+    ? g.createRadialGradient(f.x1 * w, f.y1 * h, 0, f.x1 * w, f.y1 * h, Math.max(1, Math.hypot((f.x2 - f.x1) * w, (f.y2 - f.y1) * h)))
+    : g.createLinearGradient(f.x1 * w, f.y1 * h, f.x2 * w, f.y2 * h);
+  const n1 = parseInt(f.c1.slice(1), 16), n2 = parseInt(f.c2.slice(1), 16), mix = (s, k) => Math.round(((n1 >> s & 255) + (n2 >> s & 255)) / 2);
+  gr.addColorStop(0, hexA(f.c1, f.a1));
+  gr.addColorStop(clamp(num(f.mid, 0.5), 0.02, 0.98), `rgba(${mix(16)},${mix(8)},${mix(0)},${(num(f.a1, 1) + num(f.a2, 1)) / 2})`);
+  gr.addColorStop(1, hexA(f.c2, f.a2));
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}
+function fillCanvas(it, w = P.w, h = P.h) {
+  const key = JSON.stringify(it.fill) + w + 'x' + h;
+  let c = fills.get(it.id);
+  if (c && c._key === key) return c;
+  if (!c) fills.set(it.id, c = document.createElement('canvas'));
+  c.width = w; c.height = h; c._key = key; c._w = w;
+  paintFill(c.getContext('2d'), it.fill || {}, w, h);
+  return c;
+}
+// Gradient handles on the preview: start point, end point and the midpoint diamond (as in Photoshop).
+const fillPts = (f, L) => { f = { ...FILL_DEF, ...f }; const P1 = [L.ox + f.x1 * L.cw, L.oy + f.y1 * L.ch], P2 = [L.ox + f.x2 * L.cw, L.oy + f.y2 * L.ch], q = num(f.mid, 0.5);
+  return { p1: P1, p2: P2, mid: [P1[0] + (P2[0] - P1[0]) * q, P1[1] + (P2[1] - P1[1]) * q] }; };
+function drawFillGuide(ctx, f, L) {
+  const p = fillPts(f, L), s = P.w / Math.max(1, view.getBoundingClientRect().width); // screen pixel in project units
+  ctx.save(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4 * s;
+  ctx.beginPath(); ctx.moveTo(...p.p1); ctx.lineTo(...p.p2); ctx.stroke();
+  for (const [pt, r, c] of [[p.p1, 9, f.c1 || '#000'], [p.p2, 7, f.c2 || '#000']]) {
+    ctx.beginPath(); ctx.arc(pt[0], pt[1], r * s, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff'; ctx.stroke();
+  }
+  ctx.translate(...p.mid); ctx.rotate(Math.PI / 4); ctx.fillStyle = '#fff'; ctx.fillRect(-6 * s, -6 * s, 12 * s, 12 * s);
+  ctx.restore();
+}
 // Denoise / normalize: each source's sound is processed once per effect set (audio_fx, cached),
 // then played and exported in its place. Keys are "mediaId|fx".
 const dnOk = new Map(), dnReady = new Set();
@@ -488,13 +555,17 @@ function drawVisual(ctx, time, ov) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, P.w, P.h);
   for (const tid of renderOrder(P, 'video')) {
-    for (const it of P.items) {
-      const pv = ov && ov.id === it.id;
-      if (it.track !== tid || isText(it) || !(pv || active(it, time))) continue;
-      const m = media(it);
-      if (m.kind === 'audio') continue;
-      let src = m.kind === 'image' ? imgFor(m) : elFor(it);
-      if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
+    // by start time: a clip's frozen tail is drawn under the next clip's transition
+    for (const it of P.items.filter(i => i.track === tid && !isText(i)).sort((a, b) => a.start - b.start)) {
+      const pv = ov && ov.id === it.id, m = media(it);
+      if (!m || m.kind === 'audio' || it.hidden) continue;
+      const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
+      if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
+      if (!(pv || tail || active(it, time))) continue;
+      let src = m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailFrame(it) : elFor(it);
+      if (!src) continue;
+      if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
+      else if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
         if (!src._snap) continue;
         src = src._snap; // frame-skipping playback: keep the last frame while the next jump lands
       } else if (src._hold && ctx === vctx) {
@@ -502,11 +573,20 @@ function drawVisual(ctx, time, ov) {
         if (c.width !== m.w || c.height !== m.h) { c.width = m.w; c.height = m.h; }
         c.getContext('2d').drawImage(src, 0, 0, m.w, m.h);
       }
-      const lt = pv ? ov.lt : time - it.start;
+      const lt = pv ? ov.lt : tail ? it.dur : time - it.start;
+      if (m.fill) { m.w = P.w; m.h = P.h; }
       const a = S.withVa(S.animAt(it, lt), lt, P.w, P.h), L = S.layout(a, m, P.w, P.h), C = S.srcCrop(it, m);
-      const k = (src.videoWidth || src.naturalWidth || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
+      const k = (src.videoWidth || src.naturalWidth || src._w || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
       ctx.save();
       ctx.globalAlpha = S.fadeAlpha(it, lt) * clamp(num(a.opacity, 1), 0, 1);
+      if (it.blend && it.blend !== 'normal') ctx.globalCompositeOperation = BLENDS[it.blend] || 'source-over';
+      // transitions: TI = this clip coming in, TO = this clip's held tail going out
+      const TI = !tail && !pv ? S.transIn(P, it) : null, trIn = TI && lt < TI.d ? TI : null;
+      const qi = trIn ? clamp(lt / trIn.d, 0, 1) : 1, qo = tail ? clamp((time - end) / TO.d, 0, 1) : 0;
+      if (trIn && S.TR_DIP[trIn.id] && qi < 0.5) { ctx.restore(); continue; }
+      if (trIn && trIn.id === 'fade') ctx.globalAlpha *= qi;
+      const sl = trIn && S.TR_SLIDE[trIn.id] ? [S.TR_SLIDE[trIn.id], 1 - S.ease3(qi)] : tail && S.TR_SLIDE[TO.id] ? [S.TR_SLIDE[TO.id], -S.ease3(qo)] : null;
+      if (sl) ctx.translate(sl[0][0] * P.w * sl[1], sl[0][1] * P.h * sl[1]);
       const [tx, ty] = S.trkAt(it, lt);
       if (tx || ty) ctx.translate(tx * P.w, ty * P.h);
       if (it.flipH || it.flipV || num(a.rotate, 0)) {
@@ -515,6 +595,7 @@ function drawVisual(ctx, time, ov) {
         ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
+      if (trIn && S.TR_GEQ[trIn.id]) S.transClip(ctx, trIn.id, S.ease3(qi), L.ox, L.oy, L.cw, L.ch);
       const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
       const dc = mk ? maskBox(L) : ctx;
       if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
@@ -528,6 +609,10 @@ function drawVisual(ctx, time, ov) {
         ctx.drawImage(dc.canvas, 0, 0, Math.round(L.cw), Math.round(L.ch), L.ox, L.oy, Math.round(L.cw), Math.round(L.ch));
         if (ctx === vctx && sel === it.id && inspTab === 'tAdjust' && colSub === 'mask' && !playing) drawMaskGuide(ctx, it.mask, L);
       }
+      // dip to black/white: the clip's box fades to the colour (going out) or from it (coming in)
+      const dip = trIn && S.TR_DIP[trIn.id] ? [trIn.id, 1 - (qi - 0.5) * 2] : tail && S.TR_DIP[TO.id] ? [TO.id, Math.min(1, qo * 2)] : null;
+      if (dip && dip[1] > 0) { ctx.globalAlpha *= dip[1]; ctx.fillStyle = S.TR_DIP[dip[0]]; ctx.fillRect(L.ox, L.oy, L.cw, L.ch); }
+      if (ctx === vctx && sel === it.id && m.fill && it.fill && it.fill.type !== 'solid' && !playing) drawFillGuide(ctx, it.fill, L);
       ctx.restore();
     }
   }
@@ -848,7 +933,7 @@ function drawTextItem(ctx, pr, it, lt) {
 
 function visibleTexts(pr, time) {
   const out = [];
-  for (const tid of renderOrder(pr, 'text')) for (const it of pr.items) if (it.track === tid && isText(it) && active(it, time)) out.push(it);
+  for (const tid of renderOrder(pr, 'text')) for (const it of pr.items) if (it.track === tid && isText(it) && !it.hidden && active(it, time)) out.push(it);
   return out;
 }
 
@@ -992,16 +1077,17 @@ function curveMarks(it) {
     c.pts.map(p => `<i class="cvp" style="left:${(S.fAtU(c, p[0]) * 100).toFixed(2)}%;top:${y(S.rateAt(it, it.dur * S.fAtU(c, p[0])))}%"></i>`).join('');
 }
 function clipLabel(it) {
-  if (isText(it)) return icon('type') + esc(it.text);
+  const off = it.hidden ? icon('eye-off') : '';
+  if (isText(it)) return off + icon('type') + esc(it.text);
   const m = media(it);
-  return icon(m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
+  return off + icon(m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
 }
 function renderTimeline() {
   const width = (Math.max(total(), t) + 30) * pps;
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(tr('tr_' + x.id))}</div>`).join('');
   $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div><span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -1330,6 +1416,7 @@ function refresh() {
   for (const id of msel) if (!item(id)) msel.delete(id);
   if (msel.size < 2) msel.clear();
   pack();
+  for (const [k, m] of Object.entries(P.media)) if (m.fill && !P.items.some(i => i.media === k)) delete P.media[k];
   // library redraws only when its files or their "in use" marks change (thumbnails are <video> elements)
   const sig = Object.keys(P.media).join() + '|' + [...new Set(P.items.map(i => i.media))].join();
   if (sig !== binSig) { binSig = sig; renderBin(); }
@@ -1347,7 +1434,7 @@ function refresh() {
 const getPath = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
 function setPath(o, k, v) { const ks = k.split('.'); const last = ks.pop(); ks.reduce((a, x) => (a[x] ??= {}), o)[last] = v; }
 // Every slider has a number box beside it, in the unit people read (percent, degrees, seconds).
-const PCT = /volume|opacity|bgAlpha|crop\.|logo\.|Mix$|lut\.mix/;
+const PCT = /volume|opacity|bgAlpha|crop\.|logo\.|Mix$|lut\.mix|fill\.(a1|a2|mid)/;
 const unitOf = k => /Dur$|^(fadeIn|fadeOut|afIn|afOut)$/.test(k) ? 's' : k === 'rotate' ? '°' : PCT.test(k) ? '%' : '';
 const dispVal = (k, v) => PCT.test(k) ? Math.round(v * 100) : /size|strokeW|spacing|Blur|Dist|glowSize|rotate/.test(k) ? Math.round(v) : +(+v).toFixed(2);
 function setShow(k, v) {
@@ -1426,6 +1513,7 @@ const kfBar = it => `<div class="kfbar" dir="ltr"><button class="ib" data-kf="pr
 const trkBtns = it => grp('tracking', `<button class="wide" id="trkGo">${icon('crosshair')} ${tr(it.trk ? 'trk_redo' : 'trk_go')}</button>` + (it.trk ? `<button class="wide" id="trkClear">${tr('trk_clear')}</button>` : ''));
 function inspector() {
   kfSyncT = -1;
+  if (libTab === 'trans') renderTrans();
   const body = $('#inspBody'), it = sel && item(sel), tabs = inspTabsFor(it);
   if (!tabs.includes(inspTab)) inspTab = tabs[0] || null;
   $('#inspTabs').innerHTML = tabs.map(x => `<button data-itab="${x}" class="${x === inspTab ? 'on' : ''}">${tr(x)}</button>`).join('');
@@ -1444,7 +1532,7 @@ function inspector() {
   if (inspTab === 'tText') {
     const st = { ...textDefaults(it.track === 'c1'), ...it.style };
     it.style = st;
-    h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`);
+    h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`, hideRow(it));
     const pOpen = (() => { try { return localStorage.getItem('kadr.presetsOpen') === '1'; } catch { return false; } })();
     h.push(`<div class="grp"><div class="gh ghx"><span>${tr('presets')}</span><button class="ib pTog${pOpen ? ' open' : ''}" data-ptog title="${tr(pOpen ? 'showLess' : 'showMore')}">${icon('chevron-down')}</button></div>` +
       `<div class="tpresets${pOpen ? '' : ' collapsed'}">${TEXT_STYLES.map(x => `<button data-tpreset="${x.id}" title="${x.id}"></button>`).join('')}</div></div>`);
@@ -1488,7 +1576,15 @@ function inspector() {
       if (V) h.push(fades);
     }
   } else if (inspTab === 'tVideo') {
-    h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing);
+    const FM = media(it).fill;
+    h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing, hideRow(it));
+    if (FM) {
+      const f = it.fill = { ...FILL_DEF, ...it.fill }, gr = f.type !== 'solid';
+      h.push(grp('fillSec', fld.select('fill.type', 'fillType', ['solid', 'linear', 'radial'].map(x => [x, tr('ft_' + x)]), it) +
+        `<div class="inl">${fld.color('fill.c1', gr ? 'color1' : 'color', it)}${gr ? fld.color('fill.c2', 'color2', it) : ''}</div>` +
+        (gr ? `<div class="row2">${fld.range('fill.a1', 'op1', 0, 1, 0.01, it, 1)}${fld.range('fill.a2', 'op2', 0, 1, 0.01, it, 1)}</div>` +
+          fld.range('fill.mid', 'fillMid', 0.05, 0.95, 0.01, it, 0.5) + `<button class="wide" id="fillSwap">${icon('arrow-right-left')}${tr('fillSwap')}</button><p class="hint">${tr('fillHint')}</p>` : '')));
+    }
     const ai = S.animAt(it, kfLt(it));
     h.push(grp('scale', kfBar(it) + fld.select('fit', 'fit_', [['cover', tr('cover')], ['contain', tr('contain')]], it) +
       fld.range('scale', 'scale', 0.1, 3, 0.01, ai, 1) +
@@ -1496,14 +1592,15 @@ function inspector() {
       fld.range('rotate', 'rotation', -180, 180, 1, ai) +
       fld.range('opacity', 'opacity', 0, 1, 0.01, ai, 1) +
       `<div class="inl">${fld.check('flipH', 'flipH', it)}${fld.check('flipV', 'flipV', it)}</div>`));
+    h.push(grp('blendSec', fld.select('blend', 'blendMode', ['normal', ...Object.keys(BLENDS)].map(x => [x, tr('bm_' + x)]), it) + `<p class="hint">${tr('blendHint')}</p>`));
     if (it.track !== 'v1') h.push(trkBtns(it));
-    h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
+    if (!FM) h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
     const K = it.chroma || {};
-    h.push(grp('keySec', `<div class="inl">${fld.check('chroma.on', 'keyOn', it)}</div>` + (K.on ? `<div class="row2"><label>${tr('keyColor')}<input type="color" data-k="chroma.color" value="${esc(K.color || '#00ff00')}"></label><button id="keyPick" data-i="pipette"><span>${tr('keyPick')}</span></button></div>` +
+    if (!FM) h.push(grp('keySec', `<div class="inl">${fld.check('chroma.on', 'keyOn', it)}</div>` + (K.on ? `<div class="row2"><label>${tr('keyColor')}<input type="color" data-k="chroma.color" value="${esc(K.color || '#00ff00')}"></label><button id="keyPick" data-i="pipette"><span>${tr('keyPick')}</span></button></div>` +
       fld.range('chroma.sim', 'keySim', 0.01, 1, 0.01, it, 0.3) + fld.range('chroma.blend', 'keyBlend', 0, 1, 0.01, it, 0.1) : '') + `<p class="hint">${tr('keyHint')}</p>`));
     const lo = it.logo && it.logo.on;
-    h.push(grp('logoSec', `<div class="inl">${fld.check('logo.on', 'logoOn', it)}</div>` + (lo ?
+    if (!FM) h.push(grp('logoSec', `<div class="inl">${fld.check('logo.on', 'logoOn', it)}</div>` + (lo ?
       `<div class="row2">${fld.range('logo.x', 'posX', 0, 0.99, 0.005, it)}${fld.range('logo.y', 'posY', 0, 0.99, 0.005, it)}</div>` +
       `<div class="row2">${fld.range('logo.w', 'lgW', 0.02, 1, 0.005, it, 0.18)}${fld.range('logo.h', 'lgH', 0.02, 1, 0.005, it, 0.1)}</div>` : '') +
       `<p class="hint">${tr('logoHint')}</p>`));
@@ -1620,6 +1717,8 @@ function inspector() {
   });
   bind('#autoAdj', () => autoAdjust(it));
   bind('#keyPick', () => keyPick(it));
+  bind('#hideBtn', () => toggleHidden());
+  bind('#fillSwap', () => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
   bind('#colMatch', () => colorMatchPick(it));
 }
 $('#inspBody').addEventListener('click', e => {
@@ -2035,7 +2134,7 @@ function hitAt(x, y) {
   for (let i = tx.length - 1; i >= 0; i--) { const b = textBoxes.get(tx[i].id); if (b && inBox(b, x, y)) return tx[i]; }
   const order = renderOrder(P, 'video');
   for (let i = order.length - 1; i >= 0; i--)
-    for (const it of [...P.items].reverse()) if (it.track === order[i] && !isText(it) && active(it, t) && media(it).kind !== 'audio' && inBox(visBox(it, t - it.start), x, y)) return it;
+    for (const it of [...P.items].reverse()) if (it.track === order[i] && !isText(it) && !it.hidden && active(it, t) && media(it).kind !== 'audio' && inBox(visBox(it, t - it.start), x, y)) return it;
   return null;
 }
 function placeSelBox() {
@@ -2118,6 +2217,25 @@ function editTextInline(it) {
 view.addEventListener('pointerdown', e => {
   const r = view.getBoundingClientRect(), k = P.w / r.width, x0 = e.clientX, y0 = e.clientY;
   if (e.button !== 0) return;
+  const cf = sel && item(sel);
+  if (cf && !isText(cf) && media(cf) && media(cf).fill && cf.fill && cf.fill.type !== 'solid' && !cf.hidden && active(cf, t)) {
+    const lt = t - cf.start, L = S.layout(S.withVa(S.animAt(cf, lt), lt, P.w, P.h), media(cf), P.w, P.h), p = fillPts(cf.fill, L);
+    const px = (x0 - r.left) * k, py = (y0 - r.top) * k, near = q => Math.hypot(q[0] - px, q[1] - py) < 14 * k;
+    const hd = near(p.mid) ? 'mid' : near(p.p2) ? 'p2' : near(p.p1) ? 'p1' : null;
+    if (hd) {
+      snapshot();
+      const f = cf.fill;
+      const mv = ev => {
+        const X = ((ev.clientX - r.left) * k - L.ox) / L.cw, Y = ((ev.clientY - r.top) * k - L.oy) / L.ch;
+        if (hd === 'mid') { const dx = f.x2 - f.x1, dy = f.y2 - f.y1; f.mid = +clamp(((X - f.x1) * dx + (Y - f.y1) * dy) / (dx * dx + dy * dy || 1), 0.05, 0.95).toFixed(3); }
+        else { f[hd === 'p1' ? 'x1' : 'x2'] = +X.toFixed(4); f[hd === 'p1' ? 'y1' : 'y2'] = +Y.toFixed(4); }
+        dirty = true; needsDraw = true;
+      };
+      window.addEventListener('pointermove', mv);
+      window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); inspector(); }, { once: true });
+      return;
+    }
+  }
   const cur = sel && item(sel), cb = cur && active(cur, t) && !(media(cur) && media(cur).kind === 'audio') && boxOf(cur);
   // keep the current selection when clicking inside it (so you can grab a clip under a text), otherwise pick what's on top
   if (!(cb && inBox(cb, (x0 - r.left) * k, (y0 - r.top) * k))) {
@@ -2272,6 +2390,8 @@ async function runTrack(f, src, box) {
 /* ---------- library ---------- */
 function setLibTab(tab) {
   libTab = tab;
+  if (tab === 'trans') renderTrans();
+  if (tab === 'layers') renderLayers();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $$('#lib [data-pane]').forEach(p => (p.hidden = p.dataset.pane !== tab));
 }
@@ -2289,7 +2409,7 @@ function binOrder() {
     dur: (a, b) => num(b[1].dur, 0) - num(a[1].dur, 0),
     kind: (a, b) => a[1].kind.localeCompare(b[1].kind) || a[1].name.localeCompare(b[1].name),
   }[by];
-  return Object.entries(P.media).filter(([, m]) => !q || m.name.toLowerCase().includes(q)).sort(cmp).map(([id]) => id);
+  return Object.entries(P.media).filter(([, m]) => !m.fill && (!q || m.name.toLowerCase().includes(q))).sort(cmp).map(([id]) => id);
 }
 function renderBin() {
   for (const id of binSel) if (!P.media[id]) binSel.delete(id);
@@ -2455,8 +2575,95 @@ $('#rows').addEventListener('contextmenu', e => {
   select(c.dataset.id);
   const it = item(c.dataset.id), vid = !isText(it) && media(it).kind === 'video';
   ctxMenu(e, [['split', () => splitAt()], ['k_copy', copySel], ['k_cut', cutSel], ['k_paste', pasteClip], ['dup', duplicateSel],
-    vid && ['freeze', freezeFrame], !isText(it) && media(it).kind !== 'audio' && ['rotate90', rotateSel], ['-'], ['del', removeSel, 'danger']]);
+    vid && ['freeze', freezeFrame], !isText(it) && media(it).kind !== 'audio' && ['rotate90', rotateSel], (isText(it) || media(it).kind !== 'audio') && [it.hidden ? 'showLayer' : 'hideLayer', toggleHidden], ['-'], ['del', removeSel, 'danger']]);
 });
+
+/* ---------- hide / show layers ---------- */
+const hideRow = it => `<button class="wide hidebtn${it.hidden ? ' on' : ''}" id="hideBtn">${icon(it.hidden ? 'eye-off' : 'eye')}${tr(it.hidden ? 'showLayer' : 'hideLayer')}</button>`;
+function toggleHidden() {
+  const ids = selIds().filter(id => { const i = item(id); return i && (isText(i) || media(i).kind !== 'audio'); });
+  if (!ids.length) return;
+  snapshot();
+  const v = !item(ids[0]).hidden;
+  for (const id of ids) { const i = item(id); if (v) i.hidden = true; else delete i.hidden; }
+  dirty = true; refresh();
+}
+
+/* ---------- transitions pane ---------- */
+// The cut a transition goes on: the selected clip if a clip ends right where it starts, else the
+// clip right after the selected one, else the main-track cut nearest the playhead.
+function transTarget() {
+  const ok = b => b && !isText(b) && media(b) && media(b).kind !== 'audio' && !b.hidden && S.transIn(P, { ...b, trans: { id: 'fade' } });
+  const cur = sel && item(sel);
+  if (ok(cur)) return cur;
+  if (cur) { const nx = P.items.find(i => i.track === cur.track && i.id !== cur.id && Math.abs(i.start - cur.start - cur.dur) < 0.5 / P.fps); if (ok(nx)) return nx; }
+  let best = null;
+  for (const b of P.items) if (b.track === 'v1' && ok(b) && (!best || Math.abs(b.start - t) < Math.abs(best.start - t))) best = b;
+  return best;
+}
+function renderTrans() {
+  const tg = transTarget(), T = tg && S.transIn(P, tg), cur = T ? T.id : 'none';
+  $('#transHead').innerHTML = !tg ? `<p class="hint">${tr('trNone')}</p>` :
+    `<p class="hint">${tr('trAt', { t: fmt(tg.start) })}</p>` + (T ? `<div class="f"><div class="lb"><span>${tr('dur')}</span><b>${T.d.toFixed(1)}s</b></div>` +
+      `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` : '');
+  $('#transCards').innerHTML = ['none', ...S.TRANS].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' disabled'}>` +
+    `<i class="tv tv-${id}"><b></b></i><span>${tr('tr_' + id)}</span></button>`).join('');
+  const d = $('#trDur');
+  if (d) {
+    d.onpointerdown = () => snapshot();
+    d.oninput = () => { tg.trans.dur = +d.value; d.previousElementSibling.lastElementChild.textContent = (+d.value).toFixed(1) + 's'; dirty = true; needsDraw = true; };
+    d.onchange = () => { renderTimeline(); previewTrans(tg); };
+  }
+}
+function previewTrans(tg) {
+  const T = S.transIn(P, tg);
+  if (!T) return;
+  setPlaying(false); seek(Math.max(0, tg.start - 0.6)); setPlaying(true);
+  clearTimeout(previewTrans.tm);
+  previewTrans.tm = setTimeout(() => { if (playing) setPlaying(false); }, (T.d + 1.2) * 1000);
+}
+$('#transCards').addEventListener('click', e => {
+  const b = e.target.closest('[data-tr]'), tg = b && transTarget();
+  if (!tg) return;
+  snapshot();
+  if (b.dataset.tr === 'none') delete tg.trans;
+  else tg.trans = { id: b.dataset.tr, dur: num(tg.trans && tg.trans.dur, 0.5) };
+  dirty = true;
+  select(tg.id); refresh();
+  previewTrans(tg);
+});
+$('#rows').addEventListener('click', e => {
+  const b = e.target.closest('.trn');
+  if (!b) return;
+  select(b.dataset.trn); setLibTab('trans');
+});
+
+/* ---------- fill layers pane ---------- */
+const LAYERS = {
+  shadow: { type: 'linear', c1: '#000000', a1: 0, c2: '#000000', a2: 0.85, x1: 0.5, y1: 0.4, x2: 0.5, y2: 1, mid: 0.5 },
+  gradient: { type: 'linear', c1: '#5cd3c6', a1: 1, c2: '#141518', a2: 1, x1: 0, y1: 0, x2: 1, y2: 1, mid: 0.5 },
+  vignette: { type: 'radial', c1: '#000000', a1: 0, c2: '#000000', a2: 0.8, x1: 0.5, y1: 0.5, x2: 1, y2: 1, mid: 0.6 },
+  solid: { type: 'solid', c1: '#5cd3c6', a1: 1 },
+};
+function renderLayers() {
+  $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="56"></canvas></i><span>${tr('ly_' + id)}</span></button>`).join('');
+  for (const c of $$('#layerCards canvas')) {
+    const g = c.getContext('2d');
+    g.fillStyle = '#7d8a96'; g.fillRect(0, 0, 96, 56); g.fillStyle = '#b8c4cc'; g.fillRect(0, 34, 96, 22); // a little "scene" under the layer
+    paintFill(g, LAYERS[c.closest('[data-layer]').dataset.layer], 96, 56);
+  }
+}
+function addFill(id) {
+  const mid = 'fill_' + uid();
+  P.media[mid] = { kind: 'image', fill: true, name: tr('ly_' + id), w: P.w, h: P.h, path: '' };
+  const busy = tk => P.items.some(i => i.track === tk && i.start < t + 5 && i.start + i.dur > t);
+  const tk = (P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id)) || { id: 'v2' }).id;
+  const it = addMedia(mid, tk, t);
+  it.fill = { ...FILL_DEF, ...LAYERS[id] };
+  inspTab = 'tVideo';
+  refresh();
+}
+$('#layerCards').addEventListener('click', e => { const b = e.target.closest('[data-layer]'); if (b) addFill(b.dataset.layer); });
 
 /* ---------- freeze frame & rotate ---------- */
 async function freezeFrame() {
@@ -2675,7 +2882,7 @@ function toast(msg, action) {
 
 /* ---------- export ---------- */
 async function rasterizeTexts(Q, work) {
-  const texts = Q.items.filter(isText);
+  const texts = Q.items.filter(i => isText(i) && !i.hidden);
   if (!texts.length) return null;
   await Promise.all([...new Set(texts.map(i => `${i.style.weight} 40px "${i.style.font}"`))].map(f => document.fonts.load(f).catch(() => {})));
   const c = document.createElement('canvas');
@@ -2855,6 +3062,7 @@ async function doExport(o) {
       Q.fps = o.fps;
       work = await inv('work_begin');
       const list = await rasterizeTexts(Q, work), luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
+      await writeFills(Q, work);
       const { args, duration } = G.buildArgs(Q, { out: o.video, textList: list ? work.path + '/text.ffconcat' : null, codec: o.codec, quality: o.quality, luts, masks });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: list ? G.concatText(list, o.fps) : null, duration });
@@ -3006,6 +3214,18 @@ async function autosave() {
   } catch (e) { /* try again on the next tick */ } finally { autoBusy = false; }
 }
 setInterval(autosave, 2000);
+async function writeFills(Q, work) {
+  for (const it of Q.items) {
+    const m = Q.media[it.media];
+    if (!m || !m.fill || it.hidden) continue;
+    const c = document.createElement('canvas'); c.width = Q.w; c.height = Q.h;
+    paintFill(c.getContext('2d'), it.fill || {}, Q.w, Q.h);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    const id = 'fillx_' + it.id, name = id.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40) + '.png';
+    Q.media[id] = { kind: 'image', path: await inv('write_work', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-id': String(work.id), 'x-name': name } }), w: Q.w, h: Q.h, name };
+    it.media = id;
+  }
+}
 async function writeMasks(Q, work) {
   const out = {};
   for (const it0 of Q.items) {

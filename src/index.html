@@ -30,6 +30,8 @@
       <button data-tab="text" data-i="type"><span data-t="text"></span></button>
       <button data-tab="captions" data-i="captions"><span data-t="captions"></span></button>
       <button data-tab="filters" data-i="sparkles"><span data-t="filters"></span></button>
+      <button data-tab="trans" data-i="arrow-right-left"><span data-t="transitions"></span></button>
+      <button data-tab="layers" data-i="layers"><span data-t="layersTab"></span></button>
     </nav>
     <section data-pane="media">
       <button class="wide accent-ghost" id="bImport" data-i="plus"><span data-t="import"></span></button>
@@ -51,6 +53,14 @@
     <section data-pane="filters" hidden>
       <p class="hint" data-t="filtersHint"></p>
       <div id="filterCards" class="cards"></div>
+    </section>
+    <section data-pane="trans" hidden>
+      <div id="transHead"></div>
+      <div id="transCards" class="trcards"></div>
+    </section>
+    <section data-pane="layers" hidden>
+      <p class="hint" data-t="layersHint"></p>
+      <div id="layerCards" class="trcards"></div>
     </section>
   </aside>
 

@@ -51,7 +51,7 @@
     if (!(T > 0)) throw new Error('empty timeline');
     const vt = p.tracks.filter(t => t.kind === 'video').map(t => t.id).reverse(); // bottom layer first
     const vis = o.audioOnly || o.audioExport ? [] : p.items
-      .filter(i => vt.includes(i.track) && i.media && p.media[i.media] && p.media[i.media].kind !== 'audio')
+      .filter(i => vt.includes(i.track) && !i.hidden && i.media && p.media[i.media] && p.media[i.media].kind !== 'audio')
       .sort((a, b) => vt.indexOf(a.track) - vt.indexOf(b.track) || a.start - b.start);
     const aud = p.items.filter(i => audible(p, i));
 
@@ -92,6 +92,8 @@
         const smax = (kf && kf.scale ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1)) * (LP && LP.smax || 1);
         const L = S.layout({ ...it, scale: smax }, m, W, H);
         const ch = timeChain(it, fps);
+        const TI = S.transIn(p, it0), TO = S.transOut(p, it0), d3 = v => (+v).toFixed(4);
+        if (TO) ch.push(`tpad=stop_mode=clone:stop_duration=${f3(TO.d)}`); // hold the last frame under the next clip's transition
         if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
         if (S.hasKey(it)) { const K = it.chroma; ch.push('format=yuva444p', `chromakey=color=${String(K.color || '#00ff00').replace('#', '0x')}:similarity=${num(K.sim, 0.3).toFixed(3)}:blend=${num(K.blend, 0.1).toFixed(3)}`); }
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
@@ -108,11 +110,18 @@
         const mk = o.masks && o.masks[it0.id];
         if (mk) { // mask: grey PNG at the box size, its brightness becomes the clip's alpha
           const mi = n++;
-          args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur + 1), '-i', mk);
+          args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur + 3), '-i', mk);
           fc.push(`[${k}:v]${ch.join(',')},format=yuva420p[pm${j}]`, `[${mi}:v]scale=${L.cw}:${L.ch},format=gray[mm${j}]`, `[pm${j}][mm${j}]alphamerge[ma${j}]`);
           ch.length = 0; ch.push('null');
         }
         ch.push('format=yuva420p');
+        if (TI) { // the incoming side, in clip time
+          const d = TI.d, c = S.TR_DIP[TI.id];
+          if (TI.id === 'fade') ch.push(`fade=t=in:st=0:d=${d3(d)}:alpha=1`);
+          else if (c) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`, `fade=t=in:st=${d3(d / 2)}:d=${d3(d / 2)}:color=${c.replace('#', '0x')}`);
+          else if (S.TR_GEQ[TI.id]) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${S.TR_GEQ[TI.id].replace(/P/g, S.easeExpr(`clip(T/${d3(d)},0,1)`))})':enable='lt(t,${d3(d)})'`);
+        }
+        if (TO && S.TR_DIP[TO.id]) ch.push(`fade=t=out:st=${f3(it.dur)}:d=${d3(TO.d / 2)}:color=${S.TR_DIP[TO.id].replace('#', '0x')}`);
         let ox = L.ox, oy = L.oy;
         const rot = num(it.rotate, 0) * Math.PI / 180;
         // keyframed: rotate on a fixed square canvas first, then shrink per frame (rotate can't take changing sizes)
@@ -145,7 +154,22 @@
           const px = ex('x', it.start, 't', 0), py = ex('y', it.start, 't', 0);
           tx = `'W/2+(${px})-w/2${it.trk ? '+' + S.trkExpr(it, W, 0) : ''}'`; ty = `'H/2+(${py})-h/2${it.trk ? '+' + S.trkExpr(it, H, 1) : ''}'`;
         }
-        fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
+        // slides move the whole layer: an offset on the overlay position
+        const term = (v, add) => typeof v === 'number' ? `'${v}${add}'` : v.slice(0, -1) + add + "'";
+        const slide = (s0, d, sign, of) => { const [dx, dy] = S.TR_SLIDE[of], e = S.easeExpr(`clip((t-${d3(s0)})/${d3(d)},0,1)`), f = sign > 0 ? `(1-${e})` : e;
+          if (dx) tx = term(tx, `${dx * sign > 0 ? '+' : '-'}W*${f}`);
+          if (dy) ty = term(ty, `${dy * sign > 0 ? '+' : '-'}H*${f}`); };
+        if (TI && S.TR_SLIDE[TI.id]) slide(it.start, TI.d, 1, TI.id);
+        if (TO && S.TR_SLIDE[TO.id]) slide(it.start + it.dur, TO.d, -1, TO.id);
+        const BM = it.blend && S.BLEND_FF[it.blend];
+        if (BM) { // blend mode: place the layer on a clear frame, blend it with everything below, keep only where the layer is
+          const [bx, lg] = BM[1] ? [`lg${j}`, `bx${j}`] : [`bx${j}`, `lg${j}`];
+          fc.push(`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuva420p[cl${j}]`,
+            `[cl${j}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass,format=yuva444p,split[ly${j}][lz${j}]`, `[lz${j}]alphaextract[la${j}]`,
+            `[${base}]split[bs${j}][bt${j}]`, `[bs${j}]format=gbrp[bx${j}]`, `[ly${j}]format=gbrp[lg${j}]`,
+            `[${bx}][${lg}]blend=all_mode=${BM[0]},format=yuv420p[bl${j}]`, `[bl${j}][la${j}]alphamerge[bm${j}]`,
+            `[bt${j}][bm${j}]overlay=0:0[b${j + 1}]`);
+        } else fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
         base = `b${j + 1}`;
       });
       if (o.textList) {

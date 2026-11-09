@@ -162,5 +162,42 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
   delete p.items[0].mask; delete p.items[1].chroma;
 }
 
+// transitions: red clip, then blue clip with each transition; sample the middle of it
+{
+  const blue = path.join(dir, 'blue.png');
+  run(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=blue:s=400x400', '-frames:v', '1', blue]);
+  const tp = { w: 200, h: 200, fps: 30, media: { r: { kind: 'image', path: img, w: 400, h: 400 }, b: { kind: 'image', path: blue, w: 400, h: 400 } },
+    tracks: [{ id: 'v1', kind: 'video' }], items: [{ id: 'A', track: 'v1', media: 'r', start: 0, dur: 2 }, { id: 'B', track: 'v1', media: 'b', start: 2, dur: 2 }] };
+  assert.strictEqual(S.transIn(tp, tp.items[1]), null, 'no transition set');
+  const red = c => c[0] > 150 && c[2] < 90, blu = c => c[2] > 150 && c[0] < 90, out = path.join(dir, 'tr.mp4');
+  const at = (time, x, y) => [...execFileSync(ffmpeg, ['-v', 'error', '-ss', String(time), '-i', out, '-frames:v', '1', '-vf', `crop=2:2:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']).subarray(0, 3)];
+  const want = { fade: () => { const c = at(2.5, 100, 100); return c[0] > 60 && c[2] > 60; }, black: () => Math.max(...at(2.47, 100, 100)) < 60, white: () => Math.min(...at(2.47, 100, 100)) > 190,
+    slideL: () => blu(at(2.5, 160, 100)) && red(at(2.5, 30, 100)), slideU: () => blu(at(2.5, 100, 160)) && red(at(2.5, 100, 30)),
+    wipeL: () => blu(at(2.5, 170, 100)) && red(at(2.5, 30, 100)), wipeR: () => blu(at(2.5, 30, 100)) && red(at(2.5, 170, 100)),
+    circle: () => blu(at(2.5, 100, 100)) && red(at(2.5, 2, 2)), split: () => blu(at(2.5, 100, 100)) && red(at(2.5, 4, 100)) };
+  for (const id of S.TRANS) {
+    tp.items[1].trans = { id, dur: 1 };
+    const T = S.transIn(tp, tp.items[1]);
+    assert.ok(T && T.prev === tp.items[0] && S.transOut(tp, tp.items[0]).next === tp.items[1], 'pairing ' + id);
+    run(ffmpeg, buildArgs(tp, { out }).args);
+    assert.ok(red(at(1.5, 100, 100)) && blu(at(3.5, 100, 100)), 'before/after ' + id);
+    if (want[id]) assert.ok(want[id](), 'mid ' + id + ' ' + at(2.5, 100, 100));
+  }
+  // blend modes: half-size blue layer over the red clip; outside it the red stays as it was
+  delete tp.items[1].trans;
+  tp.tracks.unshift({ id: 'v2', kind: 'video' });
+  tp.items.push({ id: 'L', track: 'v2', media: 'b', start: 0, dur: 2, scale: 0.5 });
+  for (const [mode, ok] of [['screen', c => c[0] > 200 && c[2] > 200 && c[1] < 60], ['multiply', c => Math.max(...c) < 40], ['dodge', c => c[0] > 200 && c[1] < 60]]) {
+    tp.items[2].blend = mode;
+    run(ffmpeg, buildArgs(tp, { out }).args);
+    assert.ok(ok(at(1, 100, 100)), 'blend ' + mode + ' ' + at(1, 100, 100));
+    assert.ok(red(at(1, 5, 5)), 'blend ' + mode + ' leaves the rest ' + at(1, 5, 5));
+  }
+  tp.items.pop(); tp.tracks.shift();
+  tp.items[0].hidden = true;
+  assert.strictEqual(S.transIn(tp, tp.items[1]), null, 'hidden clip: no transition');
+  assert.ok(!buildArgs(tp, { out }).args.includes(img), 'hidden clip is not exported');
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');

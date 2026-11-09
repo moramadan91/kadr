@@ -522,7 +522,46 @@
     const n = parseInt(String(hex || '#00ff00').slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
     return [-0.1146 * r - 0.3854 * g + 0.5 * b, 0.5 * r - 0.4542 * g - 0.0458 * b]; // BT.709 Cb, Cr (centred)
   }
-  const api = { hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  // Transitions live on the incoming clip (it.trans = {id, dur}). The clip just before it on the same
+  // track holds its last frame underneath until the transition ends, so total length never changes.
+  const TRANS = ['fade', 'black', 'white', 'slideL', 'slideR', 'slideU', 'slideD', 'wipeL', 'wipeR', 'wipeU', 'wipeD', 'circle', 'split'];
+  const TR_SLIDE = { slideL: [1, 0], slideR: [-1, 0], slideU: [0, 1], slideD: [0, -1] }; // where the new clip comes in from
+  const TR_DIP = { black: '#000000', white: '#ffffff' };
+  // revealed part of the new clip at progress P, over its own box (X, Y in a W x H box): ffmpeg geq form
+  const TR_GEQ = { wipeL: 'gte(X,W*(1-P))', wipeR: 'lte(X,W*P)', wipeU: 'gte(Y,H*(1-P))', wipeD: 'lte(Y,H*P)',
+    circle: 'lte(hypot(X-W/2,Y-H/2),hypot(W,H)/2*P)', split: 'lte(abs(X-W/2),W/2*P)' };
+  const ease3 = q => q * q * (3 - 2 * q); // smoothstep, same as the export's expression
+  const easeExpr = q => `(3*pow(${q},2)-2*pow(${q},3))`;
+  // same shapes as TR_GEQ, as a canvas clip path
+  function transClip(ctx, id, p, x, y, w, h) {
+    ctx.beginPath();
+    if (id === 'wipeL') ctx.rect(x + w * (1 - p), y, w * p, h);
+    else if (id === 'wipeR') ctx.rect(x, y, w * p, h);
+    else if (id === 'wipeU') ctx.rect(x, y + h * (1 - p), w, h * p);
+    else if (id === 'wipeD') ctx.rect(x, y, w, h * p);
+    else if (id === 'circle') ctx.arc(x + w / 2, y + h / 2, Math.hypot(w, h) / 2 * p, 0, Math.PI * 2);
+    else if (id === 'split') ctx.rect(x + w / 2 * (1 - p), y, w * p, h);
+    ctx.clip();
+  }
+  const visualClip = (p, i) => { const m = i.media && p.media[i.media]; return !!m && m.kind !== 'audio' && !i.hidden; };
+  function transIn(p, it) {
+    const T = it.trans;
+    if (!T || !TRANS.includes(T.id) || !visualClip(p, it)) return null;
+    const tol = 0.5 / (p.fps || 30);
+    const prev = p.items.find(i => i.id !== it.id && i.track === it.track && visualClip(p, i) && Math.abs(i.start + i.dur - it.start) < tol);
+    return prev ? { id: T.id, d: clamp(num(T.dur, 0.5), 0.1, Math.min(2, it.dur)), prev } : null;
+  }
+  function transOut(p, it) {
+    for (const b of p.items) if (b !== it && b.track === it.track && b.trans) { const r = transIn(p, b); if (r && r.prev === it) return { ...r, next: b }; }
+    return null;
+  }
+
+  // Blend modes: the export's ffmpeg blend mode, and whether the layer is blend's first input (measured
+  // against the canvas / W3C formulas: dodge and burn take the layer first, the rest the base).
+  const BLEND_FF = { multiply: ['multiply'], screen: ['screen'], overlay: ['overlay'], darken: ['darken'], lighten: ['lighten'], softlight: ['softlight'],
+    hardlight: ['hardlight'], difference: ['difference'], exclusion: ['exclusion'], addition: ['addition'], dodge: ['dodge', 1], burn: ['burn', 1] };
+
+  const api = { BLEND_FF, TRANS, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);

@@ -162,6 +162,7 @@ fn open_project(srv: State<Arc<MediaServer>>, path: String) -> R<Value> {
     if let Some(m) = p["media"].as_object_mut() {
         for v in m.values() {
             if let Some(f) = v["path"].as_str() {
+                if f.is_empty() { continue; } // fill layers have no file
                 if Path::new(f).exists() { srv.allow(f); } else { missing.push(v["name"].clone()); }
             }
         }
