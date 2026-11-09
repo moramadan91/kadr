@@ -1563,22 +1563,71 @@ const hideModal = () => ($('#modal').hidden = true);
 TA.event.listen('progress', e => progress(tr('p_' + e.payload.label), e.payload.p));
 
 /* ---------- auto update (GitHub Releases, signed) ---------- */
-async function checkUpdate() {
-  if (!TA.updater) return;
-  let u;
-  try { u = await TA.updater.check(); } catch (e) { return inv('dev_log', { msg: 'update check: ' + e }); } // offline or no release yet
-  if (!u || !(await TA.dialog.ask(tr('updAsk').replace('{v}', u.version), { title: tr('updTitle') }))) return;
-  if (dirty) await save();
-  let total = 0, got = 0;
-  progress(tr('p_update'), 0);
+/* ---------- updates: auto (download quietly, install on restart or quit) or manual (button only) ---------- */
+const updMode = {
+  get() { try { return localStorage.getItem('kadr.updMode') || 'auto'; } catch { return 'auto'; } },
+  set(v) { try { localStorage.setItem('kadr.updMode', v); } catch {} },
+};
+let updReady = null; // downloaded, waiting to be installed
+const updLog = e => inv('dev_log', { msg: 'update: ' + e });
+async function autoUpdate() {
+  if (!TA.updater || updMode.get() !== 'auto') return;
   try {
-    await u.downloadAndInstall(ev => {
-      if (ev.event === 'Started') total = ev.data.contentLength || 0;
-      else if (ev.event === 'Progress') { got += ev.data.chunkLength; if (total) progress(tr('p_update'), got / total); }
-    });
-    await TA.process.relaunch();
-  } catch (e) { hideModal(); toast(String(e)); }
+    const u = await TA.updater.check();
+    if (!u) return;
+    await u.download();
+    updReady = u;
+    $('#bUpd').classList.add('dot');
+    toast(tr('updReady', { v: u.version }), { label: tr('updRestart'), run: installNow });
+  } catch (e) { updLog(e); } // offline or no release yet
 }
+async function installNow() {
+  if (!updReady) return;
+  if (dirty && (await TA.dialog.ask(tr('updSaveFirst'), { title: tr('updates'), kind: 'warning' }))) { await save(); if (dirty) return; }
+  setPlaying(false);
+  progress(tr('p_install'), null);
+  try { await updReady.install(); await TA.process.relaunch(); } catch (e) { hideModal(); toast(String(e)); }
+}
+// Quitting with an update downloaded installs it on the way out.
+async function quitNow() {
+  if (updReady) { progress(tr('p_install'), null); try { await updReady.install(); } catch (e) { updLog(e); } }
+  inv('quit_app');
+}
+async function updateDialog() {
+  const cur = TA.app ? await TA.app.getVersion().catch(() => '') : '';
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<div class="upd"><h3>${tr('updates')}</h3><p class="hint">${tr('curVer')} <bdi>v${esc(cur)}</bdi></p>
+    <div id="uState" class="ustate"></div>
+    <div class="umode"><div class="gh">${tr('updHow')}</div>
+      ${['auto', 'manual'].map(m => `<label class="uopt"><input type="radio" name="um" value="${m}"${updMode.get() === m ? ' checked' : ''}><span><b>${tr('upd_' + m)}</b><small>${tr('upd_' + m + 'Hint')}</small></span></label>`).join('')}</div>
+    <div class="acts"><span class="flex"></span><button id="uClose">${tr('close')}</button><button class="primary" id="uGo" hidden></button></div></div>`;
+  $('#mBox').querySelectorAll('[name="um"]').forEach(r => (r.onchange = () => updMode.set(r.value)));
+  $('#uClose').onclick = hideModal;
+  const st = $('#uState'), go = $('#uGo');
+  const show = (html, btn, run) => { st.innerHTML = html; go.hidden = !btn; if (btn) { go.textContent = btn; go.disabled = false; go.onclick = run; } };
+  if (updReady) return show(`<p>${tr('updReady', { v: esc(updReady.version) })}</p>`, tr('updRestart'), installNow);
+  show(`<p class="hint">${tr('updChecking')}</p>`);
+  if (!TA.updater) return show(`<p class="hint">${tr('updNoUpdater')}</p>`);
+  let u;
+  try { u = await TA.updater.check(); } catch (e) { updLog(e); return show(`<p>${tr('updOffline')}</p>`, tr('retry'), updateDialog); }
+  if (!u) return show(`<p class="ok">${icon('check')} ${tr('updLatest')}</p>`);
+  const notes = u.body ? `<p class="hint unotes">${esc(u.body)}</p>` : '';
+  show(`<p><b>${tr('updNew', { v: esc(u.version) })}</b></p>${notes}`, tr('updGet'), async () => {
+    go.disabled = true;
+    let total = 0, got = 0;
+    st.insertAdjacentHTML('beforeend', `<div class="pbar"><i id="uBar"></i></div>`);
+    try {
+      await u.download(ev => {
+        if (ev.event === 'Started') total = ev.data.contentLength || 0;
+        else if (ev.event === 'Progress') { got += ev.data.chunkLength; if (total) $('#uBar').style.width = Math.round(got / total * 100) + '%'; }
+      });
+      updReady = u;
+      $('#bUpd').classList.add('dot');
+      installNow();
+    } catch (e) { updLog(e); show(`<p>${tr('updFailed')}</p>`, tr('retry'), updateDialog); }
+  });
+}
+$('#bUpd').onclick = updateDialog;
 let toastTimer;
 function toast(msg, action) {
   const el = $('#toast');
@@ -2020,14 +2069,14 @@ $('#bKeys').onclick = showKeys;
 let quitting = false;
 TA.event.listen('quit-requested', async () => {
   if (quitting) return;
-  if (!dirty || !P.items.length && !Object.keys(P.media).length) return inv('quit_app');
+  if (!dirty || !P.items.length && !Object.keys(P.media).length) return quitNow();
   quitting = true;
   $('#modal').hidden = false;
   $('#mBox').innerHTML = `<h3>${tr('quitTitle')}</h3><p class="hint">${tr('quitAsk')}</p><div class="acts"><button id="qNo">${tr('dontSave')}</button><span class="flex"></span><button id="qCancel">${tr('cancel')}</button><button class="primary" id="qSave">${tr('save')}</button></div>`;
   const done = () => { quitting = false; hideModal(); };
   $('#qCancel').onclick = done;
-  $('#qNo').onclick = () => inv('quit_app');
-  $('#qSave').onclick = async () => { done(); await save(); if (!dirty) inv('quit_app'); };
+  $('#qNo').onclick = () => quitNow();
+  $('#qSave').onclick = async () => { done(); await save(); if (!dirty) quitNow(); };
 });
 window.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) return;
@@ -2047,7 +2096,7 @@ document.fonts.load('800 40px "Cairo"').then(renderLibCards);
 syncSettings();
 refresh();
 requestAnimationFrame(loop);
-setTimeout(checkUpdate, 3000);
+setTimeout(autoUpdate, 3000);
 
 inv('dev_demo').then(async d => {
   if (!d.paths || !d.paths.length) return newProj(true);
