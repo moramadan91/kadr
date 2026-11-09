@@ -28,6 +28,168 @@
     return { ch, s, identity, key };
   }
 
+  /* ---------- color: everything past the basic grade is baked into one 3D LUT per clip ---------- */
+  // HSL bands (hue centres in degrees), the order of the swatches in the panel.
+  const HSL_BANDS = [['red', 0], ['orange', 30], ['yellow', 60], ['green', 120], ['cyan', 180], ['blue', 225], ['purple', 270], ['magenta', 315]];
+  const LUT_N = 33;
+
+  // Built-in looks: our own colour functions (no third-party LUT files), r,g,b in 0..1.
+  const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const satAdj = (c, l, s) => l + (c - l) * s;
+  const scurve = (v, k) => { const x = v - 0.5; return clamp(0.5 + x * (1 + k) - 4 * k * x * x * x, 0, 1); };
+  const tone = (r, g, b, sh, hi, amt) => { // split toning: shadow colour sh, highlight colour hi
+    const l = lum(r, g, b), ws = (1 - l) * (1 - l) * amt, wh = l * l * amt;
+    return [r + (sh[0] - 0.5) * ws + (hi[0] - 0.5) * wh, g + (sh[1] - 0.5) * ws + (hi[1] - 0.5) * wh, b + (sh[2] - 0.5) * ws + (hi[2] - 0.5) * wh];
+  };
+  const LOOKS = {
+    tealOrange: (r, g, b) => tone(scurve(r, .15), scurve(g, .15), scurve(b, .15), [0.2, 0.55, 0.65], [0.85, 0.6, 0.35], 0.55),
+    warm: (r, g, b) => [r * 1.08 + .02, g * 1.02, b * 0.9],
+    cool: (r, g, b) => [r * 0.92, g * 1.0, b * 1.1 + .02],
+    golden: (r, g, b) => tone(r * 1.06, g * 1.02, b * .88, [0.55, 0.45, 0.35], [0.95, 0.75, 0.4], 0.5),
+    film: (r, g, b) => { const l = lum(r, g, b); return tone(scurve(r, .2) * .96 + .03, scurve(g, .2) * .96 + .03, scurve(b, .2) * .92 + .05, [0.4, 0.55, 0.5], [0.6, 0.55, 0.45], 0.3).map(c => satAdj(c, l, 0.9)); },
+    vintage: (r, g, b) => { const l = lum(r, g, b); return [satAdj(r, l, .7) * .85 + .12, satAdj(g, l, .7) * .82 + .1, satAdj(b, l, .7) * .7 + .1]; },
+    fade: (r, g, b) => [r * .82 + .1, g * .82 + .1, b * .82 + .11],
+    moody: (r, g, b) => { const l = lum(r, g, b); return tone(...[r, g, b].map(c => satAdj(c, l, .7) * .92), [0.35, 0.5, 0.55], [0.5, 0.5, 0.5], 0.45).map(c => scurve(c, .2)); },
+    bleach: (r, g, b) => { const l = lum(r, g, b); return [r, g, b].map(c => scurve(satAdj(c, l, .45), .35)); },
+    pastel: (r, g, b) => { const l = lum(r, g, b); return [r, g, b].map(c => satAdj(c * .8 + .18, l * .8 + .18, 1.1)); },
+    vivid: (r, g, b) => { const l = lum(r, g, b); return [r, g, b].map(c => scurve(satAdj(c, l, 1.45), .12)); },
+    neon: (r, g, b) => tone(...[r, g, b].map(c => satAdj(c, lum(r, g, b), 1.3)), [0.35, 0.25, 0.75], [0.85, 0.4, 0.8], 0.6),
+    cyber: (r, g, b) => tone(r, g, b, [0.2, 0.6, 0.75], [0.9, 0.35, 0.7], 0.6),
+    sepia: (r, g, b) => { const l = lum(r, g, b); return [l * 1.07 + .05, l * .95 + .02, l * .75]; },
+    mono: (r, g, b) => { const l = lum(r, g, b); return [l, l, l]; },
+    noir: (r, g, b) => { const l = scurve(lum(r, g, b), .5); return [l, l, l]; },
+  };
+
+  // Monotone cubic through sorted [x,y] points (0..1), so curves never overshoot.
+  function curveFn(pts) {
+    if (!pts || pts.length < 2) return null;
+    const P = [...pts].sort((a, b) => a[0] - b[0]), n = P.length;
+    if (n === 2 && P[0][0] === 0 && P[0][1] === 0 && P[1][0] === 1 && P[1][1] === 1) return null;
+    const d = [], m = new Array(n);
+    for (let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / Math.max(1e-6, P[i + 1][0] - P[i][0]));
+    m[0] = d[0]; m[n - 1] = d[n - 2];
+    for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+    for (let i = 0; i < n - 1; i++) {
+      if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+      const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
+      if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+    }
+    return x => {
+      if (x <= P[0][0]) return P[0][1];
+      if (x >= P[n - 1][0]) return P[n - 1][1];
+      let i = 0; while (x > P[i + 1][0]) i++;
+      const h = P[i + 1][0] - P[i][0], t = (x - P[i][0]) / h, t2 = t * t, t3 = t2 * t;
+      return clamp((2 * t3 - 3 * t2 + 1) * P[i][1] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * P[i + 1][1] + (t3 - t2) * h * m[i + 1], 0, 1);
+    };
+  }
+  // Wheel {x,y} (unit disc) -> a colour push that keeps brightness: cosines 120 degrees apart.
+  const wheelRgb = w => { if (!w) return [0, 0, 0]; const a = Math.atan2(num(w.y, 0), num(w.x, 0)), r = Math.min(1, Math.hypot(num(w.x, 0), num(w.y, 0))); return [0, 2, 4].map(k => Math.cos(a - k * Math.PI / 3 * 1) * r); };
+  function rgb2hsl(r, g, b) {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    if (d < 1e-6) return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [(h * 60 + 360) % 360, s, l];
+  }
+  function hsl2rgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return [r + m, g + m, b + m];
+  }
+  const hueDist = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+  // Does the clip use anything beyond the basic grade?
+  function hasColor(it) {
+    const c = it.color;
+    if (!c) return false;
+    if (c.look && c.look !== 'none' && num(c.lookMix, 1) > 0) return true;
+    if (c.auto || c.match) return true;
+    if (c.lut && c.lut.file && num(c.lut.mix, 1) > 0) return true;
+    if (c.hsl && Object.values(c.hsl).some(v => v && (num(v.h, 0) || num(v.s, 0) || num(v.l, 0)))) return true;
+    if (c.curves && Object.values(c.curves).some(curveFn)) return true;
+    if (c.wheels && Object.values(c.wheels).some(w => w && (num(w.x, 0) || num(w.y, 0) || num(w.l, 0)))) return true;
+    return false;
+  }
+  // One clip's whole colour pipeline as f(r,g,b) -> [r,g,b]. userLut: parsed .cube {n, d} when c.lut.file is set.
+  function colorFn(it, userLut) {
+    const c = it.color || {}, g = grade(it);
+    const look = c.look && LOOKS[c.look], lm = clamp(num(c.lookMix, 1), 0, 1);
+    const ul = c.lut && c.lut.file && userLut, um = clamp(num(c.lut && c.lut.mix, 1), 0, 1);
+    const cv = c.curves || {}, cl = curveFn(cv.l), cr = curveFn(cv.r), cg = curveFn(cv.g), cb = curveFn(cv.b);
+    const W = c.wheels || {}, mixW = clamp(num(c.wheelMix, 1), 0, 1);
+    const lift = wheelRgb(W.lift).map(v => v * 0.15 * mixW), gam = wheelRgb(W.gamma).map(v => v * 0.35 * mixW), gain = wheelRgb(W.gain).map(v => v * 0.3 * mixW), off = wheelRgb(W.offset).map(v => v * 0.1 * mixW);
+    const liftL = num(W.lift && W.lift.l, 0) * 0.15 * mixW, gamL = num(W.gamma && W.gamma.l, 0) * 0.5 * mixW, gainL = num(W.gain && W.gain.l, 0) * 0.5 * mixW, offL = num(W.offset && W.offset.l, 0) * 0.15 * mixW;
+    const bands = HSL_BANDS.map(([k, hc]) => { const v = (c.hsl || {})[k]; return v && (num(v.h, 0) || num(v.s, 0) || num(v.l, 0)) ? [hc, num(v.h, 0) / 100, num(v.s, 0) / 100, num(v.l, 0) / 100] : null; }).filter(Boolean);
+    const A = c.auto, M = c.match; // auto levels (per-channel black/white points), colour match (gain + offset)
+    return (r, gg, b) => {
+      let v = [r, gg, b];
+      if (A) v = v.map((x, i) => (x - A.lo[i]) / Math.max(0.05, A.hi[i] - A.lo[i]));
+      if (M) v = v.map((x, i) => x * M.gain[i] + M.off[i]);
+      if (A || M) v = v.map(x => clamp(x, 0, 1));
+      if (ul) { const u = sampleLut(ul, v[0], v[1], v[2]); v = v.map((x, i) => x + (u[i] - x) * um); }
+      if (look) { const u = look(v[0], v[1], v[2]); v = v.map((x, i) => x + (clamp(u[i], 0, 1) - x) * lm); }
+      if (!g.identity) {
+        v = v.map((x, i) => clamp(x * g.ch[i].slope + g.ch[i].intercept, 0, 1));
+        const l = lum(v[0], v[1], v[2]); v = v.map(x => clamp(satAdj(x, l, g.s), 0, 1));
+      }
+      v = v.map((x, i) => {
+        x = clamp(x + off[i] + offL, 0, 1);
+        x = clamp(x + (lift[i] + liftL) * (1 - x), 0, 1);
+        x = clamp(x * (1 + gain[i] + gainL), 0, 1);
+        return Math.pow(x, 1 / Math.max(0.1, 1 + gam[i] + gamL));
+      });
+      if (cl) v = v.map(cl);
+      if (cr) v[0] = cr(v[0]); if (cg) v[1] = cg(v[1]); if (cb) v[2] = cb(v[2]);
+      if (bands.length) {
+        let [h, s, l] = rgb2hsl(v[0], v[1], v[2]), dh = 0, ds = 0, dl = 0;
+        const ws = Math.min(1, s * 3); // greys are left alone
+        for (const [hc, bh, bs, bl] of bands) {
+          const w = Math.max(0, 1 - hueDist(h, hc) / 40) * ws;
+          dh += bh * 30 * w; ds += bs * w; dl += bl * 0.2 * w;
+        }
+        h = (h + dh + 360) % 360; s = clamp(s * (1 + ds), 0, 1); l = clamp(l + dl, 0, 1);
+        v = hsl2rgb(h, s, l);
+      }
+      return v.map(x => clamp(x, 0, 1));
+    };
+  }
+  // Trilinear sample of a parsed cube {n, d: Float32Array rgb, red fastest}.
+  function sampleLut(L, r, g, b) {
+    const n = L.n, f = x => clamp(x, 0, 1) * (n - 1), R = f(r), G = f(g), B = f(b);
+    const r0 = Math.floor(R), g0 = Math.floor(G), b0 = Math.floor(B), r1 = Math.min(n - 1, r0 + 1), g1 = Math.min(n - 1, g0 + 1), b1 = Math.min(n - 1, b0 + 1);
+    const fr = R - r0, fg = G - g0, fb = B - b0, at = (i, j, k, c) => L.d[(i + j * n + k * n * n) * 3 + c], out = [0, 0, 0];
+    for (let c = 0; c < 3; c++) {
+      const c00 = at(r0, g0, b0, c) * (1 - fr) + at(r1, g0, b0, c) * fr, c10 = at(r0, g1, b0, c) * (1 - fr) + at(r1, g1, b0, c) * fr;
+      const c01 = at(r0, g0, b1, c) * (1 - fr) + at(r1, g0, b1, c) * fr, c11 = at(r0, g1, b1, c) * (1 - fr) + at(r1, g1, b1, c) * fr;
+      out[c] = (c00 * (1 - fg) + c10 * fg) * (1 - fb) + (c01 * (1 - fg) + c11 * fg) * fb;
+    }
+    return out;
+  }
+  function parseCube(text) {
+    let n = 0; const d = [];
+    for (const line of text.split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s || s[0] === '#') continue;
+      const m = /^LUT_3D_SIZE\s+(\d+)/i.exec(s);
+      if (m) { n = +m[1]; continue; }
+      if (/^[-+\d.]/.test(s)) { const p = s.split(/\s+/).map(Number); if (p.length >= 3 && p.slice(0, 3).every(isFinite)) d.push(p[0], p[1], p[2]); }
+    }
+    if (!n || d.length !== n * n * n * 3) throw new Error('not a 3D .cube LUT');
+    return { n, d: new Float32Array(d) };
+  }
+  // N^3 table (red fastest, like .cube) of the clip's colour.
+  function bakeLut(it, userLut, n = LUT_N) {
+    const f = colorFn(it, userLut), out = new Float32Array(n * n * n * 3);
+    let o = 0;
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+      const v = f(r / (n - 1), g / (n - 1), b / (n - 1));
+      out[o++] = v[0]; out[o++] = v[1]; out[o++] = v[2];
+    }
+    return out;
+  }
+  const cubeText = (arr, n = LUT_N) => { const L = [`LUT_3D_SIZE ${n}`]; for (let i = 0; i < arr.length; i += 3) L.push(arr[i].toFixed(5) + ' ' + arr[i + 1].toFixed(5) + ' ' + arr[i + 2].toFixed(5)); return L.join('\n') + '\n'; };
+  const colorKey = it => JSON.stringify([it.color || null, grade(it).key]);
+
   const even = v => Math.max(2, Math.round(v / 2) * 2);
 
   // Source crop in fractions {l,r,t,b}; returns the cropped source rect in source pixels.
@@ -57,6 +219,16 @@
     return { sw, sh, cw, ch, cx, cy, ox, oy };
   }
 
+  // Whole-file audio effects a clip asks for ('' = none): key of the cached processed copy in media.fx.
+  const fxKey = it => (it.denoise ? 'd' : '') + (it.norm ? 'n' : '');
+  // Sound fades: a video clip's picture fades also fade its sound; afIn/afOut fade only the sound.
+  function audioFade(it, lt) {
+    const fi = Math.max(num(it.fadeIn, 0), num(it.afIn, 0)), fo = Math.max(num(it.fadeOut, 0), num(it.afOut, 0));
+    let a = 1;
+    if (fi > 0) a = Math.min(a, lt / fi);
+    if (fo > 0) a = Math.min(a, (it.dur - lt) / fo);
+    return clamp(a, 0, 1);
+  }
   function fadeAlpha(it, lt) {
     const fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
     let a = 1;
@@ -311,7 +483,46 @@
     return { id: c.id, pts, src: +(c.src * (u1 - u0)).toFixed(5), edited: true };
   }
 
-  const api = { num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, srcCrop, logoBox, layout, fadeAlpha, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  // Masks: a shape in the clip box's own 0..1 space. Preview uses the alpha directly; the export
+  // gets the same canvas as a grey PNG through alphamerge.
+  const MASKS = ['linear', 'mirror', 'circle', 'rect'];
+  const MASK_DEF = { x: 0.5, y: 0.5, w: 0.5, h: 0.5, rot: 0, feather: 0.1, round: 0, invert: false };
+  const hasMask = it => !!(it.mask && MASKS.includes(it.mask.type));
+  function drawMask(ctx, M, w, h) {
+    const q = { ...MASK_DEF, ...M }, cx = q.x * w, cy = q.y * h, D = Math.hypot(w, h), fp = Math.max(0.5, q.feather * 0.25 * D);
+    ctx.save();
+    ctx.clearRect(0, 0, w, h);
+    ctx.translate(cx, cy); ctx.rotate(q.rot * Math.PI / 180);
+    if (q.type === 'linear' || q.type === 'mirror') {
+      const half = q.type === 'mirror' ? q.h * h / 2 : 0, g = ctx.createLinearGradient(0, -half - fp / 2, 0, half + fp / 2);
+      const e = fp / (2 * half + fp);
+      if (q.type === 'linear') { g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, '#fff'); ctx.fillStyle = g; ctx.fillRect(-D, -fp / 2, 2 * D, 2 * D); }
+      else { g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(e, '#fff'); g.addColorStop(1 - e, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(-D, -half - fp / 2, 2 * D, 2 * half + fp); }
+    } else if (q.type === 'circle') {
+      const rx = Math.max(1, q.w * w / 2), ry = Math.max(1, q.h * h / 2);
+      ctx.scale(1, ry / rx);
+      const r = rx + fp / 2, g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, '#fff'); g.addColorStop(clamp((rx - fp / 2) / r, 0, 0.999), '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const rw = q.w * w, rh = q.h * h, rr = clamp(q.round, 0, 1) * Math.min(rw, rh) / 2, off = 4 * D;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-rw / 2 + off, -rh / 2, rw, rh, rr); else ctx.rect(-rw / 2 + off, -rh / 2, rw, rh);
+      // the soft edge is the shadow of a shape drawn off-canvas
+      ctx.shadowColor = '#fff'; ctx.shadowBlur = fp / 2; ctx.shadowOffsetX = -off * ctx.getTransform().a; ctx.shadowOffsetY = -off * ctx.getTransform().b;
+      ctx.fillStyle = '#fff'; ctx.fill();
+    }
+    ctx.restore();
+    if (q.invert) { ctx.save(); ctx.globalCompositeOperation = 'xor'; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.restore(); }
+  }
+
+  // Chroma key: same formula as ffmpeg's chromakey (UV distance to the key colour).
+  const hasKey = it => !!(it.chroma && it.chroma.on);
+  function keyUV(hex) {
+    const n = parseInt(String(hex || '#00ff00').slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    return [-0.1146 * r - 0.3854 * g + 0.5 * b, 0.5 * r - 0.4542 * g - 0.0458 * b]; // BT.709 Cb, Cr (centred)
+  }
+  const api = { hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrShared = api;
 })(this);

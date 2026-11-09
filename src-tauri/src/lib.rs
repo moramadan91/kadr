@@ -188,6 +188,68 @@ fn work_end(state: State<AppState>, id: u32) {
     if let Some(d) = state.dirs.lock().unwrap().remove(&id) { let _ = std::fs::remove_dir_all(d); }
 }
 
+#[tauri::command]
+fn write_work(state: State<AppState>, request: tauri::ipc::Request) -> R<String> {
+    // Export side files (baked colour LUTs, mask images) into a job's work dir.
+    let h = request.headers();
+    let id: u32 = h.get("x-id").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok()).ok_or("x-id")?;
+    let name = h.get("x-name").and_then(|v| v.to_str().ok()).ok_or("x-name")?;
+    let (stem, ext) = name.rsplit_once('.').ok_or("bad name")?;
+    let ok = !stem.is_empty() && stem.len() <= 40 && stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && (ext == "cube" || ext == "png");
+    if !ok { return Err("bad file name".into()); }
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw body".into()) };
+    let p = work_dir(&state, id)?.join(name);
+    std::fs::write(&p, bytes).map_err(err)?;
+    Ok(p.to_string_lossy().replace('\\', "/"))
+}
+
+/// LUT library: .cube files shipped in the app (resources/luts) and ones the user imported (app data/luts).
+#[tauri::command]
+fn lut_library(app: AppHandle, srv: State<Arc<MediaServer>>) -> R<Value> {
+    let mut out = vec![];
+    let dirs = [(app.path().resource_dir().map_err(err)?.join("luts"), true), (app.path().app_data_dir().map_err(err)?.join("luts"), false)];
+    for (dir, builtin) in dirs {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let mut files: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().map_or(false, |x| x.eq_ignore_ascii_case("cube"))).collect();
+        files.sort();
+        for f in files {
+            let s = f.to_string_lossy().into_owned();
+            srv.allow(&s);
+            out.push(json!({ "name": f.file_stem().map(|x| x.to_string_lossy().into_owned()), "path": s, "builtin": builtin }));
+        }
+    }
+    Ok(json!(out))
+}
+
+/// Copy an imported .cube into the user's library so it stays listed.
+#[tauri::command]
+fn lut_add(app: AppHandle, path: String) -> R<String> {
+    let src = Path::new(&path);
+    if !src.extension().map_or(false, |x| x.eq_ignore_ascii_case("cube")) { return Err("only .cube files".into()); }
+    let dir = app.path().app_data_dir().map_err(err)?.join("luts");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let dst = dir.join(src.file_name().ok_or("bad name")?);
+    if dst != src { std::fs::copy(src, &dst).map_err(err)?; }
+    Ok(dst.to_string_lossy().into_owned())
+}
+
+/// Remove a LUT the user imported (never one shipped with the app).
+#[tauri::command]
+fn lut_remove(app: AppHandle, path: String) -> R<()> {
+    let dir = app.path().app_data_dir().map_err(err)?.join("luts");
+    let p = Path::new(&path);
+    if p.parent() != Some(dir.as_path()) { return Err("not an imported LUT".into()); }
+    std::fs::remove_file(p).map_err(err)
+}
+
+/// A user's .cube colour LUT, read as text (size-capped).
+#[tauri::command]
+fn read_lut(path: String) -> R<String> {
+    if !path.to_lowercase().ends_with(".cube") { return Err("only .cube files".into()); }
+    if std::fs::metadata(&path).map_err(err)?.len() > 32 << 20 { return Err("LUT file too big".into()); }
+    std::fs::read_to_string(&path).map_err(err)
+}
+
 // Raw body: PNG bytes. Headers: x-id (work dir), x-name (fNNNNN.png).
 #[tauri::command]
 fn write_frame(state: State<AppState>, request: tauri::ipc::Request) -> R<()> {
@@ -237,6 +299,33 @@ fn model_path(app: &AppHandle) -> R<PathBuf> {
     Ok(app.path().app_data_dir().map_err(err)?.join("models").join(MODEL_NAME))
 }
 
+/// Preview proxy for a speed-curve clip: the export's own retime graph rendered once at a small size,
+/// cached by its arguments, so the preview plays it at normal speed instead of changing the rate
+/// every frame. The output path in `args` is the "__OUT__" placeholder.
+#[tauri::command]
+async fn proxy_render(app: AppHandle, srv: State<'_, Arc<MediaServer>>, args: Vec<String>) -> R<String> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    args.hash(&mut h);
+    let dir = app.path().app_data_dir().map_err(err)?.join("proxy");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let out = dir.join(format!("{:016x}.mp4", h.finish()));
+    if !out.exists() {
+        let o = out.clone();
+        tauri::async_runtime::spawn_blocking(move || -> R<()> {
+            let tmp = o.with_extension("part.mp4");
+            let t = tmp.to_string_lossy().into_owned();
+            let a: Vec<String> = args.into_iter().map(|x| if x == "__OUT__" { t.clone() } else { x }).collect();
+            let r = command(&sidecar("ffmpeg")).args(&a).stdin(Stdio::null()).output().map_err(err)?;
+            if !r.status.success() { return Err(tail(&String::from_utf8_lossy(&r.stderr))); }
+            std::fs::rename(&tmp, &o).map_err(err)
+        }).await.map_err(err)??;
+    }
+    let s = out.to_string_lossy().into_owned();
+    srv.allow(&s);
+    Ok(s)
+}
+
 /// Raw frames for motion tracking: ffmpeg's stdout handed to JS as bytes.
 #[tauri::command]
 async fn gray_frames(args: Vec<String>) -> R<tauri::ipc::Response> {
@@ -247,14 +336,20 @@ async fn gray_frames(args: Vec<String>) -> R<tauri::ipc::Response> {
     }).await.map_err(err)?
 }
 
-/// Speech denoise (RNNoise, bundled model): the whole source's audio, cleaned once into a cached FLAC
-/// that both the preview and the export play instead of the original sound.
+/// Audio effects that need the whole file (d = RNNoise speech denoise with the bundled model,
+/// n = loudness normalize): the source's sound is processed once into a cached FLAC that both
+/// the preview and the export play instead of the original.
 #[tauri::command]
-async fn denoise_audio(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String) -> R<String> {
+async fn audio_fx(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String, fx: String) -> R<String> {
     use std::hash::{Hash, Hasher};
+    let mut chain = vec![];
+    if fx.contains('d') { chain.push("highpass=f=70,arnndn=m=rnnoise.rnnn"); }
+    if fx.contains('n') { chain.push("loudnorm=I=-14:TP=-1.5:LRA=11,aformat=sample_rates=48000"); }
+    if chain.is_empty() { return Err("no audio effect".into()); }
+    let af = chain.join(",");
     let meta = std::fs::metadata(&path).map_err(err)?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&path, meta.len(), meta.modified().ok()).hash(&mut h);
+    (&path, meta.len(), meta.modified().ok(), &af).hash(&mut h);
     let dir = app.path().app_data_dir().map_err(err)?.join("denoise");
     std::fs::create_dir_all(&dir).map_err(err)?;
     let out = dir.join(format!("{:016x}.flac", h.finish()));
@@ -265,7 +360,7 @@ async fn denoise_audio(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: S
             let tmp = o.with_extension("part.flac");
             // relative model path: Windows drive colons would need escaping inside the filter string
             let r = command(&sidecar("ffmpeg")).current_dir(&res)
-                .args(["-hide_banner", "-y", "-i", &path, "-vn", "-af", "highpass=f=70,arnndn=m=rnnoise.rnnn", "-c:a", "flac"])
+                .args(["-hide_banner", "-y", "-i", &path, "-vn", "-af", &af, "-c:a", "flac"])
                 .arg(&tmp).stdin(Stdio::null()).output().map_err(err)?;
             if !r.status.success() { return Err(tail(&String::from_utf8_lossy(&r.stderr))); }
             std::fs::rename(&tmp, &o).map_err(err)
@@ -458,8 +553,8 @@ fn quit_app(app: AppHandle, state: State<AppState>) {
 #[cfg(target_os = "macos")]
 fn app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem as P, Submenu};
-    let quit = MenuItem::with_id(app, "quit", "Quit Kadr", true, Some("CmdOrCtrl+Q"))?;
-    let kadr = Submenu::with_items(app, "Kadr", true, &[
+    let quit = MenuItem::with_id(app, "quit", "Quit Maqto", true, Some("CmdOrCtrl+Q"))?;
+    let kadr = Submenu::with_items(app, "Maqto", true, &[
         &P::about(app, None, None)?, &P::separator(app)?, &P::services(app, None)?, &P::separator(app)?,
         &P::hide(app, None)?, &P::hide_others(app, None)?, &P::show_all(app, None)?, &P::separator(app)?, &quit,
     ])?;
@@ -481,7 +576,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, denoise_audio,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {

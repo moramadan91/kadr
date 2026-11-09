@@ -7,12 +7,13 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 
 /* ---------- language ---------- */
 const EN = {
-  skip: 'Skip to content', name: 'Kadr', nFeatures: 'Features', nTour: 'Tour', nInstall: 'Install', nFaq: 'FAQ',
+  skip: 'Skip to content', name: 'Maqto', nFeatures: 'Features', nTour: 'Tour', nInstall: 'Install', nFaq: 'FAQ',
   tag: 'Completely free · Mac & Windows',
   h1: 'Edit video your way, open source, no subscriptions.',
   lead: 'Cutting and a real timeline, auto captions timed word by word, text and motion, color, and export up to 4K. All on your computer.',
   mac: 'Download for Mac', macSub: 'Apple Silicon · M1 and later', win: 'Download for Windows', winSub: 'Windows 10 and 11 · 64-bit',
-  auto: 'Updates itself automatically.', ver: 'Version {v} · ',
+  ver: 'Version {v}',
+  r1: 'One-click cuts', r2: 'Auto Arabic captions', r3: 'Color & LUTs', r4: 'Cleaner audio', r5: 'Motion & keyframes', r6: 'Export up to 4K',
   fEye: 'Features', fTitle: 'Everything you need for reels and videos.', fSub: 'Built for Arabic content from day one, not translated after.',
   f1: 'Automatic Arabic captions', f1p: 'Transcribes speech and times every word, and you can fix any word. It runs on your computer; your audio never leaves it.',
   f2: 'Timeline and cutting', f2p: 'Magnetic main track, cut and split, markers, plus video, audio and text tracks.',
@@ -28,30 +29,30 @@ const EN = {
   s3: 'Live preview', s3p: 'See filters and text while you work at real playback speed, in 9:16, 16:9 or 1:1.',
   s4: 'Inspector', s4p: 'Size, position, opacity, crop, speed, animation and color for every clip.',
   s5: 'Export', s5p: 'Pick quality up to 4K, frame rate and codec. You get exactly what you saw.',
-  iEye: 'Install', iTitle: 'One minute and you are in.', iSub: 'Kadr is free and not sold through the Apple or Microsoft stores, so your system asks once.',
+  iEye: 'Install', iTitle: 'One minute and you are in.', iSub: 'Maqto is free and not sold through the Apple or Microsoft stores, so your system asks once.',
   iMac: 'Mac', iWin: 'Windows',
-  m1: 'Open the <b>.dmg</b> file and drag Kadr into <b>Applications</b>.',
-  m2: 'Open Kadr. If it says the developer cannot be verified, click <b>Done</b>.',
+  m1: 'Open the <b>.dmg</b> file and drag Maqto into <b>Applications</b>.',
+  m2: 'Open Maqto. If it says the developer cannot be verified, click <b>Done</b>.',
   m3: 'Go to <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.',
   mA: 'In <b>System Settings</b>, pick <b>Privacy &amp; Security</b> in the sidebar.',
-  mB: 'Scroll to <b>Security</b> and find <b>“Kadr” was blocked</b>. Click <b>Open Anyway</b> and confirm with your password or Touch ID. You only do this once.',
+  mB: 'Scroll to <b>Security</b> and find <b>“Maqto” was blocked</b>. Click <b>Open Anyway</b> and confirm with your password or Touch ID. You only do this once.',
   mNote: 'A Mac with Apple silicon (M1 or later) and macOS 12 or later.',
   w1: 'Run the <b>setup.exe</b> file.',
   w2: 'If you see <b>Windows protected your PC</b>, click <b>More info</b>, then <b>Run anyway</b>.',
   bTitle: 'If your browser blocks the download',
-  bSub: 'Browsers sometimes hold back free apps that are not from the Apple or Microsoft stores, especially when the browser\'s protection is turned off. The file comes from Kadr\'s official GitHub page; finish the download in two steps:',
-  b1: 'Open your downloads list and click the Kadr file marked <b>Unverified download blocked</b>.',
+  bSub: 'Browsers sometimes hold back free apps that are not from the Apple or Microsoft stores, especially when the browser\'s protection is turned off. The file comes from Maqto\'s official GitHub page; finish the download in two steps:',
+  b1: 'Open your downloads list and click the Maqto file marked <b>Unverified download blocked</b>.',
   b2: 'Click <b>Download unverified file</b> and the download finishes. Then follow the install steps above.',
   w3: 'Pick a language and finish the setup.', wNote: 'Windows 10 or 11, 64-bit.',
   qEye: 'FAQ', qTitle: 'Before you ask.',
   q1: 'Is it really free?', a1: 'Yes. No subscription, no ads, and no watermark on your videos.',
   q2: 'Do I need internet?', a2: 'No. Editing and export work offline. You only need internet for updates and to download the caption model once (about 466 MB).',
   q3: 'Which computers does it run on?', a3: 'Macs with Apple silicon (M1 or later) on macOS 12 or later, and Windows 10 or 11, 64-bit.',
-  q4: 'How do updates arrive?', a4: 'When you open Kadr it checks for a new version and asks you. Say yes and it downloads, restarts and opens the new version.',
+  q4: 'How do updates arrive?', a4: 'When you open Maqto it checks for a new version and asks you. Say yes and it downloads, restarts and opens the new version.',
   q5: 'Are my videos uploaded anywhere?', a5: 'No. Your files, audio and transcription all stay on your computer.',
-  endT: 'Try Kadr today.', foot: 'Kadr · free, no ads', all: 'All versions',
+  endT: 'Try Maqto today.', foot: 'Maqto · free, no ads', all: 'All versions',
 };
-const AR = { ver: 'نسخة {v} · ' };
+const AR = { ver: 'نسخة {v}' };
 $$('[data-t]').forEach(el => (AR[el.dataset.t] = el.hasAttribute('data-html') ? el.innerHTML : el.textContent));
 const T = { ar: AR, en: EN };
 let lang = 'ar', version = '';
@@ -80,8 +81,12 @@ function applyLang() {
     if (el.classList.contains('split')) splitWords(el);
   });
   $('#lang span').textContent = lang === 'ar' ? 'English' : 'عربي';
-  document.title = lang === 'ar' ? 'كادر — محرر فيديو مجاني للماك والويندوز' : 'Kadr — free video editor for Mac and Windows';
-  $('#ver').textContent = version ? d.ver.replace('{v}', version) : '';
+  document.title = lang === 'ar' ? 'ماكوت — محرر فيديو مجاني للماك والويندوز' : 'Maqto — free video editor for Mac and Windows';
+  showVer();
+}
+// The current release number sits under each download button; it comes from the latest GitHub release.
+function showVer() {
+  $$('#download [data-v]').forEach(el => (el.textContent = version ? T[lang].ver.replace('{v}', version) : ''));
   $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
 }
 $('#lang').onclick = () => {
@@ -92,7 +97,7 @@ $('#lang').onclick = () => {
 };
 
 // Visitor's own OS goes first; both buttons look the same until hovered.
-const first = $(/Windows/i.test(navigator.userAgent) ? '#win' : '#mac');
+const first = $(/Windows/i.test(navigator.userAgent) ? '#win' : '#mac').parentNode;
 first.parentNode.prepend(first);
 applyLang();
 
@@ -118,8 +123,7 @@ fetch('https://api.github.com/repos/moramadan91/kadr/releases/latest')
       if (a) $(id).href = a.browser_download_url;
     }
     version = rel.tag_name.replace(/^v/, '');
-    $('#ver').textContent = T[lang].ver.replace('{v}', version);
-    $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
+    showVer();
   })
   .catch(() => {}); // buttons already open the releases page
 
@@ -150,9 +154,11 @@ mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 9
   if (!motion) return; // reduced motion: everything is already visible and static
 
   // Intro: words rise, then lead, buttons and the app screenshot.
+  reel();
   const intro = gsap.timeline({ defaults: { ease: 'power3.out' } });
   intro.from('.hero h1 .wi', { yPercent: 110, duration: 0.9, stagger: 0.07 })
     .from('.hero .reveal', { y: 18, autoAlpha: 0, duration: 0.6, stagger: 0.08 }, '-=0.5')
+    .from('.reel', { y: 40, autoAlpha: 0, duration: 0.9 }, 0.2)
     .from('.stage-in', { y: 80, autoAlpha: 0, duration: 1.1 }, '-=0.6');
 
   // The screenshot tilts flat as you scroll toward it.
@@ -185,6 +191,64 @@ mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 9
     .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 3)), null, 1.2);
 
 });
+
+
+/* ---------- hero reel: a 12-second looping "edit" that walks through the main features ---------- */
+function reel() {
+  const R = $('#reel');
+  // waveform bars (seeded, so every visit looks the same)
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const wave = R.querySelector('.wave');
+  wave.innerHTML = Array.from({ length: 48 }, () => `<i style="--h:${(0.25 + rnd() * 0.75).toFixed(2)}"></i>`).join('');
+  const bars = wave.querySelectorAll('i'), feats = R.querySelectorAll('.r-feat span'), tools = R.querySelectorAll('.r-tools i');
+  const words = R.querySelectorAll('.r-cap span');
+  const step = (tl, i, at) => tl.call(() => {
+    feats.forEach((f, j) => f.classList.toggle('on', i === j));
+    tools.forEach((t, j) => t.classList.toggle('on', i === j));
+  }, null, at);
+  const tl = gsap.timeline({ repeat: -1, defaults: { ease: 'power3.out' } });
+  // reset
+  tl.set(R.querySelectorAll('.c1, .c2, .c3'), { x: 0 }).set('.r-sc', { autoAlpha: 0, y: -10, scale: 0.6 })
+    .set(words, { className: '' }).set('.r-cap', { autoAlpha: 0 }).set('.r-grade', { clipPath: 'inset(0 100% 0 0)' })
+    .set(bars, { scaleY: 0.15 }).set('.k', { scale: 0 }).set('.r-exp', { autoAlpha: 0 }).set('.r-exp b', { scaleX: 0 })
+    .set('.r-ph', { left: '4%' }).set('.r-mark', { autoAlpha: 0, scale: 0.8 });
+  // the playhead travels the whole loop
+  tl.to('.r-ph', { left: '94%', duration: 12, ease: 'none' }, 0);
+  tl.to('.r-scene s', { xPercent: -40, duration: 12, ease: 'none', stagger: 0.2 }, 0);
+  // 1. cut: scissors drop on the playhead, the clip splits and the gap closes
+  step(tl, 0, 0.1);
+  tl.to('.r-sc', { autoAlpha: 1, y: 0, scale: 1, duration: 0.35, ease: 'back.out(3)' }, 0.5)
+    .to('.c2, .c3', { x: 10, duration: 0.25 }, 1.0)
+    .to('.r-sc', { rotate: -25, duration: 0.12, yoyo: true, repeat: 1 }, 0.95)
+    .to('.r-sc', { autoAlpha: 0, y: -10, duration: 0.3 }, 1.6)
+    .to('.c2, .c3', { x: 0, duration: 0.4 }, 1.6);
+  // 2. captions: words light up one by one
+  step(tl, 1, 2);
+  tl.to('.r-cap', { autoAlpha: 1, duration: 0.3 }, 2);
+  words.forEach((w, i) => tl.call(() => words.forEach((x, j) => x.classList.toggle('on', i === j)), null, 2.2 + i * 0.4));
+  tl.to('.r-cap', { autoAlpha: 0, duration: 0.3 }, 3.9);
+  // 3. colour: a graded wipe crosses the frame
+  step(tl, 2, 4);
+  tl.to('.r-grade', { clipPath: 'inset(0 0% 0 0)', duration: 1.1, ease: 'power2.inOut' }, 4.2)
+    .to('.r-grade', { clipPath: 'inset(0 0 0 100%)', duration: 0.8, ease: 'power2.inOut' }, 5.4);
+  // 4. audio: noisy waveform settles into a clean one
+  step(tl, 3, 6);
+  tl.to(bars, { scaleY: () => 0.2 + rnd() * 0.8, duration: 0.18, stagger: { each: 0.01, from: 'random' } }, 6.1)
+    .to(bars, { scaleY: (i, el) => +el.style.getPropertyValue('--h'), duration: 0.6, stagger: { each: 0.012 } }, 6.9);
+  // 5. keyframes pop on the clip, the brand mark glides between them
+  step(tl, 4, 8);
+  tl.to('.k', { scale: 1, duration: 0.35, ease: 'back.out(3)', stagger: 0.25 }, 8.1)
+    .fromTo('.r-mark', { autoAlpha: 1, x: '-60%', scale: 0.8 }, { x: '60%', scale: 1.1, duration: 1.6, ease: 'power2.inOut' }, 8.3)
+    .to('.r-mark', { autoAlpha: 0, duration: 0.3 }, 9.8);
+  // 6. export bar fills
+  step(tl, 5, 10);
+  tl.to('.r-exp', { autoAlpha: 1, duration: 0.3 }, 10.1)
+    .to('.r-exp b', { scaleX: 1, duration: 1.4, ease: 'power1.inOut' }, 10.2)
+    .to('.r-exp', { autoAlpha: 0, duration: 0.3 }, 11.7)
+    .to(bars, { scaleY: 0.15, duration: 0.3 }, 11.7);
+  // pause when the reel is off screen
+  ScrollTrigger.create({ trigger: R, start: 'top bottom', end: 'bottom top', onToggle: s => (s.isActive ? tl.play() : tl.pause()) });
+}
 
 window.addEventListener('load', () => ScrollTrigger.refresh());
 document.fonts.ready.then(() => ScrollTrigger.refresh());

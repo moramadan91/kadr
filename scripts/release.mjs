@@ -23,7 +23,7 @@ bump('package.json', /"version": "[^"]+"/);
 bump('src-tauri/Cargo.toml', /^version = "[^"]+"/m);
 bump('src-tauri/Cargo.lock', new RegExp(`name = "kadr"\\nversion = "${cur.replace(/\./g, '\\.')}"`));
 
-sh(`git commit -qam "Kadr ${next}"`);
+sh(`git commit -qam "Maqto ${next}"`);
 sh(`git tag v${next}`);
 sh('git push -q');
 sh(`git push -q origin v${next}`); // lightweight tags don't ride along with --follow-tags

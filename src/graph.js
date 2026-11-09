@@ -25,6 +25,7 @@
     h264_hw: q => ['-c:v', 'h264_videotoolbox', '-q:v', String({ low: 50, rec: 65, high: 80 }[q] ?? 65), '-pix_fmt', 'yuv420p'],
     hevc_hw: q => ['-c:v', 'hevc_videotoolbox', '-q:v', String({ low: 50, rec: 65, high: 80 }[q] ?? 65), '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
     prores: () => ['-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le'],
+    proxy: () => ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '24', '-g', '12', '-pix_fmt', 'yuv420p'], // preview only: quick to make, quick to seek
   };
 
   // Source time -> clip time. A curve becomes a piecewise-linear setpts over source seconds.
@@ -92,14 +93,24 @@
         const L = S.layout({ ...it, scale: smax }, m, W, H);
         const ch = timeChain(it, fps);
         if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
+        if (S.hasKey(it)) { const K = it.chroma; ch.push('format=yuva444p', `chromakey=color=${String(K.color || '#00ff00').replace('#', '0x')}:similarity=${num(K.sim, 0.3).toFixed(3)}:blend=${num(K.blend, 0.1).toFixed(3)}`); }
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
         if (it.flipH) ch.push('hflip');
         if (it.flipV) ch.push('vflip');
         ch.push(`scale=${L.sw}:${L.sh}:flags=bicubic`, `crop=${L.cw}:${L.ch}:${L.cx}:${L.cy}`, 'setsar=1');
-        if (!g.identity) {
+        const lut = o.luts && o.luts[it0.id]; // advanced colour: the whole grade as one baked 3D LUT
+        if (lut) ch.push(`lut3d=file='${lut.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, '')}'`);
+        else if (!g.identity) {
           const e = c => `'clip(val*${c.slope.toFixed(5)}${signed(c.intercept * 255)},0,255)'`;
           ch.push(`lutrgb=r=${e(g.ch[0])}:g=${e(g.ch[1])}:b=${e(g.ch[2])}`);
           if (Math.abs(g.s - 1) > 1e-4) ch.push(`hue=s=${g.s.toFixed(4)}`);
+        }
+        const mk = o.masks && o.masks[it0.id];
+        if (mk) { // mask: grey PNG at the box size, its brightness becomes the clip's alpha
+          const mi = n++;
+          args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur + 1), '-i', mk);
+          fc.push(`[${k}:v]${ch.join(',')},format=yuva420p[pm${j}]`, `[${mi}:v]scale=${L.cw}:${L.ch},format=gray[mm${j}]`, `[pm${j}][mm${j}]alphamerge[ma${j}]`);
+          ch.length = 0; ch.push('null');
         }
         ch.push('format=yuva420p');
         let ox = L.ox, oy = L.oy;
@@ -128,7 +139,7 @@
         if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
-        fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
+        fc.push(`[${mk ? `ma${j}` : `${k}:v`}]${ch.join(',')}[v${j}]`);
         let tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
         if (dyn) { // centre-based so size changes (scale/rotate canvas) stay anchored
           const px = ex('x', it.start, 't', 0), py = ex('y', it.start, 't', 0);
@@ -148,8 +159,9 @@
 
     const al = [];
     aud.forEach((it, j) => {
-      const am = p.media[it.media], dn = it.denoise && am.dn; // denoised: the cleaned copy of the same source
-      const k = dn ? (args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', am.dn), n++) : input(it), v = num(it.volume, 1), fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
+      const am = p.media[it.media], fk = S.fxKey(it), fx = fk && am.fx && am.fx[fk]; // processed copy of the same source
+      const k = fx ? (args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', fx), n++) : input(it), v = num(it.volume, 1);
+      const fi = Math.max(num(it.fadeIn, 0), num(it.afIn, 0)), fo = Math.max(num(it.fadeOut, 0), num(it.afOut, 0));
       const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS'];
       let src = `${k}:a`;
       if (S.hasCurve(it)) { // curve: short constant-speed pieces joined back together

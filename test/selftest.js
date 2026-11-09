@@ -123,13 +123,43 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
 {
   const dn = path.join(dir, 'tone.dn.flac');
   execFileSync(ffmpeg, ['-y', '-i', tone, '-vn', '-af', 'highpass=f=70,arnndn=m=rnnoise.rnnn', '-c:a', 'flac', dn], { cwd: path.join(__dirname, '../src-tauri/resources'), stdio: 'ignore' });
-  p.media.m3.dn = dn; p.items[3].denoise = true;
+  p.media.m3.fx = { d: dn }; p.items[3].denoise = true; p.items[0].afIn = 0.5;
   p.items[0].logo = { on: true, x: 0.95, y: 0, w: 0.2, h: 0.1 }; // past the edge: clamped inside the frame
   const b = S.logoBox(p.items[0].logo, p.media.m1);
   assert.ok(b.x >= 1 && b.x + b.w <= 1278 && b.y >= 1, 'logo box inside frame ' + JSON.stringify(b));
   const a = buildArgs(p, { out: path.join(dir, 'clean.mp4'), textList }).args;
   assert.ok(a.includes(dn) && a.join(' ').includes('delogo='), 'denoised input + delogo in graph');
+  assert.strictEqual(S.audioFade(p.items[0], 0.25), 0.5, 'sound-only fade in');
   run(ffmpeg, a);
+}
+
+// advanced colour: baked 3D LUT written as .cube, applied with lut3d
+{
+  const it = p.items[0];
+  it.color = { look: 'tealOrange', hsl: { red: { s: 0.4 } }, curves: { l: [[0, 0], [0.25, 0.2], [0.75, 0.82], [1, 1]] }, wheels: { lift: { x: 0.1, y: 0, l: 0 } }, lut: { file: 'x.cube', mix: 1 } };
+  assert.ok(S.hasColor(it), 'advanced colour detected');
+  const ident = S.parseCube(S.cubeText(S.bakeLut({ id: 'z' }, null)));
+  for (const c of [[0.1, 0.5, 0.9], [0.7, 0.2, 0.4]]) S.sampleLut(ident, ...c).forEach((v, i) => assert.ok(Math.abs(v - c[i]) < 0.01, 'identity LUT ' + v));
+  const user = S.parseCube(S.cubeText(S.bakeLut({ id: 'u', color: { look: 'mono' } }, null)));
+  const cube = path.join(dir, 'lut_i1.cube');
+  fs.writeFileSync(cube, S.cubeText(S.bakeLut(it, user)));
+  const a = buildArgs(p, { out: path.join(dir, 'graded.mp4'), textList, luts: { i1: cube } }).args;
+  assert.ok(a.join(' ').includes('lut3d=file='), 'lut3d in graph');
+  run(ffmpeg, a);
+  delete it.color;
+}
+
+// mask (grey PNG through alphamerge) + chroma key
+{
+  const mk = path.join(dir, 'mask.png');
+  run(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=200x200,geq=lum=\'255*lt(hypot(X-100,Y-100),80)\'', '-frames:v', '1', mk]);
+  p.items[0].mask = { type: 'circle', x: 0.5, y: 0.5, w: 0.6, h: 0.6, feather: 0.1 };
+  p.items[1].chroma = { on: true, color: '#00ff00', sim: 0.3, blend: 0.1 };
+  assert.ok(S.hasMask(p.items[0]) && S.hasKey(p.items[1]), 'mask + key detected');
+  const a = buildArgs(p, { out: path.join(dir, 'masked.mp4'), textList, masks: { i1: mk } }).args, j = a.join(' ');
+  assert.ok(j.includes('alphamerge') && j.includes('chromakey=color=0x00ff00'), 'mask + key in graph');
+  run(ffmpeg, a);
+  delete p.items[0].mask; delete p.items[1].chroma;
 }
 
 fs.rmSync(dir, { recursive: true, force: true });

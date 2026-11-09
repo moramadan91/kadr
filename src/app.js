@@ -100,7 +100,7 @@ function fontPicker(it) {
   };
 }
 function closeFontPop() { const p = $('#fpop'); if (p) { p._off(); p.remove(); } }
-const ACCENT = '#2ee6d6';
+const ACCENT = '#5cd3c6';
 const ROW = 46;
 const IN_T = 0.35, OUT_T = 0.25;
 const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
@@ -180,15 +180,38 @@ function chainKey(it) {
   chainKeys.set(it, k = prev ? chainKey(prev) : it.id);
   return k;
 }
+// Speed-curve clips preview from a small pre-retimed copy (proxy_render) played at 1x: changing
+// playbackRate every frame makes WebKit stall. Until the copy is ready the original plays stepped.
+const pxOk = new Map(), pxPath = new Map();
+function pxKey(it) {
+  const m = media(it);
+  return JSON.stringify([m.path, num(it.in, 0), it.dur, it.curve, !!it.pitch, P.fps]);
+}
+function proxyFor(it) {
+  if (!S.hasCurve(it) || media(it).kind !== 'video') return null;
+  const key = pxKey(it);
+  if (pxPath.has(key)) return pxPath.get(key);
+  if (!pxOk.has(key)) {
+    const m = media(it), k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
+    const q = { w: ev(m.w), h: ev(m.h), fps: P.fps, media: { m }, tracks: [{ id: 'v', kind: 'video' }],
+      items: [{ id: 'x', track: 'v', media: 'm', start: 0, dur: it.dur, in: num(it.in, 0), curve: it.curve, pitch: it.pitch, fit: 'cover' }] };
+    let args;
+    try { args = G.buildArgs(q, { out: '__OUT__', codec: 'proxy' }).args.filter(a => a !== '-progress' && a !== 'pipe:1'); } catch { args = null; }
+    pxOk.set(key, args ? inv('proxy_render', { args }).then(path => { pxPath.set(key, path); needsDraw = true; return path; }, () => null) : Promise.resolve(null));
+  }
+  return null;
+}
 function elFor(it) {
-  const m = media(it), url = urlOf(m), key = chainKey(it);
+  const m = media(it), px = proxyFor(it), url = px ? urlOf({ path: px }) : urlOf(m), key = chainKey(it);
   let el = els.get(key);
   if (el && el.dataset.src === url) return el;
+  if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
   el = document.createElement(m.kind === 'audio' ? 'audio' : 'video');
   el.preload = 'auto';
   el.crossOrigin = 'anonymous'; // untainted frames for WebGL grading
 
   el.playsInline = true;
+  el._px = !!px;
   el.dataset.src = url;
   el.src = url;
   el.addEventListener('seeked', () => (needsDraw = true));
@@ -204,17 +227,21 @@ function imgFor(m) {
   if (!im) { im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => (needsDraw = true); im.src = url; imgs.set(url, im); }
   return im;
 }
-// Denoise: each source's sound is cleaned once (denoise_audio, cached), then played and exported in its place.
-const dnOk = new Map(), dnReady = new Set(); // media id -> promise of the clean file; ids whose file is ready
-function ensureDn(mid) {
-  if (!dnOk.has(mid)) dnOk.set(mid, inv('denoise_audio', { path: P.media[mid].path }).then(path => {
-    P.media[mid].dn = path; dnReady.add(mid); needsDraw = true; return path;
-  }, e => { dnOk.delete(mid); throw e; }));
-  return dnOk.get(mid);
+// Denoise / normalize: each source's sound is processed once per effect set (audio_fx, cached),
+// then played and exported in its place. Keys are "mediaId|fx".
+const dnOk = new Map(), dnReady = new Set();
+const fxId = it => it.media + '|' + S.fxKey(it);
+function ensureDn(it) {
+  const id = fxId(it), mid = it.media, fx = S.fxKey(it);
+  if (!dnOk.has(id)) dnOk.set(id, inv('audio_fx', { path: P.media[mid].path, fx }).then(path => {
+    (P.media[mid].fx ??= {})[fx] = path; dnReady.add(id); needsDraw = true; return path;
+  }, e => { dnOk.delete(id); throw e; }));
+  return dnOk.get(id);
 }
-const dnPrep = () => Promise.all([...new Set(P.items.filter(i => i.denoise && media(i)).map(i => i.media))].map(ensureDn));
+const dnPrep = () => Promise.all(P.items.filter(i => media(i) && S.fxKey(i)).map(ensureDn));
+const dnLive = it => !!S.fxKey(it) && dnReady.has(fxId(it));
 function dnEl(it) {
-  const key = chainKey(it) + '|dn', url = urlOf({ path: media(it).dn });
+  const key = chainKey(it) + '|dn', url = urlOf({ path: media(it).fx[S.fxKey(it)] });
   let el = els.get(key);
   if (el && el.dataset.src === url) return el;
   if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
@@ -238,8 +265,8 @@ function syncMedia() {
   }
   const driven = new Set();
   for (const it of ctl.values()) {
-    if (it.denoise && !dnOk.has(it.media)) ensureDn(it.media).catch(() => {});
-    const dn = it.denoise && dnReady.has(it.media);
+    if (S.fxKey(it) && !dnOk.has(fxId(it))) ensureDn(it).catch(() => {});
+    const dn = dnLive(it);
     driveEl(elFor(it), it, dn);
     if (dn) { const d = dnEl(it); driven.add(d); driveEl(d, it, false); }
   }
@@ -248,26 +275,41 @@ function syncMedia() {
 function driveEl(el, it, silent) {
   {
     const on = active(it, t), lt = clamp(t - it.start, 0, it.dur);
-    const sp = clamp(S.rateAt(it, lt), 0.0625, 16), want = num(it.in, 0) + S.srcAt(it, lt);
+    // a proxy is already retimed: it plays at 1x from the clip's start
+    const sp = el._px ? 1 : clamp(S.rateAt(it, lt), 0.0625, 16), want = el._px ? lt : num(it.in, 0) + S.srcAt(it, lt);
     if (el.preservesPitch !== !it.pitch) el.preservesPitch = !it.pitch;
     // Warm-up: just before a cut, run the next clip muted at a crawl from its in-point, so the decoder is
     // already going when the cut arrives (WebKit needs ~0.6 s to start a paused video).
     const warm = !on && playing && it.start > t && it.start - t < 0.8;
-    const rate = warm ? 0.0625 : sp, mute = silent || !!it.muted || !on;
-    if (el.playbackRate !== rate) el.playbackRate = rate;
+    // Fast parts (over 3x) can't be decoded in real time: hold the element paused and jump to the
+    // wanted frame whenever the last jump has landed (frame skipping keeps the picture in sync).
+    const fast = on && playing && sp > 3;
+    // Speed curves change the rate every frame; WebKit stutters on each playbackRate write, so step it.
+    const rate = warm ? 0.0625 : el._px ? 1 : S.hasCurve(it) ? +Math.pow(1.15, Math.round(Math.log(sp) / Math.log(1.15))).toFixed(3) : sp, mute = silent || !!it.muted || !on || fast;
+    if (Math.abs(el.playbackRate - rate) > 1e-3) el.playbackRate = rate;
     if (el.muted !== mute) el.muted = mute;
-    const vol = clamp(num(it.volume, 1) * S.fadeAlpha(it, t - it.start), 0, 1);
+    const vol = clamp(num(it.volume, 1) * S.audioFade(it, t - it.start), 0, 1);
     if (Math.abs(el.volume - vol) > 0.005) el.volume = vol;
-    if (on && playing) {
+    el._hold = fast;
+    if (fast) {
+      if (!el.paused) el.pause();
+      // a jump that hasn't landed in 250 ms is overtaken by a fresh one
+      const now = performance.now();
+      if ((!el.seeking || now - (el._seekAt || 0) > 250) && Math.abs(el.currentTime - want) > 1 / P.fps) {
+        el._seekAt = now;
+        if (el.fastSeek && sp > 6) el.fastSeek(want); else el.currentTime = want;
+      }
+    } else if (on && playing) {
       if (el.paused) { if (Math.abs(el.currentTime - want) > 0.15) el.currentTime = want; el.play().catch(() => {}); }
-      else if (Math.abs(el.currentTime - want) > 0.3) el.currentTime = want;
+      else if (Math.abs(el.currentTime - want) > 0.3 * Math.max(1, sp)) el.currentTime = want; // faster clips drift more between frames
     } else if (warm) {
-      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - num(it.in, 0)) > 0.05) el.currentTime = num(it.in, 0); el.play().catch(() => {}); }
+      const in0 = el._px ? 0 : num(it.in, 0);
+      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - in0) > 0.05) el.currentTime = in0; el.play().catch(() => {}); }
     } else {
       if (!el.paused) el.pause();
       if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
       // Preroll: park the next clip on its first frame so the cut starts without a seek.
-      else if (!on && playing && it.start > t && it.start - t < 1.5 && !el.seeking && Math.abs(el.currentTime - num(it.in, 0)) > 0.05) el.currentTime = num(it.in, 0);
+      else if (!on && playing && it.start > t && it.start - t < 1.5 && !el.seeking && Math.abs(el.currentTime - (el._px ? 0 : num(it.in, 0))) > 0.05) el.currentTime = el._px ? 0 : num(it.in, 0);
     }
   }
 }
@@ -282,9 +324,21 @@ const GL = (() => {
   const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
   const prog = gl.createProgram();
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 uv; void main(){ uv = vec2(p.x * .5 + .5, .5 - p.y * .5); gl_Position = vec4(p, 0., 1.); }'));
-  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision mediump float; varying vec2 uv; uniform sampler2D tex; uniform vec4 rect;
-    uniform vec3 slope; uniform vec3 icpt; uniform float sat;
-    void main(){ vec4 c = texture2D(tex, rect.xy + uv * rect.zw); vec3 v = clamp(c.rgb * slope + icpt, 0., 1.);
+  // Two modes: the basic grade as math, or (advanced colour) the clip's baked 3D LUT stored as an
+  // (N*N) x N strip — x = blue slice * N + red, y = green — read with trilinear blending.
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision highp float; varying vec2 uv; uniform sampler2D tex; uniform sampler2D lut; uniform vec4 rect;
+    uniform vec3 slope; uniform vec3 icpt; uniform float sat; uniform float useLut; uniform float n; uniform vec3 key; uniform vec2 kuv;
+    vec3 lut3(vec3 v){ vec3 s = clamp(v, 0., 1.) * (n - 1.); float b0 = floor(s.b), b1 = min(b0 + 1., n - 1.);
+      vec2 a = vec2((b0 * n + s.r + .5) / (n * n), (s.g + .5) / n), b = vec2((b1 * n + s.r + .5) / (n * n), (s.g + .5) / n);
+      return mix(texture2D(lut, a).rgb, texture2D(lut, b).rgb, s.b - b0); }
+    void main(){ vec4 c = texture2D(tex, rect.xy + uv * rect.zw);
+      if (key.z > 0.) { // chroma key: x = similarity, y = blend, z = on; kuv holds the key's CbCr
+        vec2 p = vec2(dot(c.rgb, vec3(-.1146, -.3854, .5)), dot(c.rgb, vec3(.5, -.4542, -.0458)));
+        float d = length(p - kuv) / 1.4142;
+        c.a *= key.y > 0.0001 ? clamp((d - key.x) / key.y, 0., 1.) : step(key.x, d);
+      }
+      if (useLut > .5) { gl_FragColor = vec4(lut3(c.rgb), c.a); return; }
+      vec3 v = clamp(c.rgb * slope + icpt, 0., 1.);
       mat3 m = mat3(.213 + .787 * sat, .213 - .213 * sat, .213 - .213 * sat, .715 - .715 * sat, .715 + .285 * sat, .715 - .715 * sat, .072 - .072 * sat, .072 - .072 * sat, .072 + .928 * sat);
       gl_FragColor = vec4(clamp(m * v, 0., 1.), c.a); }`));
   gl.linkProgram(prog);
@@ -294,31 +348,80 @@ const GL = (() => {
   const loc = gl.getAttribLocation(prog, 'p');
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const texParams = () => { for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); };
+  const frameTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, frameTex);
+  texParams();
   const U = n => gl.getUniformLocation(prog, n);
-  const u = { rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat') };
+  const u = { key: U('key'), kuv: U('kuv'), rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat'), useLut: U('useLut'), n: U('n'), tex: U('tex'), lut: U('lut') };
+  gl.uniform1i(u.tex, 0); gl.uniform1i(u.lut, 1);
+  const luts = new Map(); // baked table -> texture (a few recent ones)
+  const lutTex = L => {
+    let t = luts.get(L);
+    if (t) return t;
+    const n = S.LUT_N, px = new Uint8Array(n * n * n * 4);
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+      const i = (r + g * n + b * n * n) * 3, o = (g * n * n + b * n + r) * 4;
+      px[o] = Math.round(L.arr[i] * 255); px[o + 1] = Math.round(L.arr[i + 1] * 255); px[o + 2] = Math.round(L.arr[i + 2] * 255); px[o + 3] = 255;
+    }
+    t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t); texParams();
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n * n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.activeTexture(gl.TEXTURE0);
+    luts.set(L, t);
+    if (luts.size > 24) { const [k, old] = luts.entries().next().value; gl.deleteTexture(old); luts.delete(k); }
+    return t;
+  };
   // Draws src rect (sx,sy,sw,sh of a WxH source) graded into ctx at (dx,dy,dw,dh).
-  return (ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g) => {
+  return (ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g, L) => {
     const ow = Math.max(1, Math.round(Math.min(dw, 2048))), oh = Math.max(1, Math.round(Math.min(dh, 2048)));
     if (c.width !== ow || c.height !== oh) { c.width = ow; c.height = oh; }
     gl.viewport(0, 0, ow, oh);
+    gl.uniform1f(u.useLut, L ? 1 : 0);
+    if (L) { const t = lutTex(L); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(u.n, S.LUT_N); }
+    gl.bindTexture(gl.TEXTURE_2D, frameTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
     gl.uniform4f(u.rect, sx / W, sy / H, sw / W, sh / H);
     gl.uniform3f(u.slope, g.ch[0].slope, g.ch[1].slope, g.ch[2].slope);
     gl.uniform3f(u.icpt, g.ch[0].intercept, g.ch[1].intercept, g.ch[2].intercept);
     gl.uniform1f(u.sat, g.s);
+    const K = g.chroma;
+    gl.uniform3f(u.key, K ? K.sim : 0, K ? K.blend : 0, K ? 1 : 0);
+    if (K) gl.uniform2f(u.kuv, K.uv[0], K.uv[1]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     ctx.drawImage(c, dx, dy, dw, dh);
   };
 })();
 
+// User .cube files, read once: path -> parsed table, or a promise while loading.
+const userLuts = new Map();
+function loadUserLut(f) {
+  if (!userLuts.has(f)) userLuts.set(f, inv('read_lut', { path: f }).then(t => { const L = S.parseCube(t); userLuts.set(f, L); needsDraw = true; return L; },
+    e => { userLuts.set(f, null); toast(tr('lutFail') + ': ' + cleanErr(e)); return null; }));
+  return Promise.resolve(userLuts.get(f));
+}
+function userLutFor(it) {
+  const f = it.color && it.color.lut && it.color.lut.file;
+  if (!f) return null;
+  const u = userLuts.get(f);
+  if (u === undefined) { loadUserLut(f); return null; }
+  return u instanceof Promise ? null : u;
+}
+// A clip's whole colour (basic + looks + LUT + wheels + curves + HSL) baked once per change.
+const lutBake = new Map();
+function lutFor(it) {
+  const ul = userLutFor(it), key = S.colorKey(it) + (ul ? '|u' : '');
+  let c = lutBake.get(it.id);
+  if (!c || c.key !== key) { c = { key, arr: S.bakeLut(it, ul) }; lutBake.set(it.id, c); }
+  return c;
+}
 // drawImage with the item's grade applied.
 function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh) {
-  const g = S.grade(it);
-  if (g.identity || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+  const g = S.grade(it), adv = S.hasColor(it);
+  if (S.hasKey(it)) g.chroma = { sim: num(it.chroma.sim, 0.3), blend: num(it.chroma.blend, 0.1), uv: S.keyUV(it.chroma.color) };
+  if ((g.identity && !adv && !g.chroma) || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
   const W = src.videoWidth || src.naturalWidth || src.width, H = src.videoHeight || src.naturalHeight || src.height;
-  try { GL(ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g); }
+  try { GL(ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g, adv ? lutFor(it) : null); }
   catch (e) { if (!drawGraded.warned) { drawGraded.warned = true; inv('dev_log', { msg: 'grade failed: ' + e }); } ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh); }
 }
 
@@ -326,6 +429,43 @@ function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh) {
 // top to bottom (export uses ffmpeg delogo, which interpolates from all four edges).
 const dlc = document.createElement('canvas');
 dlc.width = 8; dlc.height = 2;
+// Masks: a scratch canvas per clip box size, and the mask shape cached per settings and size.
+const mBox = document.createElement('canvas');
+function maskBox(L) {
+  const w = Math.round(L.cw), h = Math.round(L.ch);
+  if (mBox.width !== w || mBox.height !== h) { mBox.width = w; mBox.height = h; }
+  const c = mBox.getContext('2d');
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, w, h);
+  return c;
+}
+const maskCache = new Map();
+function maskCanvas(M, w, h) {
+  const key = JSON.stringify(M) + w + 'x' + h;
+  let c = maskCache.get(key);
+  if (!c) {
+    c = document.createElement('canvas'); c.width = w; c.height = h;
+    S.drawMask(c.getContext('2d'), M, w, h);
+    if (maskCache.size > 12) maskCache.delete(maskCache.keys().next().value);
+    maskCache.set(key, c);
+  }
+  return c;
+}
+// Dashed outline of the mask shape while its settings are open.
+function drawMaskGuide(ctx, M, L) {
+  const q = { ...S.MASK_DEF, ...M }, w = L.cw, h = L.ch;
+  ctx.save();
+  ctx.translate(L.ox + q.x * w, L.oy + q.y * h); ctx.rotate(q.rot * Math.PI / 180);
+  ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = '#5cd3c6';
+  ctx.beginPath();
+  const D = Math.hypot(w, h);
+  if (q.type === 'linear') { ctx.moveTo(-D, 0); ctx.lineTo(D, 0); }
+  else if (q.type === 'mirror') { ctx.moveTo(-D, -q.h * h / 2); ctx.lineTo(D, -q.h * h / 2); ctx.moveTo(-D, q.h * h / 2); ctx.lineTo(D, q.h * h / 2); }
+  else if (q.type === 'circle') ctx.ellipse(0, 0, q.w * w / 2, q.h * h / 2, 0, 0, Math.PI * 2);
+  else ctx.rect(-q.w * w / 2, -q.h * h / 2, q.w * w, q.h * h);
+  ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle = '#5cd3c6'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 function drawDelogo(ctx, it, src, m, k, C, L, u, v) {
   const b = S.logoBox(it.logo, m), dc = dlc.getContext('2d');
   dc.clearRect(0, 0, 8, 2);
@@ -337,7 +477,7 @@ function drawDelogo(ctx, it, src, m, k, C, L, u, v) {
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(dlc, 0, 0, 8, 2, dx, dy, b.w / u, b.h / v);
   if (ctx === vctx && sel === it.id && inspTab === 'tVideo' && !playing) {
-    ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = '#2ee6d6';
+    ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = '#5cd3c6';
     ctx.strokeRect(dx, dy, b.w / u, b.h / v);
   }
   ctx.restore();
@@ -353,8 +493,15 @@ function drawVisual(ctx, time, ov) {
       if (it.track !== tid || isText(it) || !(pv || active(it, time))) continue;
       const m = media(it);
       if (m.kind === 'audio') continue;
-      const src = m.kind === 'image' ? imgFor(m) : elFor(it);
-      if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) continue;
+      let src = m.kind === 'image' ? imgFor(m) : elFor(it);
+      if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
+        if (!src._snap) continue;
+        src = src._snap; // frame-skipping playback: keep the last frame while the next jump lands
+      } else if (src._hold && ctx === vctx) {
+        const c = src._snap || (src._snap = document.createElement('canvas'));
+        if (c.width !== m.w || c.height !== m.h) { c.width = m.w; c.height = m.h; }
+        c.getContext('2d').drawImage(src, 0, 0, m.w, m.h);
+      }
       const lt = pv ? ov.lt : time - it.start;
       const a = S.withVa(S.animAt(it, lt), lt, P.w, P.h), L = S.layout(a, m, P.w, P.h), C = S.srcCrop(it, m);
       const k = (src.videoWidth || src.naturalWidth || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
@@ -368,8 +515,19 @@ function drawVisual(ctx, time, ov) {
         ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
         ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
       }
-      drawGraded(ctx, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch);
-      if (it.logo && it.logo.on) drawDelogo(ctx, it, src, m, k, C, L, u, v);
+      const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
+      const dc = mk ? maskBox(L) : ctx;
+      if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
+      drawGraded(dc, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch);
+      if (it.logo && it.logo.on) drawDelogo(dc, it, src, m, k, C, L, u, v);
+      if (mk) {
+        dc.restore();
+        dc.globalCompositeOperation = 'destination-in';
+        dc.drawImage(maskCanvas(it.mask, Math.round(L.cw), Math.round(L.ch)), 0, 0);
+        dc.globalCompositeOperation = 'source-over';
+        ctx.drawImage(dc.canvas, 0, 0, Math.round(L.cw), Math.round(L.ch), L.ox, L.oy, Math.round(L.cw), Math.round(L.ch));
+        if (ctx === vctx && sel === it.id && inspTab === 'tAdjust' && colSub === 'mask' && !playing) drawMaskGuide(ctx, it.mask, L);
+      }
       ctx.restore();
     }
   }
@@ -797,7 +955,8 @@ function clockTime() {
   let best = null;
   for (const it of P.items) {
     const m = media(it), el = els.get(chainKey(it));
-    if (!m || m.kind === 'image' || !el || el.paused || el.ended || el.seeking || el.readyState < 3 || !active(it, t)) continue;
+    // speed-curve clips change rate as they play; WebKit stalls on each change, so wall time leads there
+    if (!m || m.kind === 'image' || S.hasCurve(it) || !el || el.paused || el.ended || el.seeking || el.readyState < 3 || !active(it, t)) continue;
     if (best && best.it.track === 'v1') continue;
     best = { it, el };
   }
@@ -824,6 +983,14 @@ function follow() {
 
 /* ---------- timeline ---------- */
 const TRACK_COLOR = { video: 'rgb(62,132,255)', audio: 'rgb(74,210,110)', text: 'rgb(168,112,255)' };
+// Speed-curve clips show their curve on the clip: the speed line plus a dot at every curve point.
+function curveMarks(it) {
+  if (!S.hasCurve(it)) return '';
+  const c = it.curve, y = v => (50 - Math.log10(clamp(v, 0.1, 10)) * 40).toFixed(1); // 0.1x bottom, 10x top
+  const line = Array.from({ length: 41 }, (_, i) => `${(i * 2.5).toFixed(1)},${y(S.rateAt(it, it.dur * i / 40))}`).join(' ');
+  return `<svg class="cvl" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${line}"/></svg>` +
+    c.pts.map(p => `<i class="cvp" style="left:${(S.fAtU(c, p[0]) * 100).toFixed(2)}%;top:${y(S.rateAt(it, it.dur * S.fAtU(c, p[0])))}%"></i>`).join('');
+}
 function clipLabel(it) {
   if (isText(it)) return icon('type') + esc(it.text);
   const m = media(it);
@@ -834,7 +1001,7 @@ function renderTimeline() {
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(tr('tr_' + x.id))}</div>`).join('');
   $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div><span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}<div class="h r"></div></div>`).join('')
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div><span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -1179,11 +1346,18 @@ function refresh() {
 /* ---------- inspector ---------- */
 const getPath = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
 function setPath(o, k, v) { const ks = k.split('.'); const last = ks.pop(); ks.reduce((a, x) => (a[x] ??= {}), o)[last] = v; }
-const showVal = (k, v) => /Dur$/.test(k) ? (+v).toFixed(2) + 's' : k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|bgAlpha|crop\.|logo\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW|spacing|Blur|Dist|glowSize/.test(k) ? String(v | 0) : (+v).toFixed(2);
+// Every slider has a number box beside it, in the unit people read (percent, degrees, seconds).
+const PCT = /volume|opacity|bgAlpha|crop\.|logo\.|Mix$|lut\.mix/;
+const unitOf = k => /Dur$|^(fadeIn|fadeOut|afIn|afOut)$/.test(k) ? 's' : k === 'rotate' ? '°' : PCT.test(k) ? '%' : '';
+const dispVal = (k, v) => PCT.test(k) ? Math.round(v * 100) : /size|strokeW|spacing|Blur|Dist|glowSize|rotate/.test(k) ? Math.round(v) : +(+v).toFixed(2);
+function setShow(k, v) {
+  const nb = document.querySelector(`#inspBody [data-num="${k}"]`);
+  if (nb && document.activeElement !== nb) nb.value = dispVal(k, v);
+}
 
 const fld = {
   range: (k, label, min, max, step, it, d = 0) =>
-    `<div class="f"><div class="lb"><span>${tr(label)}</span><b data-show="${k}">${showVal(k, num(getPath(it, k), d))}</b></div><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${num(getPath(it, k), d)}"></div>`,
+    `<div class="f"><div class="lb"><span>${tr(label)}</span></div><div class="spd"><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${num(getPath(it, k), d)}"><span class="nbx"><input type="number" data-num="${k}" step="any" value="${dispVal(k, num(getPath(it, k), d))}"><i>${unitOf(k)}</i></span></div></div>`,
   number: (k, label, step, it) =>
     `<div class="f"><div class="lb"><span>${tr(label)}</span></div><input type="number" data-k="${k}" step="${step}" value="${+num(getPath(it, k), 0).toFixed(3)}"></div>`,
   select: (k, label, opts, it) =>
@@ -1243,8 +1417,7 @@ function syncKfUI(force) {
     const el = document.querySelector(`#inspBody [data-k="${k}"]`), v = num(a[k], d[k]);
     if (!el) continue;
     el.value = el.type === 'number' ? +v.toFixed(3) : v;
-    const sh = document.querySelector(`#inspBody [data-show="${k}"]`);
-    if (sh) sh.textContent = showVal(k, v);
+    setShow(k, v);
   }
 }
 const kfBar = it => `<div class="kfbar" dir="ltr"><button class="ib" data-kf="prev" title="${tr('kf_prev')}">${icon('chevron-left')}</button>` +
@@ -1326,6 +1499,9 @@ function inspector() {
     if (it.track !== 'v1') h.push(trkBtns(it));
     h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
+    const K = it.chroma || {};
+    h.push(grp('keySec', `<div class="inl">${fld.check('chroma.on', 'keyOn', it)}</div>` + (K.on ? `<div class="row2"><label>${tr('keyColor')}<input type="color" data-k="chroma.color" value="${esc(K.color || '#00ff00')}"></label><button id="keyPick" data-i="pipette"><span>${tr('keyPick')}</span></button></div>` +
+      fld.range('chroma.sim', 'keySim', 0.01, 1, 0.01, it, 0.3) + fld.range('chroma.blend', 'keyBlend', 0, 1, 0.01, it, 0.1) : '') + `<p class="hint">${tr('keyHint')}</p>`));
     const lo = it.logo && it.logo.on;
     h.push(grp('logoSec', `<div class="inl">${fld.check('logo.on', 'logoOn', it)}</div>` + (lo ?
       `<div class="row2">${fld.range('logo.x', 'posX', 0, 0.99, 0.005, it)}${fld.range('logo.y', 'posY', 0, 0.99, 0.005, it)}</div>` +
@@ -1334,7 +1510,10 @@ function inspector() {
   } else if (inspTab === 'tAudio') {
     if (media(it).kind === 'audio') h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing);
     h.push(fld.range('volume', 'volume', 0, 2, 0.01, it, 1), `<div class="inl">${fld.check('muted', 'mute', it)}</div>`);
-    h.push(grp('dnSec', `<div class="inl">${fld.check('denoise', 'denoise', it)}</div><p class="hint">${tr(it.denoise && !dnReady.has(it.media) ? 'dnWork' : 'denoiseHint')}</p>`));
+    if (media(it).kind !== 'audio') h.push(`<div class="row2">${fld.range('afIn', 'fadeIn', 0, 5, 0.05, it)}${fld.range('afOut', 'fadeOut', 0, 5, 0.05, it)}</div>`);
+    h.push(grp('dnSec', `<div class="inl">${fld.check('norm', 'normalize', it)}</div><p class="hint">${tr('normHint')}</p>` +
+      `<div class="inl">${fld.check('denoise', 'denoise', it)}</div><p class="hint">${tr('denoiseHint')}</p>` +
+      (S.fxKey(it) && !dnLive(it) ? `<p class="hint work">${tr('dnWork')}</p>` : '')));
     if (media(it).kind === 'audio') h.push(fades);
   } else if (inspTab === 'tSpeed') {
     const cv = S.hasCurve(it) ? it.curve : null, sub = cv ? 'curve' : spdSub;
@@ -1352,10 +1531,48 @@ function inspector() {
     if (media(it).kind === 'video' || media(it).hasAudio || media(it).kind === 'audio') h.push(`<div class="inl">${fld.check('pitch', 'pitchShift', it)}</div>`);
     if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr('smoothHint')}</p>`);
   } else if (inspTab === 'tAdjust') {
-    h.push(fld.select('preset', 'filter', Object.keys(S.PRESETS).map(p => [p, tr('p_' + p)]), it));
-    h.push(fld.range('brightness', 'brightness', 0.5, 1.5, 0.01, it, 1), fld.range('contrast', 'contrast', 0.5, 1.5, 0.01, it, 1));
-    h.push(fld.range('saturation', 'saturation', 0, 2, 0.01, it, 1), fld.range('temp', 'temp', -1, 1, 0.01, it));
-    h.push(`<button class="wide" id="colReset" data-i="rotate-ccw"><span>${tr('resetColor')}</span></button>`);
+    h.push(`<div class="seg csub">${['basic', 'hsl', 'curves', 'wheels', 'lut', 'mask'].map(x => `<button data-csub="${x}" class="${x === colSub ? 'on' : ''}">${tr('cs_' + x)}</button>`).join('')}</div>`);
+    const C = it.color || {};
+    if (colSub === 'basic') {
+      h.push(fld.select('preset', 'filter', Object.keys(S.PRESETS).map(p => [p, tr('p_' + p)]), it));
+      h.push(fld.range('brightness', 'brightness', 0.5, 1.5, 0.01, it, 1), fld.range('contrast', 'contrast', 0.5, 1.5, 0.01, it, 1));
+      h.push(fld.range('saturation', 'saturation', 0, 2, 0.01, it, 1), fld.range('temp', 'temp', -1, 1, 0.01, it));
+      h.push(`<div class="row2 cbtns"><button id="autoAdj" data-i="wand-sparkles"><span>${tr('autoAdj')}</span></button><button id="colMatch" data-i="pipette"><span>${tr('colMatch')}</span></button></div><p class="hint">${tr('autoHint')}</p>`);
+      h.push(`<button class="wide" id="colReset" data-i="rotate-ccw"><span>${tr('resetAllColor')}</span></button>`);
+    } else if (colSub === 'hsl') {
+      h.push(`<div class="hsw">${S.HSL_BANDS.map(([b, hc]) => { const v = (C.hsl || {})[b]; const used = v && (num(v.h, 0) || num(v.s, 0) || num(v.l, 0));
+        return `<button data-hsl="${b}" class="${b === hslSel ? 'on' : ''}${used ? ' used' : ''}" style="--hc:hsl(${hc} 85% 55%)" title="${tr('hc_' + b)}"></button>`; }).join('')}</div>`);
+      h.push(fld.range(`color.hsl.${hslSel}.h`, 'hue', -100, 100, 1, it), fld.range(`color.hsl.${hslSel}.s`, 'saturation', -100, 100, 1, it), fld.range(`color.hsl.${hslSel}.l`, 'lightness', -100, 100, 1, it));
+      h.push(`<button class="wide" id="hslReset" data-i="rotate-ccw"><span>${tr('reset')}</span></button>`);
+    } else if (colSub === 'curves') {
+      h.push(`<div class="seg cch">${['l', 'r', 'g', 'b'].map(c => `<button data-cch="${c}" class="${c === curCh ? 'on' : ''} c-${c}">${tr('ch_' + c)}</button>`).join('')}</div>`);
+      h.push(`<div class="cved"><svg id="ccEd" viewBox="0 0 256 256"></svg></div><p class="hint">${tr('curveHint')}</p>`);
+      h.push(`<button class="wide" id="curReset" data-i="rotate-ccw"><span>${tr('reset')}</span></button>`);
+    } else if (colSub === 'mask') {
+      const M = it.mask || {}, ty = S.hasMask(it) ? M.type : 'none';
+      const shp = { linear: '<path d="M2 14h20"/><path d="M2 14h20v8H2z" fill="currentColor" opacity=".35"/>', mirror: '<path d="M2 8h20M2 16h20"/><path d="M2 8h20v8H2z" fill="currentColor" opacity=".35"/>', circle: '<circle cx="12" cy="12" r="8" fill="currentColor" fill-opacity=".35"/>', rect: '<rect x="4" y="6" width="16" height="12" rx="2" fill="currentColor" fill-opacity=".35"/>' };
+      h.push(`<div class="mshapes">${['none', ...S.MASKS].map(x => `<button data-mask="${x}" class="${x === ty ? 'on' : ''}">${x === 'none' ? icon('x') : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${shp[x]}</svg>`}<span>${tr('mk_' + x)}</span></button>`).join('')}</div>`);
+      if (ty !== 'none') {
+        h.push(`<div class="row2">${fld.range('mask.x', 'mkX', 0, 1, 0.01, it, 0.5)}${fld.range('mask.y', 'mkY', 0, 1, 0.01, it, 0.5)}</div>`);
+        if (ty === 'circle' || ty === 'rect') h.push(`<div class="row2">${fld.range('mask.w', 'lgW', 0.02, 1.5, 0.01, it, 0.5)}${fld.range('mask.h', 'lgH', 0.02, 1.5, 0.01, it, 0.5)}</div>`);
+        if (ty === 'mirror') h.push(fld.range('mask.h', 'mkBand', 0.02, 1.5, 0.01, it, 0.5));
+        h.push(fld.range('mask.rot', 'rotate', -180, 180, 1, it, 0), fld.range('mask.feather', 'mkFeather', 0, 1, 0.01, it, 0.1));
+        if (ty === 'rect') h.push(fld.range('mask.round', 'mkRound', 0, 1, 0.01, it, 0));
+        h.push(fld.check('mask.invert', 'mkInvert', it));
+      }
+    } else if (colSub === 'wheels') {
+      h.push(fld.range('color.wheelMix', 'intensity', 0, 1, 0.01, it, 1));
+      h.push(`<div class="whls">${['lift', 'gamma', 'gain', 'offset'].map(w => `<div class="whl" data-w="${w}"><b>${tr('w_' + w)}</b><div class="wring" data-wheel="${w}"><i></i></div>${fld.range(`color.wheels.${w}.l`, 'wLum', -1, 1, 0.01, it)}</div>`).join('')}</div>`);
+      h.push(`<p class="hint">${tr('wheelHint')}</p><button class="wide" id="whlReset" data-i="rotate-ccw"><span>${tr('reset')}</span></button>`);
+    } else {
+      if (!lutLib) loadLutLib();
+      const lf = C.lut && C.lut.file;
+      h.push(`<div class="gh">${tr('lutLib')}</div>${lf ? fld.range('color.lut.mix', 'intensity', 0, 1, 0.01, it, 1) : ''}`);
+      h.push(`<div class="looks lutlib"><button id="lutImport" class="add">${icon('upload')}<span>${tr('lutImport')}</span></button><button data-lutf="-1" class="${lf ? '' : 'on'}"><i class="lk0">${icon('x')}</i><span>${tr('lk_none')}</span></button>` +
+        (lutLib || []).map((L, i) => `<button data-lutf="${i}" class="${lf === L.path ? 'on' : ''}" title="${esc(L.name)}"><canvas width="64" height="64"></canvas><span dir="ltr">${esc(L.name)}</span>${L.builtin ? '' : `<i class="ldel" data-lutdel="${i}" title="${tr('remove')}">×</i>`}</button>`).join('') + `</div><p class="hint">${tr('lutHint')}</p>`);
+      h.push(`<div class="gh">${tr('looks')}</div>${C.look && C.look !== 'none' ? fld.range('color.lookMix', 'intensity', 0, 1, 0.01, it, 1) : ''}`);
+      h.push(`<div class="looks">${['none', ...Object.keys(S.LOOKS)].map(l => `<button data-look="${l}" class="${(C.look || 'none') === l ? 'on' : ''}">${l === 'none' ? `<i class="lk0">${icon('x')}</i>` : '<canvas width="64" height="64"></canvas>'}<span>${tr('lk_' + l)}</span></button>`).join('')}</div>`);
+    }
   }
   body.innerHTML = h.join('');
   paintIcons(body);
@@ -1371,6 +1588,9 @@ function inspector() {
     b.appendChild(cardCanvas(ctx => drawTextItem(ctx, { w: 240, h: 180 }, fake, 5), 64, 48));
   });
   if ($('#cvEd')) cvEditor(it);
+  if ($('#ccEd')) colorCurveEditor(it);
+  if ($('.whls')) wheelsUI(it);
+  if ($('.looks')) lookThumbs(it);
   if ($('#fontBtn')) $('#fontBtn').onclick = () => fontPicker(it);
   const tg = $('#trkGo'), tc = $('#trkClear');
   if (tg) tg.onclick = () => trackPick(it);
@@ -1382,14 +1602,56 @@ function inspector() {
     refresh();
   };
   const cr = $('#colReset');
-  if (cr) cr.onclick = () => { snapshot(); Object.assign(it, { preset: 'none', brightness: 1, contrast: 1, saturation: 1, temp: 0 }); refresh(); };
+  if (cr) cr.onclick = () => { snapshot(); Object.assign(it, { preset: 'none', brightness: 1, contrast: 1, saturation: 1, temp: 0 }); delete it.color; refresh(); };
+  const col = () => (it.color ??= {});
+  const bind = (id, f) => { const b = $(id); if (b) b.onclick = f; };
+  bind('#hslReset', () => { snapshot(); if (it.color && it.color.hsl) delete it.color.hsl[hslSel]; refresh(); });
+  bind('#curReset', () => { snapshot(); if (it.color && it.color.curves) delete it.color.curves[curCh]; refresh(); });
+  bind('#whlReset', () => { snapshot(); if (it.color) { delete it.color.wheels; delete it.color.wheelMix; } refresh(); });
+  bind('#lutImport', async () => {
+    const f = await TA.dialog.open({ filters: [{ name: 'LUT (.cube)', extensions: ['cube', 'CUBE'] }] });
+    if (!f) return;
+    let p;
+    try { p = await inv('lut_add', { path: f }); } catch (e) { return toast(tr('lutFail') + ': ' + cleanErr(e)); }
+    userLuts.delete(p);
+    if (!(await loadUserLut(p))) { inv('lut_remove', { path: p }).catch(() => {}); return; }
+    snapshot(); col().lut = { file: p, mix: 1 };
+    await loadLutLib(); refresh();
+  });
+  bind('#autoAdj', () => autoAdjust(it));
+  bind('#keyPick', () => keyPick(it));
+  bind('#colMatch', () => colorMatchPick(it));
 }
+$('#inspBody').addEventListener('click', e => {
+  const it = sel && item(sel);
+  if (!it) return;
+  const cs = e.target.closest('[data-csub]'), hs = e.target.closest('[data-hsl]'), ch = e.target.closest('[data-cch]'), lk = e.target.closest('[data-look]');
+  if (cs) { colSub = cs.dataset.csub; needsDraw = true; inspector(); }
+  else if (e.target.closest('[data-mask]')) {
+    const x = e.target.closest('[data-mask]').dataset.mask;
+    snapshot();
+    if (x === 'none') delete it.mask;
+    else it.mask = { ...S.MASK_DEF, ...(it.mask || {}), type: x };
+    dirty = true; refresh();
+  }
+  else if (hs) { hslSel = hs.dataset.hsl; inspector(); }
+  else if (ch) { curCh = ch.dataset.cch; inspector(); }
+  else if (e.target.closest('[data-lutdel]')) {
+    const L = lutLib[+e.target.closest('[data-lutdel]').dataset.lutdel];
+    inv('lut_remove', { path: L.path }).then(loadLutLib).then(inspector, er => toast(tr('error') + ': ' + cleanErr(er)));
+  } else if (e.target.closest('[data-lutf]')) {
+    const i = +e.target.closest('[data-lutf]').dataset.lutf, c = (it.color ??= {});
+    snapshot();
+    if (i < 0) delete c.lut; else c.lut = { file: lutLib[i].path, mix: num(c.lut && c.lut.mix, 1) };
+    dirty = true; refresh();
+  } else if (lk) { snapshot(); const c = (it.color ??= {}); if (lk.dataset.look === 'none') delete c.look; else { c.look = lk.dataset.look; c.lookMix ??= 1; } dirty = true; refresh(); }
+});
 $('#inspTabs').addEventListener('click', e => {
   const b = e.target.closest('[data-itab]');
   if (b) { inspTab = b.dataset.itab; inspector(); }
 });
 
-let editing = false, animSub = 'in', spdSub = 'std';
+let editing = false, animSub = 'in', spdSub = 'std', colSub = 'basic', hslSel = 'red', curCh = 'l';
 
 /* ---------- speed curves ---------- */
 const cvY = (v, h) => (1 - (Math.log10(v) + 1) / 2) * h; // 10x top, 0.1x bottom
@@ -1408,6 +1670,166 @@ function setCurve(it, id) {
 }
 let cvSel = -1;
 // Graph editor: drag points (ends move up/down only), + adds a point at the playhead, − removes the chosen one.
+// A clip's frame (at its local time lt) as 96px pixels, for auto colour. Videos use a spare element.
+// Background colour for the chroma key: the most common colour around the frame's edges.
+async function keyPick(it) {
+  const d = await framePixels(it, clamp(t - it.start, 0, it.dur)), n = 96, hist = new Map();
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    if (x > 5 && x < n - 6 && y > 5 && y < n - 6) continue;
+    const i = (y * n + x) * 4, k = (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | d[i + 2] >> 4, e = hist.get(k) || [0, 0, 0, 0];
+    e[0]++; e[1] += d[i]; e[2] += d[i + 1]; e[3] += d[i + 2]; hist.set(k, e);
+  }
+  const b = [...hist.values()].sort((a, c) => c[0] - a[0])[0], hx = v => Math.round(v / b[0]).toString(16).padStart(2, '0');
+  snapshot(); it.chroma = { ...(it.chroma || {}), on: true, color: '#' + hx(b[1]) + hx(b[2]) + hx(b[3]) };
+  dirty = true; refresh();
+}
+async function framePixels(it, lt) {
+  const m = media(it);
+  let src = m.kind === 'image' ? imgFor(m) : null;
+  if (!src) {
+    src = document.createElement('video'); src.crossOrigin = 'anonymous'; src.muted = true; src.preload = 'auto'; src.src = urlOf(m);
+    await new Promise((ok, no) => { src.onloadeddata = ok; src.onerror = no; });
+    src.currentTime = num(it.in, 0) + S.srcAt(it, clamp(lt, 0, it.dur - 0.05));
+    await new Promise(ok => { src.onseeked = ok; });
+  } else if (!src.complete) await new Promise(ok => { src.onload = ok; });
+  const c = document.createElement('canvas'); c.width = c.height = 96;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(src, 0, 0, 96, 96);
+  if (m.kind !== 'image') src.removeAttribute('src');
+  return x.getImageData(0, 0, 96, 96).data;
+}
+function frameStats(d) {
+  const ch = [[], [], []], mean = [0, 0, 0], sd = [0, 0, 0], n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { const v = d[i + k] / 255; ch[k].push(v); mean[k] += v / n; }
+  for (let k = 0; k < 3; k++) { for (const v of ch[k]) sd[k] += (v - mean[k]) ** 2 / n; sd[k] = Math.sqrt(sd[k]); ch[k].sort((a, b) => a - b); }
+  const q = (k, f) => ch[k][Math.min(n - 1, Math.floor(f * n))];
+  return { mean, sd, lo: [0, 1, 2].map(k => q(k, 0.005)), hi: [0, 1, 2].map(k => q(k, 0.995)) };
+}
+// Auto adjust: per-channel levels from this frame (also neutralises a colour cast), held back to stay natural.
+async function autoAdjust(it) {
+  let st;
+  try { st = frameStats(await framePixels(it, t - it.start)); } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
+  snapshot();
+  const lo = st.lo.map(v => +Math.min(0.25, v * 0.85).toFixed(4)), hi = st.hi.map(v => +Math.max(0.6, 1 - (1 - v) * 0.85).toFixed(4));
+  (it.color ??= {}).auto = { lo, hi };
+  dirty = true; refresh(); toast(tr('autoDone'));
+}
+// Colour match: pick another clip; this clip's mean/contrast per channel is moved onto that clip's.
+function colorMatchPick(it) {
+  const others = P.items.filter(x => x !== it && media(x) && media(x).kind !== 'audio' && !isText(x));
+  if (!others.length) return toast(tr('matchNone'));
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<h3>${tr('colMatch')}</h3><p class="hint">${tr('matchPick')}</p><div class="mlist">${others.map((x, i) => `<button data-mi="${i}"><b dir="ltr">${esc(media(x).name)}</b><small>${x.start.toFixed(1)}s</small></button>`).join('')}</div><div class="acts"><span class="flex"></span><button id="mNo">${tr('cancel')}</button></div>`;
+  $('#mNo').onclick = hideModal;
+  $('#mBox').onclick = async e => {
+    const b = e.target.closest('[data-mi]');
+    if (!b) return;
+    const ref = others[+b.dataset.mi];
+    hideModal();
+    try {
+      const a = frameStats(await framePixels(it, t - it.start)), r = frameStats(await framePixels(ref, ref.dur / 2));
+      const gain = [0, 1, 2].map(k => +clamp(r.sd[k] / Math.max(0.02, a.sd[k]), 0.5, 2).toFixed(4));
+      const off = [0, 1, 2].map(k => +clamp(r.mean[k] - a.mean[k] * gain[k], -0.5, 0.5).toFixed(4));
+      snapshot(); (it.color ??= {}).match = { gain, off }; dirty = true; refresh(); toast(tr('matchDone'));
+    } catch (er) { toast(tr('error') + ': ' + cleanErr(er)); }
+  };
+}
+// Colour curve editor: drag points, click the line to add one, double-click a point to remove it.
+function colorCurveEditor(it) {
+  const svg = $('#ccEd'), N = 256, COL = { l: '#e9edf2', r: '#ff5a5a', g: '#4cd964', b: '#4aa3ff' };
+  const pts = () => ((it.color ??= {}).curves ??= {})[curCh] ??= [[0, 0], [1, 1]];
+  const path = (p, cls, col) => { const f = S.curveFn(p) || (x => x); return `<path class="${cls}" stroke="${col}" d="${Array.from({ length: 65 }, (_, i) => `${i ? 'L' : 'M'}${(i / 64 * N).toFixed(1)} ${((1 - f(i / 64)) * N).toFixed(1)}`).join('')}"/>`; };
+  const paint = () => {
+    const C = (it.color && it.color.curves) || {};
+    svg.innerHTML = `<path class="gl" d="M64 0V256M128 0V256M192 0V256M0 64H256M0 128H256M0 192H256"/><path class="gl1" d="M0 256L256 0"/>` +
+      ['l', 'r', 'g', 'b'].filter(c => c !== curCh && C[c]).map(c => path(C[c], 'cv ghost', COL[c])).join('') +
+      path(pts(), 'cv', COL[curCh]) + pts().map((q, i) => `<circle data-cp="${i}" cx="${q[0] * N}" cy="${(1 - q[1]) * N}" r="7" fill="${COL[curCh]}"/>`).join('');
+  };
+  paint();
+  const at = ev => { const r = svg.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp(1 - (ev.clientY - r.top) / r.height, 0, 1)]; };
+  svg.onpointerdown = e => {
+    snapshot();
+    let p = pts(), i = e.target.dataset.cp != null ? +e.target.dataset.cp : -1;
+    if (i < 0) { const [x] = at(e), f = S.curveFn(p) || (v => v); p.push([+x.toFixed(4), +f(x).toFixed(4)]); p.sort((a, b) => a[0] - b[0]); i = p.findIndex(q => q[0] === +x.toFixed(4)); }
+    const end = i === 0 || i === p.length - 1;
+    const mv = ev => {
+      const [x, y] = at(ev);
+      p[i][1] = +y.toFixed(4);
+      if (!end) p[i][0] = +clamp(x, p[i - 1][0] + 0.01, p[i + 1][0] - 0.01).toFixed(4);
+      dirty = true; needsDraw = true; paint();
+    };
+    mv(e);
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); paint(); }, { once: true });
+  };
+  svg.ondblclick = e => {
+    const i = e.target.dataset.cp != null ? +e.target.dataset.cp : -1, p = pts();
+    if (i <= 0 || i >= p.length - 1) return;
+    snapshot(); p.splice(i, 1); dirty = true; needsDraw = true; paint();
+  };
+}
+// Colour wheels: drag the dot to push that tonal range toward a hue; double-click to centre it.
+function wheelsUI(it) {
+  for (const ring of $$('.wring')) {
+    const w = ring.dataset.wheel, dot = ring.firstElementChild;
+    const get = () => ((it.color ??= {}).wheels ??= {})[w] ??= {};
+    const place = () => { const v = (it.color && it.color.wheels && it.color.wheels[w]) || {}; dot.style.left = 50 + num(v.x, 0) * 50 + '%'; dot.style.top = 50 - num(v.y, 0) * 50 + '%'; };
+    place();
+    ring.onpointerdown = e => {
+      snapshot();
+      const r = ring.getBoundingClientRect();
+      const mv = ev => {
+        let x = (ev.clientX - r.left) / r.width * 2 - 1, y = -((ev.clientY - r.top) / r.height * 2 - 1);
+        const d = Math.hypot(x, y); if (d > 1) { x /= d; y /= d; }
+        const v = get(); v.x = +x.toFixed(3); v.y = +y.toFixed(3);
+        dirty = true; needsDraw = true; place();
+      };
+      mv(e);
+      window.addEventListener('pointermove', mv);
+      window.addEventListener('pointerup', () => window.removeEventListener('pointermove', mv), { once: true });
+    };
+    ring.ondblclick = () => { snapshot(); const v = get(); v.x = v.y = 0; dirty = true; needsDraw = true; place(); };
+  }
+}
+// LUT library (shipped + imported .cube files).
+let lutLib = null;
+async function loadLutLib() {
+  try { lutLib = await inv('lut_library'); } catch { lutLib = []; }
+  if (inspTab === 'tAdjust' && colSub === 'lut') inspector();
+  return lutLib;
+}
+// Look cards show the clip's own current frame through each look.
+function lookThumbs(it) {
+  const m = media(it), src = m.kind === 'image' ? imgFor(m) : elFor(it);
+  const ok = m.kind === 'image' ? src.complete && src.naturalWidth : src.readyState >= 2;
+  if (!ok) return;
+  const W = src.videoWidth || src.naturalWidth, H = src.videoHeight || src.naturalHeight, s = Math.min(W, H);
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(src, (W - s) / 2, (H - s) / 2, s, s, 0, 0, 64, 64);
+  let base;
+  try { base = x.getImageData(0, 0, 64, 64); } catch { return; }
+  for (const cv of $$('.lutlib [data-lutf] canvas')) {
+    const L = lutLib && lutLib[+cv.parentElement.dataset.lutf];
+    if (L) loadUserLut(L.path).then(T => {
+      if (!T || !cv.isConnected) return;
+      const out = new ImageData(64, 64), d = base.data, o = out.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = S.sampleLut(T, d[i] / 255, d[i + 1] / 255, d[i + 2] / 255);
+        o[i] = clamp(v[0], 0, 1) * 255; o[i + 1] = clamp(v[1], 0, 1) * 255; o[i + 2] = clamp(v[2], 0, 1) * 255; o[i + 3] = 255;
+      }
+      cv.getContext('2d').putImageData(out, 0, 0);
+    });
+  }
+  for (const b of $$('.looks [data-look] canvas')) {
+    const f = S.LOOKS[b.parentElement.dataset.look], out = new ImageData(64, 64), d = base.data, o = out.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = f(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255);
+      o[i] = clamp(v[0], 0, 1) * 255; o[i + 1] = clamp(v[1], 0, 1) * 255; o[i + 2] = clamp(v[2], 0, 1) * 255; o[i + 3] = 255;
+    }
+    b.getContext('2d').putImageData(out, 0, 0);
+  }
+}
 function cvEditor(it) {
   const svg = $('#cvEd'), W = 300, H = 160;
   const paint = () => {
@@ -1463,6 +1885,18 @@ function cvEditor(it) {
   };
 }
 $('#inspBody').addEventListener('input', e => {
+  const nk = e.target.dataset.num;
+  if (!nk || e.target.value === '' || !isFinite(+e.target.value)) return;
+  const r = document.querySelector(`#inspBody input[type=range][data-k="${nk}"]`);
+  if (!r) return;
+  r.value = PCT.test(nk) ? +e.target.value / 100 : +e.target.value;
+  r.dispatchEvent(new Event('input', { bubbles: true }));
+});
+$('#inspBody').addEventListener('change', e => { // out-of-range numbers snap back to what the slider took
+  const nk = e.target.dataset.num, r = nk && document.querySelector(`#inspBody input[type=range][data-k="${nk}"]`);
+  if (r) e.target.value = dispVal(nk, +r.value);
+});
+$('#inspBody').addEventListener('input', e => {
   const k = e.target.dataset.k, it = sel && item(sel);
   if (!k || !it) return;
   let v = e.target.type === 'checkbox' ? e.target.checked
@@ -1499,13 +1933,12 @@ $('#inspBody').addEventListener('input', e => {
     if (v && it.logo.w == null) Object.assign(it.logo, { x: 0.78, y: 0.04, w: 0.18, h: 0.1 });
     inspector();
   }
-  if (k === 'denoise' && v && !dnReady.has(it.media)) {
-    ensureDn(it.media).then(() => { toast(tr('dnDone')); if (sel === it.id) inspector(); },
-      er => { it.denoise = false; if (sel === it.id) inspector(); toast(tr('dnFail') + ': ' + cleanErr(er)); });
+  if ((k === 'denoise' || k === 'norm') && S.fxKey(it) && !dnLive(it)) {
+    ensureDn(it).then(() => { toast(tr('dnDone')); if (sel === it.id) inspector(); },
+      er => { it[k] = false; if (sel === it.id) inspector(); toast(tr('dnFail') + ': ' + cleanErr(er)); });
     inspector();
-  }
-  const show = document.querySelector(`[data-show="${k}"]`);
-  if (show && e.target.type === 'range') show.textContent = showVal(k, v);
+  } else if (k === 'denoise' || k === 'norm') inspector();
+  if (e.target.type === 'range') setShow(k, v);
   dirty = true;
   if (/^(start|dur|speed|spdLog)$/.test(k)) { pack(); }
   if (k === 'spdLog' || k === 'speed') { const sh = $('#inspBody [data-show="spdLog"]'); if (sh) sh.textContent = '×' + it.speed; }
@@ -2279,13 +2712,25 @@ function dimsFor(ratio) { // short side 1080, even numbers
 }
 const recent = {
   get() { try { return JSON.parse(localStorage.getItem('kadr.recent') || '[]'); } catch { return []; } },
-  add(f) { try { localStorage.setItem('kadr.recent', JSON.stringify([f, ...recent.get().filter(x => x !== f)].slice(0, 8))); } catch {} },
+  add(f) { try { localStorage.setItem('kadr.recent', JSON.stringify([f, ...recent.get().filter(x => x !== f)].slice(0, 12))); } catch {} },
+  meta(f) { try { return JSON.parse(localStorage.getItem('kadr.rmeta:' + f) || 'null'); } catch { return null; } },
+  // a 200px still of the preview + save time + length, shown on the start screen
+  snap(f) {
+    try {
+      const k = 200 / Math.max(view.width, view.height), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(view.width * k)); c.height = Math.max(1, Math.round(view.height * k));
+      c.getContext('2d').drawImage(view, 0, 0, c.width, c.height);
+      localStorage.setItem('kadr.rmeta:' + f, JSON.stringify({ img: c.toDataURL('image/jpeg', 0.7), t: Date.now(), dur: S.projectDur(P), w: P.w, h: P.h }));
+    } catch {}
+  },
 };
+const ago = ms => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? tr('justNow') : m < 60 ? m + ' ' + tr('minAgo') : m < 1440 ? Math.round(m / 60) + ' ' + tr('hrAgo') : new Date(ms).toLocaleDateString(LANG === 'ar' ? 'ar-EG' : 'en-GB'); };
+const mmss = d => { d = Math.round(d || 0); return String(d / 60 | 0).padStart(2, '0') + ':' + String(d % 60).padStart(2, '0'); };
 async function newProj(welcome) {
   if (!welcome && dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
   setPlaying(false);
   let ratio = '9:16', fps = 30, res = 1080;
-  const rec = welcome ? recent.get() : [];
+  const rec = welcome ? recent.get() : [], hasRec = welcome && !!lsGet('kadr.recovery', 0);
   const shape = r => { const [a, b] = r.split(':').map(Number), k = 30 / Math.max(a, b); return `<i class="shape" style="width:${a * k}px;height:${b * k}px"></i>`; };
   $('#modal').hidden = false;
   $('#mBox').innerHTML = `<div class="npx">
@@ -2297,14 +2742,17 @@ async function newProj(welcome) {
       <label class="f"><span>${tr('resolution')}</span><select id="npRes">${RES.map(([n, v]) => `<option value="${v}"${v === res ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="f"><span>${tr('fps')}</span><select id="npFps">${[24, 25, 30, 50, 60].map(f => `<option${f === fps ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
     </div>
-    ${rec.length ? `<div class="np-recent"><h4>${tr('recent')}</h4>${rec.map((f, i) => `<button data-rec="${i}"><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${esc(f)}</small></button>`).join('')}</div>` : ''}
+    ${rec.length || hasRec ? `<div class="np-recent"><h4>${tr('recent')}</h4><div class="rgrid">${hasRec ? (m => `<button data-recover class="unsaved"><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${tr('unsavedWork')}</b><small>${m.t ? ago(m.t) : ''}</small></button>`)(recent.meta('recovery') || {}) : ''}${rec.map((f, i) => { const m = recent.meta(f) || {};
+      return `<button data-rec="${i}" title="${esc(f)}"><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${m.t ? ago(m.t) : ''}</small></button>`; }).join('')}</div></div>` : ''}
     <div class="acts">${welcome ? `<button id="npOpen">${tr('open')}…</button>` : ''}<span class="flex"></span><button id="npNo">${tr(welcome ? 'skip' : 'cancel')}</button><button class="primary" id="npGo">${tr('create')}</button></div></div>`;
   $('#mBox').onclick = e => {
     const b = e.target.closest('.fmt');
     if (b) { ratio = b.dataset.r; $$('.fmt').forEach(x => x.classList.toggle('on', x === b)); }
     const r = e.target.closest('[data-rec]');
     if (r) { hideModal(); openPath(rec[+r.dataset.rec]); }
+    if (e.target.closest('[data-recover]')) { hideModal(); restoreRecovery(); }
   };
+  $('#mBox').ondblclick = e => { const b = e.target.closest('.fmt'); if (b && b.dataset.r !== 'custom') $('#npGo').click(); };
   $('#npNo').onclick = hideModal;
   if ($('#npOpen')) $('#npOpen').onclick = () => { hideModal(); open(); };
   $('#npGo').onclick = () => {
@@ -2406,8 +2854,8 @@ async function doExport(o) {
       const Q = S.scaleProject(P, o.k);
       Q.fps = o.fps;
       work = await inv('work_begin');
-      const list = await rasterizeTexts(Q, work);
-      const { args, duration } = G.buildArgs(Q, { out: o.video, textList: list ? work.path + '/text.ffconcat' : null, codec: o.codec, quality: o.quality });
+      const list = await rasterizeTexts(Q, work), luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textList: list ? work.path + '/text.ffconcat' : null, codec: o.codec, quality: o.quality, luts, masks });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: list ? G.concatText(list, o.fps) : null, duration });
       work = null;
@@ -2526,7 +2974,7 @@ async function save(as) {
   if (!f.endsWith('.kadr')) f += '.kadr';
   try { await inv('save_project', { path: f, json: JSON.stringify(P) }); } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
   projectPath = f;
-  recent.add(f);
+  recent.add(f); recent.snap(f);
   dirty = false;
   lastAuto = JSON.stringify(P);
   clearRecovery();
@@ -2546,16 +2994,48 @@ async function autosave() {
   try {
     if (projectPath) {
       await inv('save_project', { path: projectPath, json: js });
+      recent.snap(projectPath);
       if (JSON.stringify(P) === js) { dirty = false; $('#pname').textContent = $('#pname').textContent.replace(/ •$/, ''); }
     } else {
       recPath = recPath || await inv('recovery_path');
       await inv('save_project', { path: recPath, json: js });
+      recent.snap('recovery');
       lsSet('kadr.recovery', 1);
     }
     lastAuto = js;
   } catch (e) { /* try again on the next tick */ } finally { autoBusy = false; }
 }
 setInterval(autosave, 2000);
+async function writeMasks(Q, work) {
+  const out = {};
+  for (const it0 of Q.items) {
+    const m = media(it0);
+    if (!m || m.kind === 'audio' || !S.hasMask(it0)) continue;
+    // same box the export cuts the clip to (largest keyframed scale)
+    const it = S.bakeVa(it0, Q.w, Q.h), kf = S.hasKf(it) ? it.kf : null, LP = it._loop ? S.VA_LOOP[it._loop] : null;
+    const smax = (kf && kf.scale ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1)) * (LP && LP.smax || 1);
+    const L = S.layout({ ...it, scale: smax }, m, Q.w, Q.h), w = Math.max(2, Math.round(L.cw)), h = Math.max(2, Math.round(L.ch));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), a = document.createElement('canvas'); a.width = w; a.height = h;
+    S.drawMask(a.getContext('2d'), it0.mask, w, h);
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h); g.drawImage(a, 0, 0);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    const name = 'mask_' + String(it0.id).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30) + '.png';
+    out[it0.id] = await inv('write_work', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-id': String(work.id), 'x-name': name } });
+  }
+  return out;
+}
+async function writeLuts(Q, work) {
+  const out = {};
+  for (const it of Q.items) {
+    const m = media(it);
+    if (!m || m.kind === 'audio' || !S.hasColor(it)) continue;
+    const f = it.color.lut && it.color.lut.file, ul = f ? await loadUserLut(f) : null;
+    const name = 'lut_' + String(it.id).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30) + '.cube';
+    out[it.id] = await inv('write_work', new TextEncoder().encode(S.cubeText(S.bakeLut(it, ul))), { headers: { 'x-id': String(work.id), 'x-name': name } });
+  }
+  return out;
+}
 async function restoreRecovery() {
   if (!lsGet('kadr.recovery', 0)) return false;
   try {
@@ -2753,7 +3233,7 @@ requestAnimationFrame(loop);
 setTimeout(autoUpdate, 3000);
 
 inv('dev_demo').then(async d => {
-  if (!d.paths || !d.paths.length) return (await restoreRecovery()) || newProj(true);
+  if (!d.paths || !d.paths.length) return newProj(true); // always the start screen; unsaved work waits there as a card
   const ids = addToBin(await inv('probe', { paths: d.paths }));
   for (const id of ids) addMedia(id, P.media[id].kind === 'image' ? 'v2' : null, P.media[id].kind === 'image' ? 1 : null);
   const pic = P.items.find(i => P.media[i.media]?.kind === 'image');
