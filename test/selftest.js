@@ -108,5 +108,16 @@ assert.ok(!isRed(px(2.35, 540 - 300, 960 - 400)), 'late: image moved away');
 const late = px(2.35, 540 + 290, 960 - 400);
 assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque red on the right ' + late);
 
+// speed curves: time maps round-trip, a split keeps the source range, visual animations resolve
+{
+  const curve = { id: 'hero', pts: S.CURVES.hero, src: 6 }, c = { dur: S.curveDur(curve), curve };
+  for (const lt of [0, 1, 2.5, c.dur]) assert.ok(Math.abs(S.ltAt(c, S.srcAt(c, lt)) - lt) < 1e-3, 'curve round trip ' + lt);
+  const a = S.subCurve(c, 0, 2), b = S.subCurve(c, 2, c.dur);
+  assert.ok(Math.abs(a.src + b.src - 6) < 1e-3, 'split keeps source');
+  assert.ok(S.rateAt(c, S.ltAt(c, 3)) < 1, 'hero is slow in the middle');
+  const v = S.withVa({ type: 'image', dur: 4, anim: 'slideLeft', inDur: 1, x: 0, scale: 1 }, 0, 1000, 1000);
+  assert.ok(Math.abs(v.x - 600) < 1e-6, 'slide starts 0.6 frame right ' + v.x);
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('selftest ok');

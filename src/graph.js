@@ -27,6 +27,23 @@
     prores: () => ['-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le'],
   };
 
+  // Source time -> clip time. A curve becomes a piecewise-linear setpts over source seconds.
+  function timeChain(it, fps) {
+    const ch = [];
+    if (S.hasCurve(it)) {
+      const n = 64, pts = [];
+      for (let i = 0; i <= n; i++) pts.push([it.curve.src * i / n, S.ltAt(it, it.curve.src * i / n)]);
+      ch.push('setpts=PTS-STARTPTS', `setpts='(${S.pwExpr(pts, 0, false, 'T')})/TB'`);
+    } else ch.push(`setpts=(PTS-STARTPTS)/${num(it.speed, 1)}`);
+    // smooth slow motion: motion-compensated in-between frames where the clip plays slower than real time
+    const slow = S.hasCurve(it) ? it.curve.pts.some(p => p[1] < 1) : num(it.speed, 1) < 1;
+    if (it.smooth && slow) ch.push(`minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`);
+    ch.push(`fps=${fps}`);
+    return ch;
+  }
+  // Constant-rate tempo change: keeps pitch (atempo) unless the clip asks for the pitch to follow the speed.
+  const tempo = (it, r) => it.pitch ? (Math.abs(r - 1) > 1e-6 ? [`asetrate=${Math.round(48000 * r)}`, 'aresample=48000'] : []) : atempo(r);
+
   // o: { out, textList (ffconcat path or null), audioOnly, codec }
   function buildArgs(p, o) {
     const W = p.w, H = p.h, fps = p.fps, T = S.projectDur(p);
@@ -46,7 +63,7 @@
       if (idx.has(it.id)) return idx.get(it.id);
       const m = p.media[it.media];
       if (m.kind === 'image') args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur), '-i', m.path);
-      else args.push('-ss', f3(num(it.in, 0)), '-t', f3(it.dur * num(it.speed, 1)), '-i', m.path);
+      else args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', m.path);
       idx.set(it.id, n);
       return n++;
     };
@@ -54,13 +71,26 @@
     if (!o.audioOnly && !o.audioExport) {
       let base = 'b0';
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
-      vis.forEach((it, j) => {
-        const k = input(it), m = p.media[it.media], g = S.grade(it), C = S.srcCrop(it, m);
-        const kf = S.hasKf(it) ? it.kf : null, has = f => !!(kf && kf[f] && kf[f].length);
-        // keyframed scale: lay out at the largest scale, then shrink per frame
-        const smax = has('scale') ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1);
+      vis.forEach((it0, j) => {
+        const k = input(it0), m = p.media[it0.media], it = S.bakeVa(it0, W, H), g = S.grade(it), C = S.srcCrop(it, m);
+        const kf = S.hasKf(it) ? it.kf : null, LP = it._loop ? S.VA_LOOP[it._loop] : null, sm = !it._lin;
+        const LK = { scale: 's', rotate: 'r', x: 'dx', y: 'dy' };
+        const has = f => !!(kf && kf[f] && kf[f].length) || !!(LP && LP.e[LK[f]]);
+        const dyn = kf || LP;
+        // property f as an expression of clock tv (off = clip start in that clock): keyframes/static, then the loop on top
+        const ex = (f, off, tv, def) => {
+          let e = kf && kf[f] && kf[f].length ? S.pwExpr(kf[f], off, sm, tv) : String(num(it[f], def));
+          const l = LP && LP.e[LK[f]];
+          if (l) {
+            const q = l(`(${tv}-${(+off).toFixed(4)})`, it.dur);
+            e = f === 'scale' ? `(${e})*(${q})` : f === 'x' ? `(${e})+(${q})*${W}` : f === 'y' ? `(${e})+(${q})*${H}` : `(${e})+(${q})`;
+          }
+          return e;
+        };
+        // animated scale: lay out at the largest scale, then shrink per frame
+        const smax = (kf && kf.scale ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1)) * (LP && LP.smax || 1);
         const L = S.layout({ ...it, scale: smax }, m, W, H);
-        const ch = [`setpts=(PTS-STARTPTS)/${num(it.speed, 1)}`, `fps=${fps}`];
+        const ch = timeChain(it, fps);
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
         if (it.flipH) ch.push('hflip');
         if (it.flipV) ch.push('vflip');
@@ -75,18 +105,18 @@
         const rot = num(it.rotate, 0) * Math.PI / 180;
         // keyframed: rotate on a fixed square canvas first, then shrink per frame (rotate can't take changing sizes)
         let bw = L.cw, bh = L.ch;
-        if (kf && (has('rotate') || rot)) {
+        if (dyn && (has('rotate') || rot)) {
           bw = bh = even(Math.hypot(L.cw, L.ch));
-          ch.push(`rotate=a='${has('rotate') ? `(${S.pwExpr(kf.rotate, 0, true)})*PI/180` : rot.toFixed(6)}':ow=${bw}:oh=${bh}:c=black@0`);
+          ch.push(`rotate=a='${has('rotate') ? `(${ex('rotate', 0, 't', 0)})*PI/180` : rot.toFixed(6)}':ow=${bw}:oh=${bh}:c=black@0`);
         }
-        if (has('opacity')) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*clip(${S.pwExpr(kf.opacity, 0, true, 'T')},0,1)'`);
+        if (has('opacity')) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*clip(${S.pwExpr(kf.opacity, 0, sm, 'T')},0,1)'`);
         if (has('scale')) {
-          const sc = S.pwExpr(kf.scale, 0, true);
+          const sc = ex('scale', 0, 't', 1);
           ch.push(`scale=w='max(2,trunc(${bw}*(${sc})/${smax}/2)*2)':h='max(2,trunc(${bh}*(${sc})/${smax}/2)*2)':eval=frame`);
           // pad back to a fixed size every frame: overlay keeps stale pixels when its input size changes
           ch.push(`pad=w=${bw}:h=${bh}:x='(ow-iw)/2':y='(oh-ih)/2':color=black@0:eval=frame`);
         }
-        if (kf) {} else if (rot) { // rotate about the box centre; the bigger canvas stays centred on the same point
+        if (dyn) {} else if (rot) { // rotate about the box centre; the bigger canvas stays centred on the same point
           const rw = even(Math.abs(L.cw * Math.cos(rot)) + Math.abs(L.ch * Math.sin(rot))), rh = even(Math.abs(L.cw * Math.sin(rot)) + Math.abs(L.ch * Math.cos(rot)));
           ch.push(`rotate=a=${rot.toFixed(6)}:ow=${rw}:oh=${rh}:c=black@0`);
           ox = Math.round(L.ox + (L.cw - rw) / 2); oy = Math.round(L.oy + (L.ch - rh) / 2);
@@ -99,8 +129,8 @@
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
         fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
         let tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
-        if (kf) { // centre-based so size changes (scale/rotate canvas) stay anchored
-          const px = has('x') ? S.pwExpr(kf.x, it.start, true) : num(it.x, 0), py = has('y') ? S.pwExpr(kf.y, it.start, true) : num(it.y, 0);
+        if (dyn) { // centre-based so size changes (scale/rotate canvas) stay anchored
+          const px = ex('x', it.start, 't', 0), py = ex('y', it.start, 't', 0);
           tx = `'W/2+(${px})-w/2${it.trk ? '+' + S.trkExpr(it, W, 0) : ''}'`; ty = `'H/2+(${py})-h/2${it.trk ? '+' + S.trkExpr(it, H, 1) : ''}'`;
         }
         fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
@@ -118,12 +148,24 @@
     const al = [];
     aud.forEach((it, j) => {
       const k = input(it), v = num(it.volume, 1), fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
-      const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS', ...atempo(num(it.speed, 1))];
+      const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS'];
+      let src = `${k}:a`;
+      if (S.hasCurve(it)) { // curve: short constant-speed pieces joined back together
+        const K = Math.min(48, Math.max(8, Math.ceil(it.curve.src / 0.2))), seg = [];
+        fc.push(`[${k}:a]${ch.join(',')},asplit=${K}${Array.from({ length: K }, (_, q) => `[s${j}_${q}]`).join('')}`);
+        for (let q = 0; q < K; q++) {
+          const a = it.curve.src * q / K, b = it.curve.src * (q + 1) / K, r = (b - a) / Math.max(1e-4, S.ltAt(it, b) - S.ltAt(it, a));
+          fc.push(`[s${j}_${q}]atrim=start=${f3(a)}:end=${f3(b)},asetpts=PTS-STARTPTS${tempo(it, r).map(x => ',' + x).join('')}[c${j}_${q}]`);
+          seg.push(`[c${j}_${q}]`);
+        }
+        fc.push(`${seg.join('')}concat=n=${K}:v=0:a=1[cv${j}]`);
+        src = `cv${j}`; ch.length = 0;
+      } else ch.push(...tempo(it, num(it.speed, 1)));
       if (v !== 1) ch.push(`volume=${v}`);
       if (fi > 0) ch.push(`afade=t=in:st=0:d=${f3(fi)}`);
       if (fo > 0) ch.push(`afade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}`);
       ch.push(`adelay=${Math.round(it.start * 1000)}:all=1`);
-      fc.push(`[${k}:a]${ch.join(',')}[a${j}]`);
+      fc.push(`[${src}]${ch.join(',') || 'anull'}[a${j}]`);
       al.push(`[a${j}]`);
     });
     if (al.length) fc.push(`${al.join('')}amix=inputs=${al.length}:normalize=0:duration=longest,apad=whole_dur=${f3(T)}[aout]`);

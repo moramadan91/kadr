@@ -1,0 +1,266 @@
+@font-face { font-family: 'Alan Sans'; src: url('AlanSans/AlanSans-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Alexandria'; src: url('Alexandria/Alexandria-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Alkalami'; src: url('Alkalami/Alkalami-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Almarai'; src: url('Almarai/Almarai-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Almarai'; src: url('Almarai/Almarai-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Alyamama'; src: url('Alyamama/Alyamama-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Amiri'; src: url('Amiri/Amiri-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Amiri'; src: url('Amiri/Amiri-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Amiri Quran'; src: url('AmiriQuran/AmiriQuran-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Aref Ruqaa'; src: url('ArefRuqaa/ArefRuqaa-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Aref Ruqaa'; src: url('ArefRuqaa/ArefRuqaa-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Aref Ruqaa Ink'; src: url('ArefRuqaaInk/ArefRuqaaInk-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Aref Ruqaa Ink'; src: url('ArefRuqaaInk/ArefRuqaaInk-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Badeen Display'; src: url('BadeenDisplay/BadeenDisplay-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Baloo Bhaijaan 2'; src: url('BalooBhaijaan2/BalooBhaijaan2-VariableFont_wght.ttf'); font-weight: 400 800; font-display: block; }
+@font-face { font-family: 'Beiruti'; src: url('Beiruti/Beiruti-VariableFont_wght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Blaka'; src: url('Blaka/Blaka-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Blaka Hollow'; src: url('BlakaHollow/BlakaHollow-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Blaka Ink'; src: url('BlakaInk/BlakaInk-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Cairo Play'; src: url('CairoPlay/CairoPlay-VariableFont_slnt%2Cwght.ttf'); font-weight: 200 1000; font-display: block; }
+@font-face { font-family: 'Cascadia Code'; src: url('CascadiaCode/CascadiaCode-VariableFont_wght.ttf'); font-weight: 200 700; font-display: block; }
+@font-face { font-family: 'Cascadia Mono'; src: url('CascadiaMono/CascadiaMono-VariableFont_wght.ttf'); font-weight: 200 700; font-display: block; }
+@font-face { font-family: 'Changa'; src: url('Changa/Changa-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'El Messiri'; src: url('ElMessiri/ElMessiri-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Estedad'; src: url('Estedad/Estedad-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Fustat'; src: url('Fustat/Fustat-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Google Sans'; src: url('GoogleSans/GoogleSans-VariableFont_GRAD%2Copsz%2Cwght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Gulzar'; src: url('Gulzar/Gulzar-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Handjet'; src: url('Handjet/Handjet-VariableFont_ELGR%2CELSH%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Harmattan'; src: url('Harmattan/Harmattan-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Harmattan'; src: url('Harmattan/Harmattan-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; src: url('IBMPlexSansArabic/IBMPlexSansArabic-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; src: url('IBMPlexSansArabic/IBMPlexSansArabic-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Jomhuria'; src: url('Jomhuria/Jomhuria-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Katibeh'; src: url('Katibeh/Katibeh-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Kufam'; src: url('Kufam/Kufam-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Lalezar'; src: url('Lalezar/Lalezar-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lateef'; src: url('Lateef/Lateef-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lateef'; src: url('Lateef/Lateef-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Lemonada'; src: url('Lemonada/Lemonada-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Mada'; src: url('Mada/Mada-VariableFont_wght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Marhey'; src: url('Marhey/Marhey-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Markazi Text'; src: url('MarkaziText/MarkaziText-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Mirza'; src: url('Mirza/Mirza-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Mirza'; src: url('Mirza/Mirza-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Oi'; src: url('Oi/Oi-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Parastoo'; src: url('Parastoo/Parastoo-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Playpen Sans Arabic'; src: url('PlaypenSansArabic/PlaypenSansArabic-VariableFont_wght.ttf'); font-weight: 100 800; font-display: block; }
+@font-face { font-family: 'Qahiri'; src: url('Qahiri/Qahiri-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Rakkas'; src: url('Rakkas/Rakkas-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Readex Pro'; src: url('ReadexPro/ReadexPro-VariableFont_HEXP%2Cwght.ttf'); font-weight: 160 700; font-display: block; }
+@font-face { font-family: 'Reem Kufi'; src: url('ReemKufi/ReemKufi-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Reem Kufi Fun'; src: url('ReemKufiFun/ReemKufiFun-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Reem Kufi Ink'; src: url('ReemKufiInk/ReemKufiInk-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Rubik'; src: url('Rubik/Rubik-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Ruwudu'; src: url('Ruwudu/Ruwudu-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Ruwudu'; src: url('Ruwudu/Ruwudu-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Scheherazade New'; src: url('ScheherazadeNew/ScheherazadeNew-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Scheherazade New'; src: url('ScheherazadeNew/ScheherazadeNew-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Tajawal'; src: url('Tajawal/Tajawal-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Tajawal'; src: url('Tajawal/Tajawal-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Tajawal'; src: url('Tajawal/Tajawal-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Vazirmatn'; src: url('Vazirmatn/Vazirmatn-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Vibes'; src: url('Vibes/Vibes-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Zain'; src: url('Zain/Zain-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Zain'; src: url('Zain/Zain-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Zain'; src: url('Zain/Zain-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Roboto'; src: url('Roboto/Roboto-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Open Sans'; src: url('OpenSans/OpenSans-VariableFont_wdth%2Cwght.ttf'); font-weight: 300 800; font-display: block; }
+@font-face { font-family: 'Inter'; src: url('Inter/Inter-VariableFont_opsz%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Montserrat'; src: url('Montserrat/Montserrat-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('Poppins/Poppins-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('Poppins/Poppins-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('Poppins/Poppins-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Lato'; src: url('Lato/Lato-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lato'; src: url('Lato/Lato-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Lato'; src: url('Lato/Lato-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Arimo'; src: url('Arimo/Arimo-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Roboto Condensed'; src: url('RobotoCondensed/RobotoCondensed-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Roboto Mono'; src: url('RobotoMono/RobotoMono-VariableFont_wght.ttf'); font-weight: 100 700; font-display: block; }
+@font-face { font-family: 'Oswald'; src: url('Oswald/Oswald-VariableFont_wght.ttf'); font-weight: 200 700; font-display: block; }
+@font-face { font-family: 'DM Sans'; src: url('DMSans/DMSans-VariableFont_opsz%2Cwght.ttf'); font-weight: 100 1000; font-display: block; }
+@font-face { font-family: 'Playfair Display'; src: url('PlayfairDisplay/PlayfairDisplay-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Raleway'; src: url('Raleway/Raleway-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Nunito'; src: url('Nunito/Nunito-VariableFont_wght.ttf'); font-weight: 200 1000; font-display: block; }
+@font-face { font-family: 'Nunito Sans'; src: url('NunitoSans/NunitoSans-VariableFont_YTLC%2Copsz%2Cwdth%2Cwght.ttf'); font-weight: 200 1000; font-display: block; }
+@font-face { font-family: 'Roboto Slab'; src: url('RobotoSlab/RobotoSlab-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Manrope'; src: url('Manrope/Manrope-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Outfit'; src: url('Outfit/Outfit-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Merriweather'; src: url('Merriweather/Merriweather-VariableFont_opsz%2Cwdth%2Cwght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Kanit'; src: url('Kanit/Kanit-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Kanit'; src: url('Kanit/Kanit-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Kanit'; src: url('Kanit/Kanit-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Archivo Black'; src: url('ArchivoBlack/ArchivoBlack-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Plus Jakarta Sans'; src: url('PlusJakartaSans/PlusJakartaSans-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Figtree'; src: url('Figtree/Figtree-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Ubuntu'; src: url('Ubuntu/Ubuntu-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Ubuntu'; src: url('Ubuntu/Ubuntu-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Bebas Neue'; src: url('BebasNeue/BebasNeue-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lora'; src: url('Lora/Lora-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Work Sans'; src: url('WorkSans/WorkSans-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'JetBrains Mono'; src: url('JetBrainsMono/JetBrainsMono-VariableFont_wght.ttf'); font-weight: 100 800; font-display: block; }
+@font-face { font-family: 'Archivo'; src: url('Archivo/Archivo-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Prompt'; src: url('Prompt/Prompt-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Prompt'; src: url('Prompt/Prompt-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Prompt'; src: url('Prompt/Prompt-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Barlow'; src: url('Barlow/Barlow-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow'; src: url('Barlow/Barlow-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Barlow'; src: url('Barlow/Barlow-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Black Ops One'; src: url('BlackOpsOne/BlackOpsOne-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Saira'; src: url('Saira/Saira-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Mulish'; src: url('Mulish/Mulish-VariableFont_wght.ttf'); font-weight: 200 1000; font-display: block; }
+@font-face { font-family: 'Jost'; src: url('Jost/Jost-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'PT Sans'; src: url('PTSans/PTSans-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'PT Sans'; src: url('PTSans/PTSans-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'IBM Plex Sans'; src: url('IBMPlexSans/IBMPlexSans-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 700; font-display: block; }
+@font-face { font-family: 'Bricolage Grotesque'; src: url('BricolageGrotesque/BricolageGrotesque-VariableFont_opsz%2Cwdth%2Cwght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Quicksand'; src: url('Quicksand/Quicksand-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Share Tech'; src: url('ShareTech/ShareTech-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Smooch Sans'; src: url('SmoochSans/SmoochSans-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Source Code Pro'; src: url('SourceCodePro/SourceCodePro-VariableFont_wght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Source Sans 3'; src: url('SourceSans3/SourceSans3-VariableFont_wght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('CormorantGaramond/CormorantGaramond-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Space Grotesk'; src: url('SpaceGrotesk/SpaceGrotesk-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Fira Sans'; src: url('FiraSans/FiraSans-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Fira Sans'; src: url('FiraSans/FiraSans-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Fira Sans'; src: url('FiraSans/FiraSans-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Karla'; src: url('Karla/Karla-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Heebo'; src: url('Heebo/Heebo-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Barlow Condensed'; src: url('BarlowCondensed/BarlowCondensed-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow Condensed'; src: url('BarlowCondensed/BarlowCondensed-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Barlow Condensed'; src: url('BarlowCondensed/BarlowCondensed-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Titillium Web'; src: url('TitilliumWeb/TitilliumWeb-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Titillium Web'; src: url('TitilliumWeb/TitilliumWeb-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Titillium Web'; src: url('TitilliumWeb/TitilliumWeb-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Instrument Serif'; src: url('InstrumentSerif/InstrumentSerif-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Libre Baskerville'; src: url('LibreBaskerville/LibreBaskerville-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Anton'; src: url('Anton/Anton-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Inter Tight'; src: url('InterTight/InterTight-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Fraunces'; src: url('Fraunces/Fraunces-VariableFont_SOFT%2CWONK%2Copsz%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'PT Serif'; src: url('PTSerif/PTSerif-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'PT Serif'; src: url('PTSerif/PTSerif-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('IBMPlexMono/IBMPlexMono-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('IBMPlexMono/IBMPlexMono-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Changa One'; src: url('ChangaOne/ChangaOne-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Libre Franklin'; src: url('LibreFranklin/LibreFranklin-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'EB Garamond'; src: url('EBGaramond/EBGaramond-VariableFont_wght.ttf'); font-weight: 400 800; font-display: block; }
+@font-face { font-family: 'Inconsolata'; src: url('Inconsolata/Inconsolata-VariableFont_wdth%2Cwght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Dancing Script'; src: url('DancingScript/DancingScript-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Assistant'; src: url('Assistant/Assistant-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Geist'; src: url('Geist/Geist-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Sora'; src: url('Sora/Sora-VariableFont_wght.ttf'); font-weight: 100 800; font-display: block; }
+@font-face { font-family: 'Public Sans'; src: url('PublicSans/PublicSans-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Josefin Sans'; src: url('JosefinSans/JosefinSans-VariableFont_wght.ttf'); font-weight: 100 700; font-display: block; }
+@font-face { font-family: 'Fjalla One'; src: url('FjallaOne/FjallaOne-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lobster Two'; src: url('LobsterTwo/LobsterTwo-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lobster Two'; src: url('LobsterTwo/LobsterTwo-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Mukta'; src: url('Mukta/Mukta-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Mukta'; src: url('Mukta/Mukta-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Alfa Slab One'; src: url('AlfaSlabOne/AlfaSlabOne-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Google Sans Flex'; src: url('GoogleSansFlex/GoogleSansFlex-VariableFont_ROND%2Copsz%2Cslnt%2Cwdth%2Cwght.ttf'); font-weight: 1 1000; font-display: block; }
+@font-face { font-family: 'Hind Siliguri'; src: url('HindSiliguri/HindSiliguri-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Hind Siliguri'; src: url('HindSiliguri/HindSiliguri-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Merriweather Sans'; src: url('MerriweatherSans/MerriweatherSans-VariableFont_wght.ttf'); font-weight: 300 800; font-display: block; }
+@font-face { font-family: 'Fredoka'; src: url('Fredoka/Fredoka-VariableFont_wdth%2Cwght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Caveat'; src: url('Caveat/Caveat-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Urbanist'; src: url('Urbanist/Urbanist-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Schibsted Grotesk'; src: url('SchibstedGrotesk/SchibstedGrotesk-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Cinzel'; src: url('Cinzel/Cinzel-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Bitter'; src: url('Bitter/Bitter-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Lexend'; src: url('Lexend/Lexend-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Cabin'; src: url('Cabin/Cabin-VariableFont_wdth%2Cwght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Instrument Sans'; src: url('InstrumentSans/InstrumentSans-VariableFont_wdth%2Cwght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Roboto Flex'; src: url('RobotoFlex/RobotoFlex-VariableFont_GRAD%2CXOPQ%2CXTRA%2CYOPQ%2CYTAS%2CYTDE%2CYTFI%2CYTLC%2CYTUC%2Copsz%2Cslnt%2Cwdth%2Cwght.ttf'); font-weight: 100 1000; font-display: block; }
+@font-face { font-family: 'Nanum Gothic'; src: url('NanumGothic/NanumGothic-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Nanum Gothic'; src: url('NanumGothic/NanumGothic-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'DM Serif Display'; src: url('DMSerifDisplay/DMSerifDisplay-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Source Serif 4'; src: url('SourceSerif4/SourceSerif4-VariableFont_opsz%2Cwght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Newsreader'; src: url('Newsreader/Newsreader-VariableFont_opsz%2Cwght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Rajdhani'; src: url('Rajdhani/Rajdhani-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Rajdhani'; src: url('Rajdhani/Rajdhani-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Dosis'; src: url('Dosis/Dosis-VariableFont_wght.ttf'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: 'Red Hat Display'; src: url('RedHatDisplay/RedHatDisplay-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Exo 2'; src: url('Exo2/Exo2-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'M PLUS Rounded 1c'; src: url('MPLUSRounded1c/MPLUSRounded1c-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'M PLUS Rounded 1c'; src: url('MPLUSRounded1c/MPLUSRounded1c-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'M PLUS Rounded 1c'; src: url('MPLUSRounded1c/MPLUSRounded1c-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Orbitron'; src: url('Orbitron/Orbitron-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Zeyada'; src: url('Zeyada/Zeyada-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Slabo 27px'; src: url('Slabo27px/Slabo27px-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Ramabhadra'; src: url('Ramabhadra/Ramabhadra-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Geist Mono'; src: url('GeistMono/GeistMono-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Oxygen'; src: url('Oxygen/Oxygen-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Oxygen'; src: url('Oxygen/Oxygen-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('BarlowSemiCondensed/BarlowSemiCondensed-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('BarlowSemiCondensed/BarlowSemiCondensed-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('BarlowSemiCondensed/BarlowSemiCondensed-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Anek Telugu'; src: url('AnekTelugu/AnekTelugu-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 800; font-display: block; }
+@font-face { font-family: 'Bodoni Moda'; src: url('BodoniModa/BodoniModa-VariableFont_opsz%2Cwght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Faustina'; src: url('Faustina/Faustina-VariableFont_wght.ttf'); font-weight: 300 800; font-display: block; }
+@font-face { font-family: 'Hind'; src: url('Hind/Hind-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Hind'; src: url('Hind/Hind-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Pacifico'; src: url('Pacifico/Pacifico-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Crimson Text'; src: url('CrimsonText/CrimsonText-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Crimson Text'; src: url('CrimsonText/CrimsonText-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Hanken Grotesk'; src: url('HankenGrotesk/HankenGrotesk-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Bungee'; src: url('Bungee/Bungee-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Arvo'; src: url('Arvo/Arvo-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Arvo'; src: url('Arvo/Arvo-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Overpass'; src: url('Overpass/Overpass-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Saira Condensed'; src: url('SairaCondensed/SairaCondensed-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Saira Condensed'; src: url('SairaCondensed/SairaCondensed-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Saira Condensed'; src: url('SairaCondensed/SairaCondensed-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Teko'; src: url('Teko/Teko-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Epilogue'; src: url('Epilogue/Epilogue-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Zen Kaku Gothic New'; src: url('ZenKakuGothicNew/ZenKakuGothicNew-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Zen Kaku Gothic New'; src: url('ZenKakuGothicNew/ZenKakuGothicNew-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Zen Kaku Gothic New'; src: url('ZenKakuGothicNew/ZenKakuGothicNew-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Lobster'; src: url('Lobster/Lobster-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'PT Sans Narrow'; src: url('PTSansNarrow/PTSansNarrow-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'PT Sans Narrow'; src: url('PTSansNarrow/PTSansNarrow-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Chakra Petch'; src: url('ChakraPetch/ChakraPetch-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Chakra Petch'; src: url('ChakraPetch/ChakraPetch-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Asap Condensed'; src: url('AsapCondensed/AsapCondensed-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Asap Condensed'; src: url('AsapCondensed/AsapCondensed-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Asap Condensed'; src: url('AsapCondensed/AsapCondensed-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Space Mono'; src: url('SpaceMono/SpaceMono-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Space Mono'; src: url('SpaceMono/SpaceMono-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'DM Mono'; src: url('DMMono/DMMono-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Comfortaa'; src: url('Comfortaa/Comfortaa-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'M PLUS 1p'; src: url('MPLUS1p/MPLUS1p-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'M PLUS 1p'; src: url('MPLUS1p/MPLUS1p-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'M PLUS 1p'; src: url('MPLUS1p/MPLUS1p-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Shadows Into Light'; src: url('ShadowsIntoLight/ShadowsIntoLight-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Asap'; src: url('Asap/Asap-VariableFont_wdth%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Abel'; src: url('Abel/Abel-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Domine'; src: url('Domine/Domine-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Lilita One'; src: url('LilitaOne/LilitaOne-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Baloo 2'; src: url('Baloo2/Baloo2-VariableFont_wght.ttf'); font-weight: 400 800; font-display: block; }
+@font-face { font-family: 'Be Vietnam Pro'; src: url('BeVietnamPro/BeVietnamPro-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Be Vietnam Pro'; src: url('BeVietnamPro/BeVietnamPro-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Be Vietnam Pro'; src: url('BeVietnamPro/BeVietnamPro-Black.ttf'); font-weight: 900; font-display: block; }
+@font-face { font-family: 'Maven Pro'; src: url('MavenPro/MavenPro-VariableFont_wght.ttf'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Unbounded'; src: url('Unbounded/Unbounded-VariableFont_wght.ttf'); font-weight: 200 900; font-display: block; }
+@font-face { font-family: 'Questrial'; src: url('Questrial/Questrial-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Zilla Slab'; src: url('ZillaSlab/ZillaSlab-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Zilla Slab'; src: url('ZillaSlab/ZillaSlab-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Marcellus'; src: url('Marcellus/Marcellus-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Geologica'; src: url('Geologica/Geologica-VariableFont_CRSV%2CSHRP%2Cslnt%2Cwght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Albert Sans'; src: url('AlbertSans/AlbertSans-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Onest'; src: url('Onest/Onest-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Cormorant'; src: url('Cormorant/Cormorant-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }
+@font-face { font-family: 'Archivo Narrow'; src: url('ArchivoNarrow/ArchivoNarrow-VariableFont_wght.ttf'); font-weight: 400 700; font-display: block; }
+@font-face { font-family: 'Spectral'; src: url('Spectral/Spectral-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Spectral'; src: url('Spectral/Spectral-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Sofia Sans'; src: url('SofiaSans/SofiaSans-VariableFont_wght.ttf'); font-weight: 1 1000; font-display: block; }
+@font-face { font-family: 'Abril Fatface'; src: url('AbrilFatface/AbrilFatface-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'ABeeZee'; src: url('ABeeZee/ABeeZee-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Play'; src: url('Play/Play-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Play'; src: url('Play/Play-Bold.ttf'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'League Spartan'; src: url('LeagueSpartan/LeagueSpartan-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Frank Ruhl Libre'; src: url('FrankRuhlLibre/FrankRuhlLibre-VariableFont_wght.ttf'); font-weight: 300 900; font-display: block; }
+@font-face { font-family: 'Great Vibes'; src: url('GreatVibes/GreatVibes-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Righteous'; src: url('Righteous/Righteous-Regular.ttf'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Lexend Deca'; src: url('LexendDeca/LexendDeca-VariableFont_wght.ttf'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Red Hat Text'; src: url('RedHatText/RedHatText-VariableFont_wght.ttf'); font-weight: 300 700; font-display: block; }

@@ -280,6 +280,76 @@ async fn model_download(app: AppHandle) -> R<()> {
     }).await.map_err(err)?
 }
 
+// ---------- fonts ----------
+// Families installed on this computer (any app's fonts), names only: the webview draws them by name.
+#[tauri::command]
+async fn system_fonts() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+        let mut v: Vec<String> = db.faces().filter_map(|f| f.families.first().map(|x| x.0.clone()))
+            .filter(|n| !n.starts_with('.')).collect();
+        v.sort_by_key(|a| a.to_lowercase());
+        v.dedup();
+        v
+    }).await.unwrap_or_default()
+}
+
+fn fonts_dir(app: &AppHandle) -> R<PathBuf> { Ok(app.path().app_data_dir().map_err(err)?.join("fonts")) }
+
+// Google Fonts families downloaded inside the app: { family: [file paths] }.
+#[tauri::command]
+fn fonts_downloaded(app: AppHandle) -> R<Value> {
+    let mut out = serde_json::Map::new();
+    let Ok(rd) = std::fs::read_dir(fonts_dir(&app)?) else { return Ok(Value::Object(out)) };
+    for d in rd.flatten() {
+        let fam = d.file_name().to_string_lossy().to_string();
+        let files: Vec<String> = std::fs::read_dir(d.path()).map(|r| r.flatten().map(|f| f.path())
+            .filter(|p| p.extension().map_or(false, |e| e == "ttf" || e == "otf")).map(|p| p.to_string_lossy().to_string()).collect()).unwrap_or_default();
+        if !files.is_empty() { out.insert(fam, json!(files)); }
+    }
+    Ok(Value::Object(out))
+}
+
+// Download one Google Fonts family (its download manifest lists the file URLs) into the app's font folder.
+#[tauri::command]
+async fn font_fetch(app: AppHandle, family: String) -> R<Vec<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if family.contains('/') || family.contains('\\') || family.contains("..") { return Err("bad family".into()); }
+        let url = format!("https://fonts.google.com/download/list?family={}", family.replace(' ', "%20"));
+        let body = ureq::get(&url).call().map_err(err)?.into_string().map_err(err)?;
+        let j: Value = serde_json::from_str(body.trim_start_matches(")]}'").trim_start()).map_err(err)?;
+        let refs = j["manifest"]["fileRefs"].as_array().cloned().unwrap_or_default();
+        let name = |r: &Value| r["filename"].as_str().unwrap_or("").to_string();
+        let upright: Vec<&Value> = refs.iter().filter(|r| { let n = name(r); n.ends_with(".ttf") && !n.to_lowercase().contains("italic") }).collect();
+        let var: Vec<&Value> = upright.iter().copied().filter(|r| { let n = name(r); !n.starts_with("static/") && (n.contains('[') || n.contains("VariableFont")) }).take(1).collect();
+        // no variable font: base optical size statics in regular / bold / black (skip Family_24pt-…)
+        let pick = if var.is_empty() { upright.into_iter().filter(|r| { let n = name(r); !n.contains("pt-") && ["-Regular.", "-Bold.", "-Black."].iter().any(|w| n.contains(w)) }).collect() } else { var };
+        if pick.is_empty() { return Err("no font files".into()); }
+        let dir = fonts_dir(&app)?.join(&family);
+        let part = dir.with_extension("part");
+        let _ = std::fs::remove_dir_all(&part);
+        std::fs::create_dir_all(&part).map_err(err)?;
+        for r in &pick {
+            let u = r["url"].as_str().ok_or("bad manifest")?;
+            if !u.starts_with("https://fonts.gstatic.com/") { return Err("unexpected font host".into()); }
+            let file = Path::new(&name(r)).file_name().ok_or("bad name")?.to_os_string();
+            let mut rd = ureq::get(u).call().map_err(err)?.into_reader();
+            let mut w = std::fs::File::create(part.join(file)).map_err(err)?;
+            std::io::copy(&mut rd, &mut w).map_err(err)?;
+        }
+        for f in j["manifest"]["files"].as_array().cloned().unwrap_or_default() {
+            let n = name(&f);
+            if n.contains("OFL") || n.contains("LICENSE") { let _ = std::fs::write(part.join(Path::new(&n).file_name().unwrap()), f["contents"].as_str().unwrap_or("")); }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::rename(&part, &dir).map_err(err)?;
+        let files = std::fs::read_dir(&dir).map_err(err)?.flatten().map(|f| f.path())
+            .filter(|p| p.extension().map_or(false, |e| e == "ttf")).map(|p| p.to_string_lossy().to_string()).collect();
+        Ok(files)
+    }).await.map_err(err)?
+}
+
 fn find_whisper() -> Option<PathBuf> {
     // shortcut: falls back to a system whisper.cpp (brew install whisper-cpp); bundle whisper-cli as a sidecar before wide release.
     let bundled = sidecar("whisper-cli");
@@ -375,7 +445,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, work_begin, work_end, write_frame, export_run,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

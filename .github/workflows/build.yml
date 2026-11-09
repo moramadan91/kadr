@@ -37,6 +37,13 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # NSIS/WebView2 tools tauri downloads from GitHub while bundling: cached, so a GitHub 504 can't fail the build once they're in.
+      - if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\tauri
+          key: tauri-bundler-tools-v1
+
       # Install scripts download ffmpeg from GitHub releases, which sometimes answers 504: retry them with backoff.
       - run: npm ci --ignore-scripts
       - shell: bash
@@ -70,7 +77,26 @@ jobs:
         shell: bash
         run: sleep 60
 
-      - if: steps.tauri1.outcome == 'failure'
+      - id: tauri2
+        if: steps.tauri1.outcome == 'failure'
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --bundles ${{ matrix.bundles }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: Kadr ${{ github.ref_name }}
+          releaseDraft: false
+          releaseBody: Download Kadr for Mac (.dmg) or Windows (setup.exe). Installed copies update themselves.
+
+      - if: steps.tauri2.outcome == 'failure'
+        shell: bash
+        run: sleep 180
+
+      - if: steps.tauri2.outcome == 'failure'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
