@@ -587,10 +587,12 @@ function drawAdj(ctx, it, lt) {
   ctx.restore();
 }
 // ov = {id, lt}: draw that clip at its own local time (animation preview) whatever the playhead says.
-function drawVisual(ctx, time, ov) {
+function drawVisual(ctx, time, ov, textHook) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, P.w, P.h);
-  for (const tid of renderOrder(P, 'video')) {
+  for (const tr0 of P.tracks.filter(x => x.kind !== 'audio').reverse()) { // bottom of the stack first
+    const tid = tr0.id;
+    if (tr0.kind === 'text') { if (textHook) textHook(tid); continue; }
     // by start time: a clip's frozen tail is drawn under the next clip's transition
     for (const it of P.items.filter(i => i.track === tid && !isText(i)).sort((a, b) => a.start - b.start)) {
       const pv = ov && ov.id === it.id, m = media(it);
@@ -994,10 +996,12 @@ function draw() {
   if (view.width !== P.w || view.height !== P.h) { view.width = P.w; view.height = P.h; fitView(); }
   let ap = animPreview && item(animPreview.id);
   if (animPreview && (!ap || ap.id !== sel || inspTab !== 'tAnim')) { animPreview = null; ap = null; }
-  drawVisual(vctx, t, ap && !isText(ap) ? { id: ap.id, lt: animPreviewLt(ap) } : null);
   textBoxes.clear();
-  for (const it of visibleTexts(P, t)) if (!ap || it.id !== ap.id) drawTextItem(vctx, P, it, t - it.start);
-  if (ap && isText(ap)) drawTextItem(vctx, P, ap, animPreviewLt(ap));
+  const vt = visibleTexts(P, t);
+  drawVisual(vctx, t, ap && !isText(ap) ? { id: ap.id, lt: animPreviewLt(ap) } : null, tid => {
+    for (const it of vt) if (it.track === tid && (!ap || it.id !== ap.id)) drawTextItem(vctx, P, it, t - it.start);
+    if (ap && isText(ap) && ap.track === tid) drawTextItem(vctx, P, ap, animPreviewLt(ap));
+  });
   syncKfUI();
   placeSelBox();
 }
@@ -1103,7 +1107,7 @@ function setPlaying(v) {
   b.innerHTML = icon(b.dataset.i);
   if (!playing) for (const el of els.values()) el.pause();
 }
-function seek(v) { animPreview = null; t = clamp(v, 0, Math.max(total(), 0)); needsDraw = true; }
+function seek(v) { animPreview = null; t = clamp(v, 0, Math.max(total(), 0) + 3600); needsDraw = true; } // free to run past the last clip
 function updatePlayhead() {
   $('#ph').style.left = t * pps + 'px';
   $('#tc').textContent = fmt(t);
@@ -1134,7 +1138,7 @@ function renderTimeline() {
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(trackLabel(x))}</div>`).join('');
   $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -1222,6 +1226,10 @@ $('#rows').addEventListener('pointerdown', e => {
       it.start = Math.max(0, s);
       const x = trackAt(ev.clientY);
       if (x && compatible(it, x)) it.track = x;
+      else if (x && x !== it.track) {
+        const from = P.tracks.findIndex(q => q.id === it.track), to = P.tracks.findIndex(q => q.id === x);
+        P.tracks.splice(to, 0, ...P.tracks.splice(from, 1));
+      }
     } else if (mode === 'l') {
       // a curved clip can only be shortened (its curve covers the source range it has)
       const min = S.hasCurve(o) ? o.start : m ? Math.max(0, o.start - num(o.in, 0) / sp) : 0;
@@ -1276,7 +1284,7 @@ $('#rows').addEventListener('pointermove', e => {
 });
 
 function scrubFrom(e) {
-  const at = ev => seek(timeAt(ev.clientX));
+  const at = ev => { seek(timeAt(ev.clientX)); if ((t + 10) * pps > $('#rows').offsetWidth) renderTimeline(); };
   at(e);
   const mv = ev => at(ev);
   window.addEventListener('pointermove', mv);
@@ -1297,11 +1305,40 @@ $('#ruler').addEventListener('dblclick', e => {
 
 function setZoom(v) { pps = clamp(v, 8, 400); $('#zoom').value = pps; renderTimeline(); }
 $('#zoom').addEventListener('input', e => setZoom(+e.target.value));
+const zoomQ = { k: 1, x: 0, raf: 0 };
 $('#scroll').addEventListener('wheel', e => {
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  setZoom(pps * (e.deltaY < 0 ? 1.15 : 0.87));
+  zoomQ.k *= Math.exp(-clamp(e.deltaY, -60, 60) * 0.012); // trackpad pinch sends small deltas, mouse wheel big ones
+  zoomQ.x = e.clientX;
+  if (zoomQ.raf) return;
+  zoomQ.raf = requestAnimationFrame(() => {
+    const sc = $('#scroll'), ax = zoomQ.x - sc.getBoundingClientRect().left, at = (ax + sc.scrollLeft) / pps;
+    setZoom(pps * zoomQ.k);
+    sc.scrollLeft = at * pps - ax; // keep the moment under the pointer still
+    zoomQ.k = 1; zoomQ.raf = 0;
+  });
 }, { passive: false });
+// The playhead line itself can be grabbed anywhere along its height.
+$('#ph').addEventListener('pointerdown', e => { if (e.button === 0) { e.stopPropagation(); scrubFrom(e); } });
+// Keyframe diamonds on a clip: drag sideways to move that keyframe (all properties keyed there), click to jump to it.
+$('#rows').addEventListener('pointerdown', e => {
+  const d = e.target.closest('.kfd');
+  if (!d || e.button !== 0) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  const it = item(d.closest('.clip').dataset.id), kt = +d.dataset.kt, x0 = e.clientX;
+  if (sel !== it.id) select(it.id);
+  let moved = false, cur = kt;
+  const same = q => Math.abs(q[0] - cur) < 1e-4;
+  const mv = ev => {
+    if (!moved) { if (Math.abs(ev.clientX - x0) < 3) return; snapshot(); moved = true; }
+    const nt = +clamp(Math.round((kt + (ev.clientX - x0) / pps) * P.fps) / P.fps, 0, it.dur).toFixed(4);
+    for (const k of Object.keys(it.kf || {})) { for (const q of it.kf[k]) if (same(q)) q[0] = nt; it.kf[k].sort((a, b) => a[0] - b[0]); }
+    cur = nt; seek(it.start + nt); renderTimeline(); needsDraw = true;
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (moved) { dirty = true; refresh(); } else seek(it.start + kt); }, { once: true });
+}, true);
 
 /* ---------- edits ---------- */
 const selIds = () => msel.size ? [...msel] : sel ? [sel] : [];
@@ -1567,6 +1604,51 @@ const kfBar = it => `<div class="kfbar" dir="ltr"><button class="ib" data-kf="pr
   `<button class="kfb${kfHere(it) ? ' on' : ''}" data-kf="tog" title="${tr('kf_tip')}">${icon('diamond')}<span>${tr('keyframe')}</span></button>` +
   `<button class="ib" data-kf="next" title="${tr('kf_next')}">${icon('chevron-right')}</button></div>`;
 const trkBtns = it => grp('tracking', `<button class="wide" id="trkGo">${icon('crosshair')} ${tr(it.trk ? 'trk_redo' : 'trk_go')}</button>` + (it.trk ? `<button class="wide" id="trkClear">${tr('trk_clear')}</button>` : ''));
+// Eyedropper: the next click on the preview takes that pixel's colour into the chosen colour box.
+let pickInput = null;
+function startPick(inp) {
+  pickInput = inp;
+  view.classList.add('picking');
+  toast(tr('pickHint'));
+}
+function endPick() { pickInput = null; view.classList.remove('picking'); }
+view.addEventListener('pointerdown', e => {
+  if (!pickInput) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  const r = view.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) * P.w / r.width), y = Math.floor((e.clientY - r.top) * P.h / r.height);
+  const d = vctx.getImageData(clamp(x, 0, P.w - 1), clamp(y, 0, P.h - 1), 1, 1).data, hx = v => v.toString(16).padStart(2, '0');
+  const inp = pickInput; endPick();
+  if (!document.body.contains(inp)) return;
+  inp.value = '#' + hx(d[0]) + hx(d[1]) + hx(d[2]);
+  inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+}, true);
+window.addEventListener('keydown', e => { if (pickInput && e.key === 'Escape') endPick(); });
+function addPickers(root) {
+  for (const inp of root.querySelectorAll('input[type=color]')) {
+    if (inp.nextElementSibling && inp.nextElementSibling.classList.contains('pick')) continue;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ib pick'; b.title = tr('pickColor'); b.innerHTML = icon('pipette');
+    b.onclick = e => { e.preventDefault(); e.stopPropagation(); startPick(inp); };
+    inp.after(b);
+  }
+}
+// Drag sideways on a number field's label to scrub its value.
+$('#inspBody').addEventListener('pointerdown', e => {
+  const lb = e.target.closest('.f > .lb'), inp = lb && lb.parentElement.querySelector('input[type=number][data-k]');
+  if (!inp || e.button !== 0) return;
+  e.preventDefault();
+  const x0 = e.clientX, v0 = +inp.value || 0, st = +inp.step || 0.01, k = inp.dataset.k;
+  const mv = ev => {
+    const step = (k === 'start' || k === 'dur') ? 1 / P.fps : st >= 1 ? st : st;
+    let v = v0 + Math.round((ev.clientX - x0) / 3) * step;
+    if (k === 'dur') v = Math.max(1 / P.fps, v);
+    if (k === 'start') v = Math.max(0, v);
+    inp.value = +v.toFixed(3);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); inp.dispatchEvent(new Event('change', { bubbles: true })); }, { once: true });
+});
 function inspector() {
   kfSyncT = -1;
   if (libTab === 'trans') renderTrans();
@@ -1784,6 +1866,7 @@ function inspector() {
   bind('#autoAdj', () => autoAdjust(it));
   bind('#keyPick', () => keyPick(it));
   bind('#hideBtn', () => toggleHidden());
+  addPickers(body);
   bind('#stabGo', () => stabilize(it));
   bind('#stabOff', () => { snapshot(); it.media = it.stabFrom; delete it.stabFrom; dirty = true; refresh(); });
   bind('#fillSwap',() => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
@@ -2479,7 +2562,7 @@ function setLibTab(tab) {
   libTab = tab;
   if (tab === 'trans') renderTrans();
   if (tab === 'filters' || tab === 'effects') renderLookCards();
-  if (tab === 'layers') renderLayers();
+  if (tab === 'layers') { renderLayers(); renderOverlays(); }
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -2755,6 +2838,27 @@ function addFill(id) {
   refresh();
 }
 $('#layerCards').addEventListener('click', e => { const b = e.target.closest('[data-layer]'); if (b) addFill(b.dataset.layer); });
+// Overlay clips from the user's library (app data/overlays): added above the video in screen mode, so black drops out.
+let ovLib = null;
+async function renderOverlays() {
+  if (!ovLib) { try { ovLib = await inv('overlay_library'); } catch { ovLib = []; } }
+  $('#ovCards').innerHTML = !ovLib.length ? '' : `<div class="gh">${tr('overlays')}</div><div class="trcards">${ovLib.map((o, i) =>
+    `<button class="trc" data-ov="${i}"><i class="lv"><video muted loop playsinline preload="metadata" src="${urlOf({ path: o.path })}#t=1"></video></i><span>${esc(o.name)}</span></button>`).join('')}</div>`;
+}
+$('#ovCards').addEventListener('pointerover', e => { const v = e.target.closest('[data-ov]')?.querySelector('video'); if (v && v.paused) v.play().catch(() => {}); });
+$('#ovCards').addEventListener('pointerout', e => { const v = e.target.closest('[data-ov]')?.querySelector('video'); if (v && !e.relatedTarget?.closest?.('[data-ov]')) v.pause(); });
+$('#ovCards').addEventListener('click', async e => {
+  const b = e.target.closest('[data-ov]');
+  if (!b) return;
+  const [mid] = addToBin(await inv('probe', { paths: [ovLib[+b.dataset.ov].path] }));
+  if (!mid) return;
+  const busy = tk => P.items.some(i => i.track === tk && i.start < t + 3 && i.start + i.dur > t);
+  let tk = P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id));
+  if (!tk) { tk = { id: 'v' + uid(), kind: 'video' }; P.tracks.splice(P.tracks.findIndex(x => x.kind === 'video'), 0, tk); }
+  const it = addMedia(mid, tk.id, t);
+  it.blend = 'screen'; it.muted = true;
+  inspTab = 'tVideo'; refresh();
+});
 
 /* ---------- sound effects pane ---------- */
 let sfxLib = null;
@@ -3121,8 +3225,19 @@ function toast(msg, action) {
 }
 
 /* ---------- export ---------- */
-async function rasterizeTexts(Q, work) {
-  const texts = Q.items.filter(i => isText(i) && !i.hidden);
+// Adjacent text tracks (no video between them) are rasterized together; each group keeps its place in the stack.
+function textGroups(Q) {
+  const out = [];
+  let cur = null;
+  for (const x of Q.tracks.filter(x => x.kind !== 'audio').reverse()) {
+    if (x.kind !== 'text') { cur = null; continue; }
+    if (!cur) out.push(cur = []);
+    cur.push(x.id);
+  }
+  return out;
+}
+async function rasterizeTexts(Q, work, tracks = null, pre = 'f') {
+  const texts = Q.items.filter(i => isText(i) && !i.hidden && (!tracks || tracks.includes(i.track)));
   if (!texts.length) return null;
   await Promise.all([...new Set(texts.map(i => `${i.style.weight} 40px "${i.style.font}"`))].map(f => document.fonts.load(f).catch(() => {})));
   const c = document.createElement('canvas');
@@ -3132,13 +3247,13 @@ async function rasterizeTexts(Q, work) {
   let last = null;
   for (let f = 0; f < N; f++) {
     if (cancelled) throw new Error(tr('cancelled'));
-    const time = f / Q.fps, vis = visibleTexts(Q, time);
+    const time = f / Q.fps, vis = visibleTexts(Q, time).filter(i => !tracks || tracks.includes(i.track));
     const key = vis.map(it => { const s = textState(it, time - it.start); return it.id + (s.anim || it.trk || S.hasKf(it) ? 'a' + f : 'w' + s.word); }).join('|');
     if (key === last) { list[list.length - 1].frames++; continue; }
     last = key;
     ctx.clearRect(0, 0, Q.w, Q.h);
     for (const it of vis) drawTextItem(ctx, Q, it, time - it.start);
-    const name = 'f' + String(list.length).padStart(5, '0') + '.png';
+    const name = pre + String(list.length).padStart(5, '0') + '.png';
     const blob = await new Promise(r => c.toBlob(r, 'image/png'));
     await inv('write_frame', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-id': String(work.id), 'x-name': name } });
     list.push({ name, frames: 1 });
@@ -3311,11 +3426,16 @@ async function doExport(o) {
       const Q = S.scaleProject(P, o.k);
       Q.fps = o.fps;
       work = await inv('work_begin');
-      const list = await rasterizeTexts(Q, work), luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
+      const textLists = [];
+      for (const [gi, g] of textGroups(Q).entries()) {
+        const list = await rasterizeTexts(Q, work, g, 'g' + gi + '_');
+        if (list) textLists.push({ track: g[0], path: await inv('write_work', new TextEncoder().encode(G.concatText(list, o.fps)), { headers: { 'x-id': String(work.id), 'x-name': 'text' + gi + '.ffconcat' } }) });
+      }
+      const luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
       await writeFills(Q, work);
-      const { args, duration } = G.buildArgs(Q, { out: o.video, textList: list ? work.path + '/text.ffconcat' : null, codec: o.codec, quality: o.quality, luts, masks });
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, codec: o.codec, quality: o.quality, luts, masks });
       progress(tr('p_export'), 0);
-      await inv('export_run', { id: work.id, args, concat: list ? G.concatText(list, o.fps) : null, duration });
+      await inv('export_run', { id: work.id, args, concat: null, duration });
       work = null;
     }
     if (o.audio && !cancelled) {

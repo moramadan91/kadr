@@ -80,7 +80,20 @@
     if (!o.audioOnly && !o.audioExport) {
       let base = 'b0';
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
+      // text layers (rasterized per group of adjacent text tracks) go in at their track's place in the stack
+      const stack = p.tracks.filter(x => x.kind !== 'audio').map(x => x.id).reverse(), pos = id => id == null ? Infinity : stack.indexOf(id);
+      const tls = (o.textLists || (o.textList ? [{ path: o.textList, track: null }] : [])).map(x => ({ ...x, at: pos(x.track) })).sort((a, b) => a.at - b.at);
+      let tn = 0;
+      const flush = before => {
+        while (tls.length && tls[0].at < before) {
+          const x = tls.shift(), k = n++;
+          args.push('-f', 'concat', '-safe', '0', '-i', x.path);
+          fc.push(`[${k}:v]format=rgba[tx${tn}]`, `[${base}][tx${tn}]overlay=0:0:eof_action=pass[bt${tn}]`);
+          base = `bt${tn++}`;
+        }
+      };
       vis.forEach((it0, j) => {
+        flush(pos(it0.track));
         if (p.media[it0.media].adj) { // adjustment layer: grades / effects everything below it over its own time span
           const ch = [`trim=start=${f3(it0.start)}:end=${f3(it0.start + it0.dur)}`, 'setpts=PTS-STARTPTS',
             ...gradeChain(it0, S.grade(it0), o.luts && o.luts[it0.id]), ...S.fxChain(it0, W, H), 'format=yuva420p'];
@@ -201,12 +214,7 @@
         } else fc.push(`[${base}][v${j}]overlay=x=${tx}:y=${ty}:eof_action=pass[b${j + 1}]`);
         base = `b${j + 1}`;
       });
-      if (o.textList) {
-        const k = n++;
-        args.push('-f', 'concat', '-safe', '0', '-i', o.textList);
-        fc.push(`[${k}:v]format=rgba[tx]`, `[${base}][tx]overlay=0:0:eof_action=pass[bt]`);
-        base = 'bt';
-      }
+      flush(Infinity);
       fc.push(`[${base}]format=yuv420p[vout]`);
     }
 

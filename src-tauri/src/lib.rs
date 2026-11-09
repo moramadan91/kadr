@@ -196,7 +196,7 @@ fn write_work(state: State<AppState>, request: tauri::ipc::Request) -> R<String>
     let id: u32 = h.get("x-id").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok()).ok_or("x-id")?;
     let name = h.get("x-name").and_then(|v| v.to_str().ok()).ok_or("x-name")?;
     let (stem, ext) = name.rsplit_once('.').ok_or("bad name")?;
-    let ok = !stem.is_empty() && stem.len() <= 40 && stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && (ext == "cube" || ext == "png");
+    let ok = !stem.is_empty() && stem.len() <= 40 && stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && (ext == "cube" || ext == "png" || ext == "ffconcat");
     if !ok { return Err("bad file name".into()); }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw body".into()) };
     let p = work_dir(&state, id)?.join(name);
@@ -236,12 +236,28 @@ fn lut_add(app: AppHandle, path: String) -> R<String> {
 
 const AUDIO_EXT: [&str; 8] = ["wav", "mp3", "m4a", "aac", "ogg", "flac", "aif", "aiff"];
 fn is_audio(p: &Path) -> bool { p.extension().map_or(false, |x| AUDIO_EXT.iter().any(|e| x.eq_ignore_ascii_case(e))) }
-fn walk_audio(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
+fn walk_audio(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) { walk(dir, depth, is_audio, out) }
+fn walk(dir: &Path, depth: u8, ok: fn(&Path) -> bool, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let p = e.path();
-        if p.is_dir() { if depth > 0 { walk_audio(&p, depth - 1, out); } } else if is_audio(&p) { out.push(p); }
+        if p.is_dir() { if depth > 0 { walk(&p, depth - 1, ok, out); } } else if ok(&p) { out.push(p); }
     }
+}
+fn is_video(p: &Path) -> bool { p.extension().map_or(false, |x| ["mp4", "mov", "webm", "m4v"].iter().any(|e| x.eq_ignore_ascii_case(e))) }
+
+/// Overlay clips (dust, light leaks…): app data/overlays/<category>/<file>, laid over the video in screen mode.
+#[tauri::command]
+fn overlay_library(app: AppHandle, srv: State<Arc<MediaServer>>) -> R<Value> {
+    let root = app.path().app_data_dir().map_err(err)?.join("overlays");
+    let mut files = vec![];
+    walk(&root, 1, is_video, &mut files);
+    files.sort();
+    Ok(json!(files.iter().map(|f| {
+        let s = f.to_string_lossy().into_owned();
+        srv.allow(&s);
+        json!({ "name": f.file_stem().map(|x| x.to_string_lossy().into_owned()), "path": s })
+    }).collect::<Vec<_>>()))
 }
 
 /// Sound effects library: app data/sfx/<category>/<file>.
@@ -298,7 +314,7 @@ fn write_frame(state: State<AppState>, request: tauri::ipc::Request) -> R<()> {
     let h = request.headers();
     let id: u32 = h.get("x-id").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok()).ok_or("x-id")?;
     let name = h.get("x-name").and_then(|v| v.to_str().ok()).ok_or("x-name")?;
-    let ok = name.len() == 10 && name.starts_with('f') && name.ends_with(".png") && name[1..6].chars().all(|c| c.is_ascii_digit());
+    let ok = name.len() <= 24 && name.strip_suffix(".png").map_or(false, |st| !st.is_empty() && st.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
     if !ok { return Err("bad frame name".into()); }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw body".into()) };
     std::fs::write(work_dir(&state, id)?.join(name), bytes).map_err(err)
@@ -655,7 +671,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {
