@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node scripts/fetch-bins.mjs && tauri dev",
     "build": "node scripts/fetch-bins.mjs && tauri build",
+    "tauri": "tauri",
     "test": "node test/selftest.js",
     "icons": "node scripts/icons.mjs"
   },

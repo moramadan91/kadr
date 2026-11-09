@@ -64,7 +64,7 @@ assert.ok(pr.streams.some(s => s.codec_type === 'audio'));
 assert.ok(Math.abs(+pr.format.duration - 3.5) < 0.1, 'duration ' + pr.format.duration);
 
 const out4k = path.join(dir, 'out4k.mp4');
-run(ffmpeg, buildArgs(S.scaleProject(p, 2), { out: out4k, textList, codec: 'hevc_hw' }).args);
+run(ffmpeg, buildArgs(S.scaleProject(p, 2), { out: out4k, textList, codec: process.platform === 'darwin' ? 'hevc_hw' : 'hevc' }).args);
 const v4 = JSON.parse(run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', out4k])).streams.find(s => s.codec_type === 'video');
 assert.strictEqual(v4.width, 2160); assert.strictEqual(v4.height, 3840); assert.strictEqual(v4.codec_name, 'hevc');
 
