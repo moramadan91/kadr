@@ -496,6 +496,48 @@ function fitView() {
 }
 new ResizeObserver(fitView).observe($('#stage'));
 
+/* ---------- resizable panels: drag the gaps between library / player / inspector / timeline ---------- */
+const PANES = {
+  libW: { el: () => $('#lib'), min: 200, max: () => 560, def: 290 },
+  inspW: { el: () => $('#insp'), min: 240, max: () => 560, def: 320 },
+  tlH: { el: () => $('#tl'), min: 150, max: () => innerHeight - 320, def: 340 },
+};
+const paneSize = k => { try { return +localStorage.getItem('kadr.' + k) || PANES[k].def; } catch { return PANES[k].def; } };
+const setPane = (k, v) => { v = Math.round(clamp(v, PANES[k].min, Math.max(PANES[k].min, PANES[k].max()))); document.body.style.setProperty('--' + k, v + 'px'); return v; };
+const splits = Object.keys(PANES).map(k => {
+  setPane(k, paneSize(k));
+  const sp = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'split ' + (k === 'tlH' ? 'h' : 'v') }));
+  sp.addEventListener('pointerdown', e => {
+    const rtl = document.documentElement.dir === 'rtl', x0 = e.clientX, y0 = e.clientY;
+    const r = PANES[k].el().getBoundingClientRect(), w0 = k === 'tlH' ? r.height : r.width;
+    // library sits at the start edge, inspector at the end edge; flip for RTL
+    const sign = k === 'tlH' ? -1 : (k === 'libW') !== rtl ? 1 : -1;
+    let v = w0;
+    sp.classList.add('on'); document.body.classList.add('resizing'); document.body.style.cursor = getComputedStyle(sp).cursor;
+    const mv = ev => { v = setPane(k, w0 + sign * (k === 'tlH' ? ev.clientY - y0 : ev.clientX - x0)); };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', () => {
+      window.removeEventListener('pointermove', mv);
+      sp.classList.remove('on'); document.body.classList.remove('resizing'); document.body.style.cursor = '';
+      try { localStorage.setItem('kadr.' + k, String(v)); } catch {}
+    }, { once: true });
+  });
+  sp.addEventListener('dblclick', () => { setPane(k, PANES[k].def); try { localStorage.removeItem('kadr.' + k); } catch {} });
+  return [k, sp];
+});
+function placeSplits() {
+  const rtl = document.documentElement.dir === 'rtl', lib = $('#lib').getBoundingClientRect(), insp = $('#insp').getBoundingClientRect(), tl = $('#tl').getBoundingClientRect();
+  for (const [k, sp] of splits) {
+    if (k === 'tlH') Object.assign(sp.style, { left: tl.left + 'px', width: tl.width + 'px', top: tl.top - 8 + 'px' });
+    else {
+      const r = k === 'libW' ? lib : insp, atStart = (k === 'libW') !== rtl; // pane's inner edge faces the player
+      Object.assign(sp.style, { top: r.top + 'px', height: r.height + 'px', left: (atStart ? r.right : r.left - 8) + 'px' });
+    }
+  }
+}
+new ResizeObserver(placeSplits).observe(document.body);
+for (const id of ['#lib', '#insp', '#tl']) new ResizeObserver(placeSplits).observe($(id));
+
 /* ---------- transport ---------- */
 function loop(now) {
   chainKeys.clear();
@@ -1831,7 +1873,7 @@ $('#bSnap').onclick = () => { snapOn = !snapOn; $('#bSnap').classList.toggle('on
 $('#bZoomIn').onclick = () => setZoom(pps * 1.4);
 $('#bZoomOut').onclick = () => setZoom(pps / 1.4);
 $('#bFit').onclick = () => setZoom(($('#scroll').clientWidth - 40) / Math.max(total(), 1));
-$('#bLang').onclick = () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyLang(); renderLibCards(); refresh(); };
+$('#bLang').onclick = () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyLang(); renderLibCards(); refresh(); requestAnimationFrame(placeSplits); };
 
 /* ---------- keyboard: CapCut-style keymap. One table drives the keys, the tooltips and the shortcuts sheet ---------- */
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
