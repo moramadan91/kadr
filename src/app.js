@@ -468,7 +468,23 @@ const view = $('#view'), vctx = view.getContext('2d');
 function draw() {
   if (view.width !== P.w || view.height !== P.h) { view.width = P.w; view.height = P.h; fitView(); }
   drawVisual(vctx, t);
-  for (const it of visibleTexts(P, t)) drawTextItem(vctx, P, it, t - it.start);
+  const ap = animPreview && item(animPreview.id);
+  if (animPreview && (!ap || ap.id !== sel || inspTab !== 'tAnim')) animPreview = null;
+  for (const it of visibleTexts(P, t)) if (!animPreview || it.id !== animPreview.id) drawTextItem(vctx, P, it, t - it.start);
+  if (animPreview) drawTextItem(vctx, P, ap, animPreviewLt(ap));
+}
+// Animation preview: plays just the chosen animation on the selected text, looping, while the rest of the frame holds still.
+let animPreview = null;
+function animPreviewLt(it) {
+  const inD = num(it.inDur, 0.5), outD = Math.min(num(it.outDur, 0.4), it.dur), sub = animPreview.sub;
+  const [a, b] = sub === 'out' ? [Math.max(0, it.dur - outD - 0.5), it.dur] : sub === 'loop' ? [Math.min(inD, it.dur), Math.min(inD + 2, it.dur)] : [0, Math.min(it.dur, inD + 0.6)];
+  const span = b - a + (sub === 'out' ? 0.35 : 0), e = (performance.now() - animPreview.at) / 1000 % (span + 0.25);
+  return Math.min(a + e, sub === 'out' ? it.dur - 1e-3 : b);
+}
+function startAnimPreview(it) {
+  setPlaying(false);
+  animPreview = { id: it.id, sub: animSub, at: performance.now() };
+  needsDraw = true;
 }
 function fitView() {
   const st = $('#stage'), aw = st.clientWidth - 28, ah = st.clientHeight - 28;
@@ -492,7 +508,7 @@ function loop(now) {
   }
   lastTick = now;
   syncMedia();
-  if (needsDraw) { needsDraw = false; draw(); updatePlayhead(); }
+  if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
   requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
@@ -507,6 +523,7 @@ function clockTime() {
   return best && best.it.start + (best.el.currentTime - num(best.it.in, 0)) / num(best.it.speed, 1);
 }
 function setPlaying(v) {
+  if (v) animPreview = null;
   playing = v && total() > 0;
   if (playing && t >= total() - 0.01) t = 0;
   const b = $('#bPlay');
@@ -514,7 +531,7 @@ function setPlaying(v) {
   b.innerHTML = icon(b.dataset.i);
   if (!playing) for (const el of els.values()) el.pause();
 }
-function seek(v) { t = clamp(v, 0, Math.max(total(), 0)); needsDraw = true; }
+function seek(v) { animPreview = null; t = clamp(v, 0, Math.max(total(), 0)); needsDraw = true; }
 function updatePlayhead() {
   $('#ph').style.left = t * pps + 'px';
   $('#tc').textContent = fmt(t);
@@ -926,6 +943,7 @@ $('#inspBody').addEventListener('input', e => {
   if (show && e.target.type === 'range') show.textContent = showVal(k, v);
   dirty = true;
   if (/^(start|dur|speed)$/.test(k)) { pack(); }
+  if (/^(inDur|outDur)$/.test(k)) startAnimPreview(it);
   renderTimeline();
   needsDraw = true;
 });
@@ -933,15 +951,19 @@ $('#inspBody').addEventListener('click', e => {
   const it = sel && item(sel);
   if (!it) return;
   const sub = e.target.closest('[data-asub]');
-  if (sub) { animSub = sub.dataset.asub; return inspector(); }
+  if (sub) {
+    animSub = sub.dataset.asub;
+    inspector();
+    const cur = it[{ in: 'anim', out: 'out', loop: 'loop' }[animSub]];
+    if (isText(it) && cur && cur !== 'none') startAnimPreview(it); else animPreview = null;
+    return;
+  }
   const an = e.target.closest('[data-anim]');
   if (an) {
     snapshot();
     it[{ in: 'anim', out: 'out', loop: 'loop' }[animSub]] = an.dataset.anim;
     refresh();
-    // preview the choice from where it shows
-    seek(animSub === 'out' ? Math.max(it.start, it.start + it.dur - num(it.outDur, 0.4) - 0.4) : it.start);
-    if (an.dataset.anim !== 'none') setPlaying(true);
+    if (an.dataset.anim !== 'none') startAnimPreview(it); else animPreview = null;
     return;
   }
   const pr = e.target.closest('[data-tpreset]');
