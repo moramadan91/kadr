@@ -18,6 +18,7 @@ const EN = {
   f2: 'Timeline and cutting', f2p: 'Magnetic main track, cut and split, markers, plus video, audio and text tracks.',
   f3: 'Text and motion', f3p: 'Ready-made styles with in and out animation, and Arabic shaped correctly.',
   f4: 'Color and filters', f4p: 'Presets plus light and saturation controls. The preview matches the export exactly.',
+  f8: 'Auto captions that speak Arabic', f8p: 'One click turns all the speech into captions. Arabic and English, and it can detect the video language on its own.',
   f5: 'Export up to 4K', f5p: 'H.264 and HEVC, hardware accelerated on Mac.',
   f6: 'Voiceover recording', f6p: 'Record narration in the app and it lands on the timeline.',
   f7: 'Automatic updates', f7p: 'Every new version reaches you on its own, signed and verified.',
