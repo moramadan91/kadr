@@ -45,6 +45,14 @@
   // Constant-rate tempo change: keeps pitch (atempo) unless the clip asks for the pitch to follow the speed.
   const tempo = (it, r) => it.pitch ? (Math.abs(r - 1) > 1e-6 ? [`asetrate=${Math.round(48000 * r)}`, 'aresample=48000'] : []) : atempo(r);
 
+  // colour: a baked 3D LUT (advanced colour) or the basic grade as lutrgb + saturation
+  function gradeChain(it, g, lut) {
+    if (lut) return [`lut3d=file='${lut.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, '')}'`];
+    if (g.identity) return [];
+    const e = c => `'clip(val*${c.slope.toFixed(5)}${signed(c.intercept * 255)},0,255)'`;
+    return [`lutrgb=r=${e(g.ch[0])}:g=${e(g.ch[1])}:b=${e(g.ch[2])}`, ...(Math.abs(g.s - 1) > 1e-4 ? [`hue=s=${g.s.toFixed(4)}`] : [])];
+  }
+
   // o: { out, textList (ffconcat path or null), audioOnly, codec }
   function buildArgs(p, o) {
     const W = p.w, H = p.h, fps = p.fps, T = S.projectDur(p);
@@ -73,6 +81,18 @@
       let base = 'b0';
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
       vis.forEach((it0, j) => {
+        if (p.media[it0.media].adj) { // adjustment layer: grades / effects everything below it over its own time span
+          const ch = [`trim=start=${f3(it0.start)}:end=${f3(it0.start + it0.dur)}`, 'setpts=PTS-STARTPTS',
+            ...gradeChain(it0, S.grade(it0), o.luts && o.luts[it0.id]), ...S.fxChain(it0, W, H), 'format=yuva420p'];
+          const op = num(it0.opacity, 1), fi = num(it0.fadeIn, 0), fo = num(it0.fadeOut, 0);
+          if (op < 1) ch.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
+          if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
+          if (fo > 0) ch.push(`fade=t=out:st=${f3(it0.dur - fo)}:d=${f3(fo)}:alpha=1`);
+          ch.push(`setpts=PTS+${f3(it0.start)}/TB`);
+          fc.push(`[${base}]split[as${j}][at${j}]`, `[at${j}]${ch.join(',')}[av${j}]`, `[as${j}][av${j}]overlay=0:0:eof_action=pass[b${j + 1}]`);
+          base = `b${j + 1}`;
+          return;
+        }
         const k = input(it0), m = p.media[it0.media], it = S.bakeVa(it0, W, H), g = S.grade(it), C = S.srcCrop(it, m);
         const kf = S.hasKf(it) ? it.kf : null, LP = it._loop ? S.VA_LOOP[it._loop] : null, sm = !it._lin;
         const LK = { scale: 's', rotate: 'r', x: 'dx', y: 'dy' };
@@ -100,14 +120,7 @@
         if (it.flipH) ch.push('hflip');
         if (it.flipV) ch.push('vflip');
         ch.push(`scale=${L.sw}:${L.sh}:flags=bicubic`, `crop=${L.cw}:${L.ch}:${L.cx}:${L.cy}`, 'setsar=1');
-        const lut = o.luts && o.luts[it0.id]; // advanced colour: the whole grade as one baked 3D LUT
-        if (lut) ch.push(`lut3d=file='${lut.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, '')}'`);
-        else if (!g.identity) {
-          const e = c => `'clip(val*${c.slope.toFixed(5)}${signed(c.intercept * 255)},0,255)'`;
-          ch.push(`lutrgb=r=${e(g.ch[0])}:g=${e(g.ch[1])}:b=${e(g.ch[2])}`);
-          if (Math.abs(g.s - 1) > 1e-4) ch.push(`hue=s=${g.s.toFixed(4)}`);
-        }
-        ch.push(...S.fxChain(it, L.cw, L.ch));
+        ch.push(...gradeChain(it, g, o.luts && o.luts[it0.id]), ...S.fxChain(it, L.cw, L.ch));
         const mk = o.masks && o.masks[it0.id];
         if (mk) { // mask: grey PNG at the box size, its brightness becomes the clip's alpha
           const mi = n++;

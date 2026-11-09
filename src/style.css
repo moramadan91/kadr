@@ -480,3 +480,25 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .rdel svg { width: 14px; height: 14px; }
 .rgrid button:hover .rdel { opacity: 1; }
 .rdel:hover { background: #e5484d; }
+/* side panels scroll up/down only: grid cells may shrink below their content width */
+.panel > section, #inspBody { overflow-x: hidden; }
+.panel :is(.cards, .trcards, .agrid, .stk, .cvgrid, .mshapes, .seg, .row2, .whls, .looks, .tpls, .tpresets, .cch) > * { min-width: 0; }
+.stk { grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 5px; }
+.stk button { display: grid; place-items: center; width: 100%; padding: 0; font-size: 21px; }
+/* library tab bar: slides sideways (swipe, wheel or the arrows) instead of squeezing */
+.tabwrap { position: relative; flex: none; border-bottom: 1px solid var(--stroke); }
+.tabwrap .tabs { border-bottom: 0; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
+.tabwrap .tabs::-webkit-scrollbar { display: none; }
+.tabwrap .tabs button { flex: none; min-width: 62px; }
+.tarr { position: absolute; top: 0; bottom: 0; z-index: 2; width: 26px; padding: 0; justify-content: center; border: 0; border-radius: 0; color: var(--text); }
+.tarr.l { left: 0; background: linear-gradient(90deg, var(--panel-bg, #171b22) 55%, transparent); }
+.tarr.r { right: 0; background: linear-gradient(270deg, var(--panel-bg, #171b22) 55%, transparent); }
+.tarr:hover { color: var(--accent); }
+.tarr svg { width: 16px; height: 16px; }
+.tarr[hidden] { display: none; }
+.card .plus, .trc .plus { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); opacity: 0; transition: opacity .12s; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.card .plus svg, .trc .plus svg { width: 15px; height: 15px; stroke-width: 3; }
+.card:hover .plus, .trc:hover .plus { opacity: 1; }
+.card .plus:hover, .trc .plus:hover { transform: scale(1.12); }
+.trc { position: relative; }
+.trc[data-off] { opacity: .55; }

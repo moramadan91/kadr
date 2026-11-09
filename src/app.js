@@ -574,6 +574,18 @@ function drawDelogo(ctx, it, src, m, k, C, L, u, v) {
   ctx.restore();
 }
 
+// Adjustment layer (effect / filter on its own clip): re-grades everything drawn below it.
+const adjCopy = document.createElement('canvas');
+function drawAdj(ctx, it, lt) {
+  const c = ctx.canvas;
+  if (adjCopy.width !== c.width || adjCopy.height !== c.height) { adjCopy.width = c.width; adjCopy.height = c.height; }
+  const g = adjCopy.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height); g.drawImage(c, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = S.fadeAlpha(it, lt) * clamp(num(it.opacity, 1), 0, 1);
+  drawGraded(ctx, it, adjCopy, 0, 0, c.width, c.height, 0, 0, P.w, P.h, lt);
+  ctx.restore();
+}
 // ov = {id, lt}: draw that clip at its own local time (animation preview) whatever the playhead says.
 function drawVisual(ctx, time, ov) {
   ctx.fillStyle = '#000';
@@ -586,6 +598,7 @@ function drawVisual(ctx, time, ov) {
       const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
       if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
       if (!(pv || tail || active(it, time))) continue;
+      if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); continue; }
       let src = m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailFrame(it) : elFor(it);
       if (!src) continue;
       if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
@@ -1114,12 +1127,12 @@ function clipLabel(it) {
   const off = it.hidden ? icon('eye-off') : '';
   if (isText(it)) return off + icon('type') + esc(it.text);
   const m = media(it);
-  return off + icon(m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
+  return off + icon(m.adj ? 'zap' : m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
 }
 function renderTimeline() {
   const width = (Math.max(total(), t) + 30) * pps;
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
-  $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(tr('tr_' + x.id))}</div>`).join('');
+  $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(trackLabel(x))}</div>`).join('');
   $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
     P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
@@ -1451,7 +1464,7 @@ function refresh() {
   for (const id of msel) if (!item(id)) msel.delete(id);
   if (msel.size < 2) msel.clear();
   pack();
-  for (const [k, m] of Object.entries(P.media)) if (m.fill && !P.items.some(i => i.media === k)) delete P.media[k];
+  for (const [k, m] of Object.entries(P.media)) if ((m.fill || m.adj) && !P.items.some(i => i.media === k)) delete P.media[k];
   // library redraws only when its files or their "in use" marks change (thumbnails are <video> elements)
   const sig = Object.keys(P.media).join() + '|' + [...new Set(P.items.map(i => i.media))].join();
   if (sig !== binSig) { binSig = sig; renderBin(); }
@@ -1489,10 +1502,18 @@ const fld = {
 };
 const grp = (title, body) => `<div class="grp"><div class="gh">${tr(title)}</div>${body}</div>`;
 
+// Built-in tracks have their own names; extra video tracks (added for effect layers) are "Video N", counted from the bottom.
+function trackLabel(x) {
+  const k = 'tr_' + x.id;
+  if (tr(k) !== k) return tr(k);
+  const vs = P.tracks.filter(y => y.kind === x.kind).reverse();
+  return tr('videoN', { n: vs.indexOf(x) + 1 });
+}
 function inspTabsFor(it) {
   if (!it) return [];
   if (isText(it)) return ['tText', 'tTpl', 'tAnim'];
   const k = media(it).kind;
+  if (media(it).adj) return ['tVideo', 'tAdjust'];
   return k === 'audio' ? ['tAudio', 'tSpeed'] : k === 'image' ? ['tVideo', 'tAnim', 'tAdjust'] : ['tVideo', 'tAudio', 'tSpeed', 'tAnim', 'tAdjust'];
 }
 
@@ -1610,6 +1631,11 @@ function inspector() {
       if (animSub !== 'loop' && curA !== 'none') h.push(fld.range(animSub === 'in' ? 'inDur' : 'outDur', 'animDur', 0.1, 3, 0.05, it, animSub === 'in' ? 0.5 : 0.4));
       if (V) h.push(fades);
     }
+  } else if (inspTab === 'tVideo' && media(it).adj) {
+    h.push(`<p class="hint">${tr('adjHint')}</p>`, timing, hideRow(it),
+      grp('fxSec', fld.select('fx.id', 'effect', [['', tr('fx_none')], ...S.FX.map(x => [x, tr('fx_' + x)])], it) + (S.fxOf(it) ? fld.range('fx.a', 'fxAmt', 0, 1, 0.01, it, 0.5) : '')),
+      grp('filters', fld.select('preset', 'filters', Object.keys(S.PRESETS).map(x => [x, tr('p_' + x)]), it)),
+      fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1), fades);
   } else if (inspTab === 'tVideo') {
     const FM = media(it).fill;
     h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing, hideRow(it));
@@ -2176,7 +2202,7 @@ function hitAt(x, y) {
   for (let i = tx.length - 1; i >= 0; i--) { const b = textBoxes.get(tx[i].id); if (b && inBox(b, x, y)) return tx[i]; }
   const order = renderOrder(P, 'video');
   for (let i = order.length - 1; i >= 0; i--)
-    for (const it of [...P.items].reverse()) if (it.track === order[i] && !isText(it) && !it.hidden && active(it, t) && media(it).kind !== 'audio' && inBox(visBox(it, t - it.start), x, y)) return it;
+    for (const it of [...P.items].reverse()) if (it.track === order[i] && !isText(it) && !it.hidden && active(it, t) && media(it).kind !== 'audio' && !media(it).adj && inBox(visBox(it, t - it.start), x, y)) return it;
   return null;
 }
 function placeSelBox() {
@@ -2430,7 +2456,26 @@ async function runTrack(f, src, box) {
 }
 
 /* ---------- library ---------- */
+// Library tab bar slides sideways: trackpad swipe, mouse wheel, or the edge arrows (shown only when there is more that way).
+const libBar = (() => {
+  const bar = $('#libTabs'), wrap = document.createElement('div');
+  wrap.className = 'tabwrap';
+  bar.before(wrap); wrap.append(bar);
+  const arrow = (side, dx) => { const b = document.createElement('button'); b.className = 'tarr ' + side; b.innerHTML = icon(side === 'l' ? 'chevron-left' : 'chevron-right'); b.onclick = () => bar.scrollBy({ left: dx * bar.clientWidth * 0.7 }); wrap.append(b); return b; };
+  const L = arrow('l', -1), R = arrow('r', 1);
+  const edges = () => {
+    const r = bar.getBoundingClientRect(), kids = [...bar.children].map(c => c.getBoundingClientRect());
+    L.hidden = !(Math.min(...kids.map(k => k.left)) < r.left - 1);
+    R.hidden = !(Math.max(...kids.map(k => k.right)) > r.right + 1);
+  };
+  bar.addEventListener('scroll', edges);
+  bar.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { bar.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+  new ResizeObserver(edges).observe(bar);
+  return { edges, show: b => { const r = b.getBoundingClientRect(), q = bar.getBoundingClientRect(); bar.scrollBy({ left: r.left + r.width / 2 - (q.left + q.width / 2) }); setTimeout(edges, 400); } };
+})();
 function setLibTab(tab) {
+  const tb = $(`#libTabs [data-tab="${tab}"]`);
+  if (tb) libBar.show(tb);
   libTab = tab;
   if (tab === 'trans') renderTrans();
   if (tab === 'filters' || tab === 'effects') renderLookCards();
@@ -2454,7 +2499,7 @@ function binOrder() {
     dur: (a, b) => num(b[1].dur, 0) - num(a[1].dur, 0),
     kind: (a, b) => a[1].kind.localeCompare(b[1].kind) || a[1].name.localeCompare(b[1].name),
   }[by];
-  return Object.entries(P.media).filter(([, m]) => !m.fill && (!q || m.name.toLowerCase().includes(q))).sort(cmp).map(([id]) => id);
+  return Object.entries(P.media).filter(([, m]) => !m.fill && !m.adj && (!q || m.name.toLowerCase().includes(q))).sort(cmp).map(([id]) => id);
 }
 function renderBin() {
   for (const id of binSel) if (!P.media[id]) binSel.delete(id);
@@ -2651,8 +2696,8 @@ function renderTrans() {
   $('#transHead').innerHTML = !tg ? `<p class="hint">${tr('trNone')}</p>` :
     `<p class="hint">${tr('trAt', { t: fmt(tg.start) })}</p>` + (T ? `<div class="f"><div class="lb"><span>${tr('dur')}</span><b>${T.d.toFixed(1)}s</b></div>` +
       `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` : '');
-  $('#transCards').innerHTML = ['none', ...S.TRANS].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' disabled'}>` +
-    `<i class="tv tv-${id}"><b></b></i><span>${tr('tr_' + id)}</span></button>`).join('');
+  $('#transCards').innerHTML = ['none', ...S.TRANS].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
+    `<i class="tv tv-${id}"><b></b></i><span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>`}</button>`).join('');
   const d = $('#trDur');
   if (d) {
     d.onpointerdown = () => snapshot();
@@ -2669,6 +2714,7 @@ function previewTrans(tg) {
 }
 $('#transCards').addEventListener('click', e => {
   const b = e.target.closest('[data-tr]'), tg = b && transTarget();
+  if (b && !tg) return toast(tr('trNone'));
   if (!tg) return;
   snapshot();
   if (b.dataset.tr === 'none') delete tg.trans;
@@ -2860,7 +2906,7 @@ function renderLibCards() {
     const b = document.createElement('button');
     b.className = 'card';
     b.dataset.style = s.id;
-    const fake = { text: LANG === 'ar' ? 'كادر' : 'Kadr', style: { ...presetStyle(s.id), size: 46, strokeW: (s.s.strokeW || 0) * 0.45, shadowBlur: 8, shadowDist: 5, glowSize: 16 }, x: 0.5, y: 0.5, dur: 9 };
+    const fake = { text: LANG === 'ar' ? 'ماكتو' : 'Maqto', style: { ...presetStyle(s.id), size: 46, strokeW: (s.s.strokeW || 0) * 0.45, shadowBlur: 8, shadowDist: 5, glowSize: 16 }, x: 0.5, y: 0.5, dur: 9 };
     b.appendChild(cardCanvas(ctx => { ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180); drawTextItem(ctx, { w: 240, h: 180 }, fake, 5); }));
     ts.appendChild(b);
   }
@@ -2870,7 +2916,7 @@ function renderLibCards() {
 // The selected clip's current picture (cover-cropped to 240x180), or null.
 function clipThumb(it = sel && item(sel)) {
   const m = it && !isText(it) && media(it);
-  if (!m || m.kind === 'audio' || m.fill) return null;
+  if (!m || m.kind === 'audio' || m.fill || m.adj) return null;
   const src = m.kind === 'image' ? imgFor(m) : els.get(chainKey(it));
   const W = src && (src.videoWidth || src.naturalWidth), H = src && (src.videoHeight || src.naturalHeight);
   if (!W || !H) return null;
@@ -2888,14 +2934,29 @@ function renderLookCards() {
       b.className = 'card' + (on === x ? ' on' : '');
       b.dataset[attr] = x;
       b.appendChild(cardCanvas(paint(x)));
-      b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>`);
+      b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>${x === 'none' ? '' : `<i class="plus" data-plus title="${tr('addLayer')}">${icon('plus')}</i>`}`);
       box.appendChild(b);
     }
   };
   fill($('#filterCards'), Object.keys(S.PRESETS), 'preset', p => ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180), 'p_', it && it.preset);
   fill($('#fxCards'), S.FX, 'fx', f => ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
 }
+function addAdj(kind, id) {
+  const mid = 'adj_' + uid();
+  P.media[mid] = { kind: 'image', adj: true, name: tr((kind === 'fx' ? 'fx_' : 'p_') + id), w: P.w, h: P.h, path: '' };
+  const busy = tk => P.items.some(i => i.track === tk && i.start < t + 3 && i.start + i.dur > t);
+  let tk = P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id));
+  if (!tk) { tk = { id: 'v' + uid(), kind: 'video' }; P.tracks.splice(P.tracks.findIndex(x => x.kind === 'video'), 0, tk); } // new top video track
+  const it = addMedia(mid, tk.id, t);
+  it.dur = 3;
+  if (kind === 'fx') it.fx = { id, a: 0.5 }; else it.preset = id;
+  inspTab = 'tVideo';
+  refresh();
+}
+$('#filterCards').addEventListener('click', e => { const pl = e.target.closest('[data-plus]'); if (pl) { e.stopImmediatePropagation(); addAdj('preset', pl.closest('[data-preset]').dataset.preset); } }, true);
 $('#fxCards').addEventListener('click', e => {
+  const pl = e.target.closest('[data-plus]');
+  if (pl) return addAdj('fx', pl.closest('[data-fx]').dataset.fx);
   const c = e.target.closest('[data-fx]'), it = sel && item(sel);
   if (!c) return;
   if (!it || isText(it) || media(it).kind === 'audio') return toast(tr('fxPick'));

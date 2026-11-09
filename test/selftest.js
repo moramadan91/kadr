@@ -198,6 +198,14 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
     if (id === 'vignette') assert.ok(at(1, 1, 1)[0] < at(1, 100, 100)[0] - 40, 'vignette corner ' + at(1, 1, 1));
   }
   delete tp.items[0].fx;
+  // adjustment layer (effect clip on its own track): inverts only what is under it, only during its time
+  tp.tracks.unshift({ id: 'v2', kind: 'video' });
+  tp.media.adj = { kind: 'image', adj: true, path: '', w: 200, h: 200 };
+  tp.items.push({ id: 'J', track: 'v2', media: 'adj', start: 0.5, dur: 1, fx: { id: 'invert', a: 0.5 } });
+  run(ffmpeg, buildArgs(tp, { out }).args);
+  { const c = at(1, 100, 100); assert.ok(c[0] < 90 && c[1] > 150 && c[2] > 150, 'adjustment layer inverts ' + c); }
+  assert.ok(red(at(0.2, 100, 100)) && red(at(1.8, 100, 100)), 'adjustment layer only during its time');
+  tp.items.pop(); tp.tracks.shift(); delete tp.media.adj;
   // blend modes: half-size blue layer over the red clip; outside it the red stays as it was
   tp.tracks.unshift({ id: 'v2', kind: 'video' });
   tp.items.push({ id: 'L', track: 'v2', media: 'b', start: 0, dur: 2, scale: 0.5 });
