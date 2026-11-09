@@ -1,0 +1,123 @@
+// Project JSON -> ffmpeg arguments. Pure; runs in the app and in test/selftest.js.
+(function (root) {
+  const S = typeof module !== 'undefined' && module.exports ? require('./shared') : root.KadrShared;
+  const num = S.num;
+  const f3 = v => (+v).toFixed(3);
+  const signed = v => (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(3);
+
+  function atempo(sp) {
+    const f = [];
+    let s = sp;
+    while (s > 2) { f.push('atempo=2'); s /= 2; }
+    while (s < 0.5) { f.push('atempo=0.5'); s /= 0.5; }
+    if (Math.abs(s - 1) > 1e-6) f.push('atempo=' + +s.toFixed(6));
+    return f;
+  }
+
+  function audible(p, it) {
+    const m = it.media && p.media[it.media];
+    return !!m && !it.muted && num(it.volume, 1) > 0 && (m.kind === 'audio' || (m.kind === 'video' && m.hasAudio));
+  }
+
+  const ENCODERS = {
+    h264: ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p'],
+    hevc: ['-c:v', 'libx265', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
+    h264_hw: ['-c:v', 'h264_videotoolbox', '-q:v', '65', '-pix_fmt', 'yuv420p'],
+    hevc_hw: ['-c:v', 'hevc_videotoolbox', '-q:v', '65', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'],
+  };
+
+  // o: { out, textList (ffconcat path or null), audioOnly, codec }
+  function buildArgs(p, o) {
+    const W = p.w, H = p.h, fps = p.fps, T = S.projectDur(p);
+    if (!(T > 0)) throw new Error('empty timeline');
+    const vt = p.tracks.filter(t => t.kind === 'video').map(t => t.id).reverse(); // bottom layer first
+    const vis = o.audioOnly ? [] : p.items
+      .filter(i => vt.includes(i.track) && i.media && p.media[i.media] && p.media[i.media].kind !== 'audio')
+      .sort((a, b) => vt.indexOf(a.track) - vt.indexOf(b.track) || a.start - b.start);
+    const aud = p.items.filter(i => audible(p, i));
+
+    const args = ['-y', '-hide_banner', '-nostats'];
+    const fc = [];
+    const idx = new Map();
+    let n = 0;
+    const input = it => {
+      if (idx.has(it.id)) return idx.get(it.id);
+      const m = p.media[it.media];
+      if (m.kind === 'image') args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur), '-i', m.path);
+      else args.push('-ss', f3(num(it.in, 0)), '-t', f3(it.dur * num(it.speed, 1)), '-i', m.path);
+      idx.set(it.id, n);
+      return n++;
+    };
+
+    if (!o.audioOnly) {
+      let base = 'b0';
+      fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
+      vis.forEach((it, j) => {
+        const k = input(it), m = p.media[it.media], L = S.layout(it, m, W, H), g = S.grade(it), C = S.srcCrop(it, m);
+        const ch = [`setpts=(PTS-STARTPTS)/${num(it.speed, 1)}`, `fps=${fps}`];
+        if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
+        if (it.flipH) ch.push('hflip');
+        if (it.flipV) ch.push('vflip');
+        ch.push(`scale=${L.sw}:${L.sh}:flags=bicubic`, `crop=${L.cw}:${L.ch}:${L.cx}:${L.cy}`, 'setsar=1');
+        if (!g.identity) {
+          const e = c => `'clip(val*${c.slope.toFixed(5)}${signed(c.intercept * 255)},0,255)'`;
+          ch.push(`lutrgb=r=${e(g.ch[0])}:g=${e(g.ch[1])}:b=${e(g.ch[2])}`);
+          if (Math.abs(g.s - 1) > 1e-4) ch.push(`hue=s=${g.s.toFixed(4)}`);
+        }
+        ch.push('format=yuva420p');
+        const opacity = num(it.opacity, 1);
+        if (opacity < 1) ch.push(`colorchannelmixer=aa=${opacity.toFixed(3)}`);
+        const fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
+        if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
+        if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
+        ch.push(`setpts=PTS+${f3(it.start)}/TB`);
+        fc.push(`[${k}:v]${ch.join(',')}[v${j}]`);
+        fc.push(`[${base}][v${j}]overlay=x=${L.ox}:y=${L.oy}:eof_action=pass[b${j + 1}]`);
+        base = `b${j + 1}`;
+      });
+      if (o.textList) {
+        const k = n++;
+        args.push('-f', 'concat', '-safe', '0', '-i', o.textList);
+        fc.push(`[${k}:v]format=rgba[tx]`, `[${base}][tx]overlay=0:0:eof_action=pass[bt]`);
+        base = 'bt';
+      }
+      fc.push(`[${base}]format=yuv420p[vout]`);
+    }
+
+    const al = [];
+    aud.forEach((it, j) => {
+      const k = input(it), v = num(it.volume, 1), fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
+      const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS', ...atempo(num(it.speed, 1))];
+      if (v !== 1) ch.push(`volume=${v}`);
+      if (fi > 0) ch.push(`afade=t=in:st=0:d=${f3(fi)}`);
+      if (fo > 0) ch.push(`afade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}`);
+      ch.push(`adelay=${Math.round(it.start * 1000)}:all=1`);
+      fc.push(`[${k}:a]${ch.join(',')}[a${j}]`);
+      al.push(`[a${j}]`);
+    });
+    if (al.length) fc.push(`${al.join('')}amix=inputs=${al.length}:normalize=0:duration=longest,apad=whole_dur=${f3(T)}[aout]`);
+    else fc.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${f3(T)}[aout]`);
+
+    args.push('-filter_complex', fc.join(';'));
+    if (o.audioOnly) {
+      args.push('-map', '[aout]', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-t', f3(T), o.out);
+    } else {
+      args.push('-map', '[vout]', '-map', '[aout]', ...(ENCODERS[o.codec] || ENCODERS.h264),
+        '-r', String(fps), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+        '-t', f3(T), '-progress', 'pipe:1', o.out);
+    }
+    return { args, duration: T };
+  }
+
+  // list: [{name, frames}] -> ffconcat text (paths relative to the list file).
+  function concatText(list, fps) {
+    const L = ['ffconcat version 1.0'];
+    for (const f of list) L.push(`file '${f.name}'`, `duration ${(f.frames / fps).toFixed(6)}`);
+    L.push(`file '${list[list.length - 1].name}'`);
+    return L.join('\n') + '\n';
+  }
+
+  const api = { buildArgs, concatText, atempo, ENCODERS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.KadrGraph = api;
+})(this);

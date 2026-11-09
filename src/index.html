@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Kadr</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar glass" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region><span class="logo"></span><b data-t="appName"></b></div>
+  <div class="pname" id="pname" data-tauri-drag-region></div>
+  <span class="flex" data-tauri-drag-region></span>
+  <button class="ib" id="bUndo" data-i="undo-2" data-tt="undo"></button>
+  <button class="ib" id="bRedo" data-i="redo-2" data-tt="redo"></button>
+  <span class="sep"></span>
+  <button class="tb" id="bLang" data-i="languages"><span data-t="lang"></span></button>
+  <button class="tb" id="bOpen" data-i="folder-open"><span data-t="open"></span></button>
+  <button class="tb" id="bSave" data-i="save"><span data-t="save"></span></button>
+  <button class="tb primary" id="bExport" data-i="share"><span data-t="export"></span></button>
+</header>
+
+<main>
+  <aside class="glass panel" id="lib">
+    <nav class="tabs" id="libTabs">
+      <button data-tab="media" data-i="film"><span data-t="media"></span></button>
+      <button data-tab="text" data-i="type"><span data-t="text"></span></button>
+      <button data-tab="captions" data-i="captions"><span data-t="captions"></span></button>
+      <button data-tab="filters" data-i="sparkles"><span data-t="filters"></span></button>
+    </nav>
+    <section data-pane="media">
+      <button class="wide accent-ghost" id="bImport" data-i="plus"><span data-t="import"></span></button>
+      <div id="binList"></div>
+      <p class="hint" data-t="importHint"></p>
+    </section>
+    <section data-pane="text" hidden>
+      <button class="wide accent-ghost" id="bText" data-i="plus"><span data-t="addText"></span></button>
+      <h4 data-t="textStyles"></h4>
+      <div id="textStyles" class="cards"></div>
+    </section>
+    <section data-pane="captions" hidden>
+      <label class="f"><span data-t="capLang"></span>
+        <select id="capLang"><option value="ar">العربية</option><option value="en">English</option><option value="auto">Auto</option></select></label>
+      <button class="wide primary" id="bCaps" data-i="wand-sparkles"><span data-t="genCaptions"></span></button>
+      <p class="hint" data-t="capHint"></p>
+    </section>
+    <section data-pane="filters" hidden>
+      <p class="hint" data-t="filtersHint"></p>
+      <div id="filterCards" class="cards"></div>
+    </section>
+  </aside>
+
+  <section class="glass panel" id="player">
+    <div id="stage"><canvas id="view"></canvas></div>
+    <div class="transport">
+      <span class="tc"><b id="tc">00:00:00</b><i>/</i><span id="tdur">00:00:00</span></span>
+      <span class="flex"></span>
+      <button class="ib" id="bBack" data-i="skip-back"></button>
+      <button class="ib big" id="bPlay" data-i="play" data-tt="play"></button>
+      <button class="ib" id="bFwd" data-i="skip-forward"></button>
+      <span class="flex"></span>
+      <label class="ratio"><span data-t="ratio"></span>
+        <select id="aspect"><option>9:16</option><option>16:9</option><option>1:1</option><option>4:5</option></select></label>
+    </div>
+  </section>
+
+  <aside class="glass panel" id="insp">
+    <nav class="tabs" id="inspTabs"></nav>
+    <div id="inspBody"></div>
+  </aside>
+</main>
+
+<section class="glass" id="tl">
+  <div class="tools">
+    <div class="seg">
+      <button class="ib on" id="tSelect" data-i="mouse-pointer-2" data-tt="select"></button>
+      <button class="ib" id="tBlade" data-i="scissors" data-tt="blade"></button>
+    </div>
+    <span class="sep"></span>
+    <button class="ib" id="bSplit" data-i="square-split-horizontal" data-tt="split"></button>
+    <button class="ib" id="bDelL" data-i="arrow-left-to-line" data-tt="delLeft"></button>
+    <button class="ib" id="bDelR" data-i="arrow-right-to-line" data-tt="delRight"></button>
+    <button class="ib" id="bDel" data-i="trash-2" data-tt="del"></button>
+    <button class="ib" id="bDup" data-i="copy" data-tt="dup"></button>
+    <button class="ib" id="bMarker" data-i="bookmark" data-tt="marker"></button>
+    <button class="ib" id="bCrop" data-i="crop" data-tt="crop"></button>
+    <button class="ib" id="bMirror" data-i="flip-horizontal-2" data-tt="mirror"></button>
+    <span class="flex"></span>
+    <button class="ib" id="bRec" data-i="mic" data-tt="record"></button>
+    <span class="sep"></span>
+    <button class="ib on" id="bMagnet" data-i="magnet" data-tt="magnet"></button>
+    <button class="ib on" id="bSnap" data-i="link-2" data-tt="snap"></button>
+    <span class="sep"></span>
+    <button class="ib" id="bZoomOut" data-i="zoom-out" data-tt="zoomOut"></button>
+    <input type="range" id="zoom" min="8" max="400" value="60">
+    <button class="ib" id="bZoomIn" data-i="zoom-in" data-tt="zoomIn"></button>
+    <button class="ib" id="bFit" data-i="maximize-2" data-tt="fit"></button>
+  </div>
+  <div class="tlbody" dir="ltr">
+    <div class="heads"><div class="rhead"></div><div id="heads"></div></div>
+    <div class="scroll" id="scroll">
+      <div class="ruler" id="ruler"></div>
+      <div class="rows" id="rows"></div>
+      <div class="ph" id="ph"></div>
+    </div>
+  </div>
+</section>
+
+<div id="modal" hidden><div class="glass box" id="mBox"></div></div>
+<div id="toast" class="glass" hidden></div>
+<div id="ghost" hidden></div>
+<script src="icons.js"></script>
+<script src="i18n.js"></script>
+<script src="shared.js"></script>
+<script src="graph.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
