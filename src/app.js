@@ -906,6 +906,24 @@ function progress(label, p) {
 }
 const hideModal = () => ($('#modal').hidden = true);
 TA.event.listen('progress', e => progress(tr('p_' + e.payload.label), e.payload.p));
+
+/* ---------- auto update (GitHub Releases, signed) ---------- */
+async function checkUpdate() {
+  if (!TA.updater) return;
+  let u;
+  try { u = await TA.updater.check(); } catch (e) { return inv('dev_log', { msg: 'update check: ' + e }); } // offline or no release yet
+  if (!u || !(await TA.dialog.ask(tr('updAsk').replace('{v}', u.version), { title: tr('updTitle') }))) return;
+  if (dirty) await save();
+  let total = 0, got = 0;
+  progress(tr('p_update'), 0);
+  try {
+    await u.downloadAndInstall(ev => {
+      if (ev.event === 'Started') total = ev.data.contentLength || 0;
+      else if (ev.event === 'Progress') { got += ev.data.chunkLength; if (total) progress(tr('p_update'), got / total); }
+    });
+    await TA.process.relaunch();
+  } catch (e) { hideModal(); toast(String(e)); }
+}
 let toastTimer;
 function toast(msg, action) {
   const el = $('#toast');
@@ -1176,6 +1194,7 @@ document.fonts.load('800 40px "Cairo"').then(renderLibCards);
 syncSettings();
 refresh();
 requestAnimationFrame(loop);
+setTimeout(checkUpdate, 3000);
 
 inv('dev_demo').then(async d => {
   if (!d.paths || !d.paths.length) return;

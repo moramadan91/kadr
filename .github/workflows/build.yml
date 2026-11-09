@@ -1,7 +1,8 @@
 name: build
 
 # Push to main: build Mac (Apple Silicon) + Windows installers and attach them to the run.
-# Push a tag like v0.2.0: same, plus a draft GitHub Release with the files.
+# Push a tag like v0.3.1 (npm run release): same, plus a published GitHub Release with signed
+# updater files and latest.json, which installed copies of Kadr update from.
 on:
   push:
     branches: [main]
@@ -46,11 +47,14 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --bundles ${{ matrix.bundles }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: Kadr ${{ github.ref_name }}
-          releaseDraft: true
+          releaseDraft: false
+          releaseBody: Download Kadr for Mac (.dmg) or Windows (setup.exe). Installed copies update themselves.
 
       - uses: actions/upload-artifact@v4
         with:
