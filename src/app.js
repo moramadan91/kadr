@@ -2060,7 +2060,7 @@ async function quitNow() {
 async function updateDialog() {
   const cur = TA.app ? await TA.app.getVersion().catch(() => '') : '';
   $('#modal').hidden = false;
-  $('#mBox').innerHTML = `<div class="upd"><h3>${tr('updates')}</h3><p class="hint">${tr('curVer')} <bdi>v${esc(cur)}</bdi></p>
+  $('#mBox').innerHTML = `<div class="upd"><h3>${tr('updates')}</h3><p class="hint">${tr('curVer')} <bdi>v${esc(cur)} ${tr('beta')}</bdi></p>
     <div id="uState" class="ustate"></div>
     <div class="umode"><div class="gh">${tr('updHow')}</div>
       ${['auto', 'manual'].map(m => `<label class="uopt"><input type="radio" name="um" value="${m}"${updMode.get() === m ? ' checked' : ''}><span><b>${tr('upd_' + m)}</b><small>${tr('upd_' + m + 'Hint')}</small></span></label>`).join('')}</div>
