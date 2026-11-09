@@ -224,3 +224,19 @@ main { display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; gap: 8p
 #xVidBox, #xAudBox { display: grid; gap: 10px; }
 #xVidBox.off, #xAudBox.off { opacity: .35; pointer-events: none; }
 .xp-foot { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--stroke); font-size: 12px; color: var(--dim); }
+
+/* text presets & animation pickers */
+.tpresets { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 5px; }
+.tpresets button { padding: 0; border-radius: 8px; background: var(--well); border: 1px solid var(--stroke); overflow: hidden; cursor: pointer; aspect-ratio: 4/3; }
+.tpresets button:hover { border-color: var(--accent); }
+.tpresets canvas { width: 100%; height: 100%; display: block; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--well); border-radius: 9px; padding: 3px; gap: 3px; margin-bottom: 10px; }
+.seg button { padding: 6px; border-radius: 7px; background: none; border: 0; color: var(--dim); font-size: 12px; justify-content: center; }
+.seg button.on { background: var(--glass-hi); color: var(--text); }
+.agrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.agrid button { display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px; background: var(--well); border: 1px solid var(--stroke); color: var(--text); font-size: 11px; cursor: pointer; }
+.agrid button b { font: 800 18px/1 Cairo, sans-serif; }
+.agrid button:hover { border-color: rgba(46, 230, 214, .5); }
+.agrid button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.agrid button.on b { color: var(--accent); }
+.agrid svg { width: 18px; height: 18px; }

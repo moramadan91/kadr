@@ -231,42 +231,138 @@ function drawVisual(ctx, time) {
   }
 }
 
-const TEXT_STYLES = [
-  { id: 'plain', s: { color: '#ffffff', strokeW: 0, bgOn: false } },
-  { id: 'outline', s: { color: '#ffffff', stroke: '#000000', strokeW: 7, bgOn: false } },
-  { id: 'box', s: { color: '#ffffff', strokeW: 0, bgOn: true, bg: '#000000' } },
-  { id: 'accent', s: { color: '#04201e', strokeW: 0, bgOn: true, bg: ACCENT } },
-  { id: 'yellow', s: { color: '#ffffff', stroke: '#000000', strokeW: 6, bgOn: false, hl: '#ffd400' } },
-  { id: 'serif', s: { font: 'Georgia', weight: 400, color: '#ffffff', strokeW: 0, bgOn: false } },
-];
+// Text presets ("Aa" styles). Each only sets the fields it cares about; the rest reset to defaults.
+const TEXT_STYLES = (() => { const W = '#ffffff', B = '#000000'; return [
+  { id: 'plain', s: {} },
+  { id: 'outline', s: { strokeW: 7 } },
+  { id: 'outlineW', s: { color: B, stroke: W, strokeW: 7 } },
+  { id: 'shadow', s: { shadowOn: true, shadowBlur: 18, shadowDist: 8 } },
+  { id: 'softGlow', s: { glowOn: true, glowColor: W, glowSize: 26 } },
+  { id: 'yellowOut', s: { color: '#ffe14d', strokeW: 7 } },
+  { id: 'redOut', s: { color: '#ff3b3b', stroke: W, strokeW: 7 } },
+  { id: 'orange', s: { color: '#ff9a2e', stroke: W, strokeW: 6 } },
+  { id: 'blue', s: { color: '#3aa0ff', stroke: W, strokeW: 6 } },
+  { id: 'green', s: { color: '#5cff6a', strokeW: 7 } },
+  { id: 'greyBox', s: { color: B, bgOn: true, bg: '#9a9a9a' } },
+  { id: 'whiteGreyBox', s: { bgOn: true, bg: '#b5b5b5' } },
+  { id: 'yellowBox', s: { color: B, bgOn: true, bg: '#ffd43b' } },
+  { id: 'purpleBox', s: { bgOn: true, bg: '#7b2cff' } },
+  { id: 'purpleOnWhite', s: { color: '#7b2cff', bgOn: true, bg: W } },
+  { id: 'box', s: { color: B, bgOn: true, bg: W } },
+  { id: 'blackBox', s: { bgOn: true, bg: B } },
+  { id: 'greenBlack', s: { color: '#5cff6a', bgOn: true, bg: B } },
+  { id: 'accent', s: { color: '#04201e', bgOn: true, bg: ACCENT } },
+  { id: 'glitchGreen', s: { color: B, shadowOn: true, shadowColor: '#22e05a', shadowBlur: 0, shadowDist: 7 } },
+  { id: 'retro', s: { color: '#ffcf3f', shadowOn: true, shadowColor: '#c2410c', shadowBlur: 0, shadowDist: 8 } },
+  { id: 'neonPink', s: { color: '#ffe6ef', glowOn: true, glowColor: '#ff2d6f', glowSize: 30 } },
+  { id: 'neonYellow', s: { color: '#fffbe0', glowOn: true, glowColor: '#ffd000', glowSize: 30 } },
+  { id: 'neonGreen', s: { color: '#eaffea', glowOn: true, glowColor: '#22e05a', glowSize: 30 } },
+  { id: 'gradient', s: { color: '#ffd84d', gradOn: true, fill2: '#ff4d8d', strokeW: 5 } },
+  { id: 'yellowHl', s: { strokeW: 6, hl: '#ffd400' } },
+  { id: 'serif', s: { font: 'Georgia', weight: 400 } },
+  { id: 'impact', s: { font: 'Impact', weight: 400, caseMode: 'upper', strokeW: 5, spacing: 2 } },
+]; })();
 function textDefaults(caption) {
-  return { font: 'Cairo', size: caption ? 78 : 110, weight: 800, color: '#ffffff', stroke: '#000000', strokeW: caption ? 6 : 0, bg: '#000000', bgOn: false, hl: ACCENT };
+  return {
+    font: 'Cairo', size: caption ? 78 : 110, weight: 800, color: '#ffffff', stroke: '#000000', strokeW: caption ? 6 : 0,
+    bg: '#000000', bgOn: false, bgAlpha: 1, bgRadius: 0.22, hl: ACCENT, italic: false, underline: false, caseMode: 'none',
+    spacing: 0, lineH: 1.3, align: 'center', shadowOn: false, shadowColor: '#000000', shadowBlur: 12, shadowDist: 6,
+    glowOn: false, glowColor: ACCENT, glowSize: 24, gradOn: false, fill2: ACCENT,
+  };
 }
+const presetStyle = (id, caption) => ({ ...textDefaults(caption), ...((TEXT_STYLES.find(s => s.id === id) || {}).s || {}) });
 
+const ANIM_IN = ['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'pop', 'zoomIn', 'grow', 'drop', 'rotateIn', 'spin', 'wipe', 'type', 'wordPop', 'wordFade', 'wordRise'];
+const ANIM_OUT = ['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'shrink', 'zoomOut', 'rotateOut', 'sink', 'wipe', 'typeErase'];
+const ANIM_LOOP = ['none', 'pulse', 'float', 'shake', 'swing', 'heartbeat', 'wave', 'flicker'];
+const EASE = {
+  out: p => 1 - Math.pow(1 - p, 3), in: p => p * p * p,
+  back: p => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
+  bounce: p => { const n = 7.5625, d = 2.75; return p < 1 / d ? n * p * p : p < 2 / d ? n * (p -= 1.5 / d) * p + 0.75 : p < 2.5 / d ? n * (p -= 2.25 / d) * p + 0.9375 : n * (p -= 2.625 / d) * p + 0.984375; },
+};
+const caseText = (txt, m) => m === 'upper' ? txt.toUpperCase() : m === 'lower' ? txt.toLowerCase() : m === 'title' ? txt.replace(/\b\p{L}/gu, c => c.toUpperCase()) : txt;
+
+// Animation state at local time lt. Pure function of (item, lt): preview and export match.
 function textState(it, lt) {
-  const st = it.style, A = it.anim || 'none';
-  const p = clamp(lt / IN_T, 0, 1), e = 1 - Math.pow(1 - p, 3);
-  let alpha = 1, dy = 0, sc = 1, chars = Infinity, anim = false;
-  if (A === 'fade') { alpha = e; anim = p < 1; }
-  else if (A === 'slide') { alpha = e; dy = (1 - e) * st.size * 0.8; anim = p < 1; }
-  else if (A === 'pop') {
-    const c1 = 1.70158, c3 = c1 + 1, back = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
-    sc = 0.6 + 0.4 * back; alpha = Math.min(1, p * 3); anim = p < 1;
-  } else if (A === 'type') { chars = Math.floor(lt * 22); anim = chars < it.text.length; }
-  if (it.out === 'fade') { const q = clamp((it.dur - lt) / OUT_T, 0, 1); alpha *= q; if (q < 1) anim = true; }
+  const st = it.style, size = st.size, TAU = Math.PI * 2;
+  const inA = { slide: 'slideUp' }[it.anim] || it.anim || 'none', outA = it.out || 'none', loopA = it.loop || 'none';
+  const inD = num(it.inDur, 0.5), outD = Math.min(num(it.outDur, 0.4), it.dur), len = it.text.length;
+  let alpha = 1, dx = 0, dy = 0, sc = 1, rot = 0, chars = Infinity, wipe = 1, wipeOut = 0, anim = false;
+  const toks = [];
+  if (inA !== 'none' && lt < inD && !/^(type|word)/.test(inA)) {
+    anim = true;
+    const p = clamp(lt / inD, 0, 1), e = EASE.out(p);
+    switch (inA) {
+      case 'fade': alpha = e; break;
+      case 'slideUp': alpha = e; dy = (1 - e) * size * 0.8; break;
+      case 'slideDown': alpha = e; dy = -(1 - e) * size * 0.8; break;
+      case 'slideLeft': alpha = e; dx = (1 - e) * size * 1.6; break;
+      case 'slideRight': alpha = e; dx = -(1 - e) * size * 1.6; break;
+      case 'pop': sc = 0.6 + 0.4 * EASE.back(p); alpha = Math.min(1, p * 3); break;
+      case 'zoomIn': sc = 2.2 - 1.2 * e; alpha = e; break;
+      case 'grow': sc = Math.max(0.001, EASE.back(p)); break;
+      case 'drop': dy = -(1 - EASE.bounce(p)) * size * 2; alpha = Math.min(1, p * 4); break;
+      case 'rotateIn': rot = -(1 - e) * Math.PI / 2; sc = 0.5 + 0.5 * e; alpha = e; break;
+      case 'spin': rot = -(1 - e) * TAU; sc = Math.max(0.001, e); break;
+      case 'wipe': wipe = e; break;
+    }
+  }
+  if (inA === 'type') { chars = Math.floor(lt * Math.max(22, len / Math.max(inD, 0.2))); if (chars < len) anim = true; }
+  if (/^word/.test(inA)) {
+    const n = it.text.split(/\s+/).filter(Boolean).length, step = Math.min(0.14, inD / Math.max(1, n)), w = 0.28;
+    if (lt < (n - 1) * step + w) anim = true;
+    toks.push(i => {
+      const q = clamp((lt - i * step) / w, 0, 1);
+      return inA === 'wordPop' ? { a: Math.min(1, q * 3), sc: 0.4 + 0.6 * EASE.back(q), dy: 0 }
+        : inA === 'wordRise' ? { a: EASE.out(q), sc: 1, dy: (1 - EASE.out(q)) * size * 0.6 } : { a: EASE.out(q), sc: 1, dy: 0 };
+    });
+  }
+  const r = it.dur - lt;
+  if (outA !== 'none' && r < outD) {
+    anim = true;
+    const p = clamp(1 - r / outD, 0, 1), e = EASE.in(p);
+    switch (outA) {
+      case 'fade': alpha *= 1 - p; break;
+      case 'slideUp': dy -= e * size * 0.8; alpha *= 1 - p; break;
+      case 'slideDown': dy += e * size * 0.8; alpha *= 1 - p; break;
+      case 'slideLeft': dx -= e * size * 1.6; alpha *= 1 - p; break;
+      case 'slideRight': dx += e * size * 1.6; alpha *= 1 - p; break;
+      case 'shrink': sc *= Math.max(0.001, 1 - e); break;
+      case 'zoomOut': sc *= 1 + e * 1.2; alpha *= 1 - p; break;
+      case 'rotateOut': rot += e * Math.PI / 2; sc *= 1 - 0.5 * e; alpha *= 1 - p; break;
+      case 'sink': dy += e * size; alpha *= 1 - p; break;
+      case 'wipe': wipeOut = EASE.out(p); break;
+      case 'typeErase': chars = Math.min(chars, Math.floor(len * (1 - p))); break;
+    }
+  }
+  if (loopA !== 'none') {
+    anim = true;
+    switch (loopA) {
+      case 'pulse': sc *= 1 + 0.06 * Math.sin(TAU * lt * 1.5); break;
+      case 'float': dy += Math.sin(TAU * lt * 0.8) * size * 0.12; break;
+      case 'shake': dx += Math.sin(lt * 47) * Math.sin(lt * 13) * size * 0.05; dy += Math.sin(lt * 39) * size * 0.03; break;
+      case 'swing': rot += Math.sin(TAU * lt) * 0.08; break;
+      case 'heartbeat': sc *= 1 + 0.1 * Math.pow(Math.max(0, Math.sin(TAU * lt * 1.2)), 8); break;
+      case 'flicker': alpha *= Math.sin(lt * 23) * Math.sin(lt * 7) > 0.6 ? 0.35 : 1; break;
+      case 'wave': toks.push(i => ({ a: 1, sc: 1, dy: Math.sin(TAU * lt * 0.9 - i * 0.7) * size * 0.14 })); break;
+    }
+  }
   let word = -1;
   if (it.words) for (let i = 0; i < it.words.length; i++) if (it.words[i].s <= lt) word = i;
-  return { alpha, dy, sc, chars, anim, word };
+  const tok = toks.length ? i => toks.reduce((m, f) => { const k = f(i); return { a: m.a * k.a, sc: m.sc * k.sc, dy: m.dy + k.dy }; }, { a: 1, sc: 1, dy: 0 }) : null;
+  return { alpha, dx, dy, sc, rot, chars, wipe, wipeOut, tok, anim, word };
 }
 
 // pr: project (P, or a scaled copy for export) — sizes come from it.
 function drawTextItem(ctx, pr, it, lt) {
-  const st = it.style, s = textState(it, lt);
-  const tokens = it.text.split(/\s+/).filter(Boolean);
-  if (s.alpha <= 0 || !tokens.length) return;
+  const st = { ...textDefaults(it.track === 'c1'), ...it.style }, s = textState({ ...it, style: st }, lt);
+  const tokens = caseText(it.text, st.caseMode).split(/\s+/).filter(Boolean);
+  const alpha = s.alpha * num(it.opacity, 1);
+  if (alpha <= 0 || !tokens.length || s.sc <= 0) return;
   const rtl = /[֐-ࣿ]/.test(it.text);
   ctx.save();
-  ctx.font = `${st.weight} ${st.size}px "${st.font}"`;
+  ctx.font = `${st.italic ? 'italic ' : ''}${st.weight} ${st.size}px "${st.font}"`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = num(st.spacing, 0) + 'px';
   ctx.textBaseline = 'middle';
   ctx.direction = 'ltr';
   ctx.textAlign = rtl ? 'right' : 'left';
@@ -285,29 +381,76 @@ function drawTextItem(ctx, pr, it, lt) {
     let left = s.chars;
     shown = tokens.map(tk => { const v = tk.slice(0, Math.max(0, left)); left -= tk.length + 1; return v; });
   }
-  const lh = st.size * 1.3, cx = num(it.x, 0.5) * pr.w, cy = num(it.y, 0.5) * pr.h + s.dy;
-  const top = cy - (lines.length * lh) / 2 + lh / 2;
-  ctx.translate(cx, cy); ctx.scale(s.sc, s.sc); ctx.translate(-cx, -cy);
-  ctx.globalAlpha = s.alpha;
+  const lh = st.size * num(st.lineH, 1.3), cx = num(it.x, 0.5) * pr.w, cy = num(it.y, 0.5) * pr.h;
+  const blockW = Math.max(...lines.map(l => l.w)), top = cy - (lines.length * lh) / 2 + lh / 2;
+  const pad = st.size * 0.35;
+  ctx.translate(cx + s.dx, cy + s.dy);
+  ctx.rotate(s.rot + num(it.rotate, 0) * Math.PI / 180);
+  ctx.scale(s.sc, s.sc);
+  ctx.translate(-cx, -cy);
+  if (s.wipe < 1 || s.wipeOut > 0) { // reveal along the reading direction
+    const L = cx - blockW / 2 - pad, full = blockW + pad * 2, a = full * s.wipeOut, b = full * s.wipe;
+    ctx.beginPath();
+    if (rtl) ctx.rect(L + full - b, top - lh, b - a, lines.length * lh + lh); else ctx.rect(L + a, top - lh, b - a, lines.length * lh + lh);
+    ctx.clip();
+  }
+  ctx.globalAlpha = alpha;
   const hlOK = it.words && it.words.length === tokens.length;
+  const lineLeft = ln => st.align === 'left' ? cx - blockW / 2 : st.align === 'right' ? cx + blockW / 2 - ln.w : cx - ln.w / 2;
+  const fillFor = (y, i) => {
+    if (hlOK && i === s.word) return st.hl;
+    if (!st.gradOn) return st.color;
+    const g = ctx.createLinearGradient(0, y - st.size / 2, 0, y + st.size / 2);
+    g.addColorStop(0, st.color); g.addColorStop(1, st.fill2);
+    return g;
+  };
+  const glyphs = (txt, x, y, i) => {
+    if (st.glowOn) {
+      ctx.save();
+      ctx.shadowColor = st.glowColor; ctx.shadowBlur = st.glowSize; ctx.fillStyle = st.glowColor;
+      ctx.fillText(txt, x, y); ctx.fillText(txt, x, y);
+      ctx.restore();
+    }
+    if (st.shadowOn) {
+      ctx.shadowColor = st.shadowColor; ctx.shadowBlur = st.shadowBlur;
+      ctx.shadowOffsetX = st.shadowDist * 0.7; ctx.shadowOffsetY = st.shadowDist * 0.7;
+    }
+    if (st.strokeW > 0) { ctx.lineWidth = st.strokeW * 2; ctx.lineJoin = 'round'; ctx.strokeStyle = st.stroke; ctx.strokeText(txt, x, y); ctx.shadowColor = 'transparent'; }
+    ctx.fillStyle = fillFor(y, i);
+    ctx.fillText(txt, x, y);
+    ctx.shadowColor = 'transparent';
+  };
   lines.forEach((ln, li) => {
-    const y = top + li * lh;
+    const y = top + li * lh, x0 = lineLeft(ln);
     if (st.bgOn) {
-      const px = st.size * 0.35;
+      ctx.save();
+      ctx.globalAlpha = alpha * num(st.bgAlpha, 1);
       ctx.fillStyle = st.bg;
       ctx.beginPath();
-      ctx.roundRect(cx - ln.w / 2 - px, y - lh / 2, ln.w + px * 2, lh, st.size * 0.22);
+      ctx.roundRect(x0 - pad, y - lh / 2, ln.w + pad * 2, lh, st.size * num(st.bgRadius, 0.22));
       ctx.fill();
+      ctx.restore();
     }
-    let x = rtl ? cx + ln.w / 2 : cx - ln.w / 2;
+    let x = rtl ? x0 + ln.w : x0;
     for (const i of ln.idx) {
       const txt = shown[i];
       if (txt) {
-        if (st.strokeW > 0) { ctx.lineWidth = st.strokeW * 2; ctx.lineJoin = 'round'; ctx.strokeStyle = st.stroke; ctx.strokeText(txt, x, y); }
-        ctx.fillStyle = hlOK && i === s.word ? st.hl : st.color;
-        ctx.fillText(txt, x, y);
+        if (s.tok) {
+          const k = s.tok(i), mid = rtl ? x - widths[i] / 2 : x + widths[i] / 2;
+          if (k.a > 0 && k.sc > 0) {
+            ctx.save();
+            ctx.globalAlpha = alpha * k.a;
+            ctx.translate(mid, y + k.dy); ctx.scale(k.sc, k.sc); ctx.translate(-mid, -y);
+            glyphs(txt, x, y, i);
+            ctx.restore();
+          }
+        } else glyphs(txt, x, y, i);
       }
       x += (rtl ? -1 : 1) * (widths[i] + space);
+    }
+    if (st.underline) {
+      ctx.fillStyle = st.gradOn ? st.color : st.color;
+      ctx.fillRect(x0, y + st.size * 0.52, ln.w, Math.max(2, st.size * 0.06));
     }
   });
   ctx.restore();
@@ -542,7 +685,7 @@ function addMedia(mid, trackId, start) {
 
 function addText(styleId) {
   snapshot();
-  const st = { ...textDefaults(false), ...((TEXT_STYLES.find(s => s.id === styleId) || {}).s || {}) };
+  const st = presetStyle(styleId);
   const it = { id: uid(), type: 'text', track: 't1', start: t, dur: 3, text: tr('defaultText'), style: st, x: 0.5, y: 0.5, anim: 'pop', out: 'fade' };
   P.items.push(it);
   sel = it.id;
@@ -641,7 +784,7 @@ function refresh() {
 /* ---------- inspector ---------- */
 const getPath = (o, k) => k.split('.').reduce((a, x) => (a == null ? a : a[x]), o);
 function setPath(o, k, v) { const ks = k.split('.'); const last = ks.pop(); ks.reduce((a, x) => (a[x] ??= {}), o)[last] = v; }
-const showVal = (k, v) => k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|crop\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW/.test(k) ? String(v | 0) : (+v).toFixed(2);
+const showVal = (k, v) => /Dur$/.test(k) ? (+v).toFixed(2) + 's' : k === 'rotate' ? Math.round(v) + '°' : k === 'speed' ? '×' + (+v).toFixed(2) : /volume|opacity|bgAlpha|crop\./.test(k) ? Math.round(v * 100) + '%' : /size|strokeW|spacing|Blur|Dist|glowSize/.test(k) ? String(v | 0) : (+v).toFixed(2);
 
 const fld = {
   range: (k, label, min, max, step, it, d = 0) =>
@@ -679,18 +822,33 @@ function inspector() {
   const timing = `<div class="row2">${fld.number('start', 'start', 0.01, it)}${fld.number('dur', 'dur', 0.01, it)}</div>`;
   const fades = `<div class="row2">${fld.range('fadeIn', 'fadeIn', 0, 2, 0.05, it)}${fld.range('fadeOut', 'fadeOut', 0, 2, 0.05, it)}</div>`;
   if (inspTab === 'tText') {
+    const st = { ...textDefaults(it.track === 'c1'), ...it.style };
+    it.style = st;
     h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`, timing);
+    h.push(grp('presets', `<div class="tpresets">${TEXT_STYLES.map(x => `<button data-tpreset="${x.id}" title="${x.id}"></button>`).join('')}</div>`));
     h.push(grp('font', fld.select('style.font', 'font', FONTS.map(f => [f, f]), it) +
       `<div class="row2">${fld.range('style.size', 'size', 20, 260, 1, it)}${fld.select('style.weight', 'weight', [400, 600, 800, 900].map(w => [w, tr('w' + w)]), it)}</div>` +
-      `<div class="inl">${fld.color('style.color', 'color', it)}${it.words ? fld.color('style.hl', 'hl', it) : ''}</div>`));
+      `<div class="inl">${fld.check('style.italic', 'italic', it)}${fld.check('style.underline', 'underline', it)}</div>` +
+      `<div class="row2">${fld.select('style.caseMode', 'caseMode', ['none', 'upper', 'lower', 'title'].map(c => [c, tr('case_' + c)]), it)}${fld.select('style.align', 'align', ['left', 'center', 'right'].map(a => [a, tr('al_' + a)]), it)}</div>` +
+      `<div class="row2">${fld.range('style.spacing', 'spacing', -5, 40, 1, it)}${fld.range('style.lineH', 'lineH', 0.8, 2.5, 0.05, it, 1.3)}</div>` +
+      `<div class="inl">${fld.color('style.color', 'color', it)}${fld.check('style.gradOn', 'gradient', it)}${st.gradOn ? fld.color('style.fill2', 'color2', it) : ''}${it.words ? fld.color('style.hl', 'hl', it) : ''}</div>`));
     h.push(grp('stroke', fld.range('style.strokeW', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color('style.stroke', 'strokeColor', it)}</div>`));
-    h.push(grp('bg', `<div class="inl">${fld.check('style.bgOn', 'bg', it)}${fld.color('style.bg', 'color', it)}</div>`));
-    h.push(grp('horiz', fld.range('x', 'horiz', 0, 1, 0.01, it, 0.5) + fld.range('y', 'vert', 0, 1, 0.01, it, 0.5)));
+    h.push(grp('bg', `<div class="inl">${fld.check('style.bgOn', 'bg', it)}${fld.color('style.bg', 'color', it)}</div>` +
+      (st.bgOn ? `<div class="row2">${fld.range('style.bgAlpha', 'opacity', 0, 1, 0.01, it, 1)}${fld.range('style.bgRadius', 'radius', 0, 0.5, 0.01, it, 0.22)}</div>` : '')));
+    h.push(grp('shadow', `<div class="inl">${fld.check('style.shadowOn', 'shadow', it)}${fld.color('style.shadowColor', 'color', it)}</div>` +
+      (st.shadowOn ? `<div class="row2">${fld.range('style.shadowBlur', 'blur', 0, 60, 1, it)}${fld.range('style.shadowDist', 'distance', 0, 40, 1, it)}</div>` : '')));
+    h.push(grp('glow', `<div class="inl">${fld.check('style.glowOn', 'glow', it)}${fld.color('style.glowColor', 'color', it)}</div>` +
+      (st.glowOn ? fld.range('style.glowSize', 'size', 2, 80, 1, it) : '')));
+    h.push(grp('transform', fld.range('x', 'horiz', 0, 1, 0.01, it, 0.5) + fld.range('y', 'vert', 0, 1, 0.01, it, 0.5) +
+      fld.range('rotate', 'rotation', -180, 180, 1, it) + fld.range('opacity', 'opacity', 0, 1, 0.01, it, 1)));
     if (it.track === 'c1') h.push(`<button class="wide" id="capAll">${tr('applyAllCaps')}</button>`);
   } else if (inspTab === 'tAnim') {
     if (isText(it)) {
-      h.push(fld.select('anim', 'animIn', ['none', 'fade', 'slide', 'pop', 'type'].map(a => [a, tr('a_' + a)]), it));
-      h.push(fld.select('out', 'animOut', [['none', tr('a_none')], ['fade', tr('o_fade')]], it));
+      const key = { in: 'anim', out: 'out', loop: 'loop' }[animSub], list = { in: ANIM_IN, out: ANIM_OUT, loop: ANIM_LOOP }[animSub];
+      const curA = ({ slide: 'slideUp' })[it[key]] || it[key] || 'none';
+      h.push(`<div class="seg">${['in', 'out', 'loop'].map(x => `<button data-asub="${x}" class="${x === animSub ? 'on' : ''}">${tr('an_' + x)}${(x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) && (x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) !== 'none' ? ' •' : ''}</button>`).join('')}</div>`);
+      h.push(`<div class="agrid">${list.map(a => `<button data-anim="${a}" class="${a === curA ? 'on' : ''}">${a === 'none' ? icon('x') : `<b>Aa</b>`}<span>${tr('an_' + a)}</span></button>`).join('')}</div>`);
+      if (animSub !== 'loop' && curA !== 'none') h.push(fld.range(animSub === 'in' ? 'inDur' : 'outDur', 'animDur', 0.1, 3, 0.05, it, animSub === 'in' ? 0.5 : 0.4));
     } else h.push(fades);
   } else if (inspTab === 'tVideo') {
     h.push(`<div class="f hint" style="direction:ltr;text-align:start">${esc(media(it).name)}</div>`, timing);
@@ -716,6 +874,10 @@ function inspector() {
   }
   body.innerHTML = h.join('');
   paintIcons(body);
+  $$('#inspBody [data-tpreset]').forEach(b => {
+    const fake = { text: 'Aa', style: { ...presetStyle(b.dataset.tpreset, false), size: 96, strokeW: num(presetStyle(b.dataset.tpreset).strokeW, 0) * 1.1, shadowBlur: 10, shadowDist: 8, glowSize: 26 }, x: 0.5, y: 0.5, dur: 9 };
+    b.appendChild(cardCanvas(ctx => drawTextItem(ctx, { w: 240, h: 180 }, fake, 5), 64, 48));
+  });
   const ca = $('#capAll');
   if (ca) ca.onclick = () => {
     snapshot();
@@ -730,7 +892,7 @@ $('#inspTabs').addEventListener('click', e => {
   if (b) { inspTab = b.dataset.itab; inspector(); }
 });
 
-let editing = false;
+let editing = false, animSub = 'in';
 $('#inspBody').addEventListener('input', e => {
   const k = e.target.dataset.k, it = sel && item(sel);
   if (!k || !it) return;
@@ -758,6 +920,30 @@ $('#inspBody').addEventListener('input', e => {
   if (/^(start|dur|speed)$/.test(k)) { pack(); }
   renderTimeline();
   needsDraw = true;
+});
+$('#inspBody').addEventListener('click', e => {
+  const it = sel && item(sel);
+  if (!it) return;
+  const sub = e.target.closest('[data-asub]');
+  if (sub) { animSub = sub.dataset.asub; return inspector(); }
+  const an = e.target.closest('[data-anim]');
+  if (an) {
+    snapshot();
+    it[{ in: 'anim', out: 'out', loop: 'loop' }[animSub]] = an.dataset.anim;
+    refresh();
+    // preview the choice from where it shows
+    seek(animSub === 'out' ? Math.max(it.start, it.start + it.dur - num(it.outDur, 0.4) - 0.4) : it.start);
+    if (an.dataset.anim !== 'none') setPlaying(true);
+    return;
+  }
+  const pr = e.target.closest('[data-tpreset]');
+  if (pr) {
+    snapshot();
+    const keep = { size: it.style.size, font: it.style.font, weight: it.style.weight, hl: it.style.hl };
+    const ps = TEXT_STYLES.find(x => x.id === pr.dataset.tpreset).s;
+    it.style = { ...presetStyle(pr.dataset.tpreset, it.track === 'c1'), size: keep.size, hl: keep.hl, ...(ps.font ? {} : { font: keep.font, weight: keep.weight }) };
+    refresh();
+  }
 });
 $('#inspBody').addEventListener('change', e => {
   editing = false;
@@ -1009,10 +1195,12 @@ TA.webviewWindow.getCurrentWebviewWindow().onDragDropEvent(async e => {
   }
 });
 
-function cardCanvas(paint) {
+function cardCanvas(paint, w = 240, h = 180) {
   const c = document.createElement('canvas');
-  c.width = 240; c.height = 180;
-  paint(c.getContext('2d'));
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.scale(w / 240, h / 180);
+  paint(ctx);
   return c;
 }
 function sampleScene(ctx) {
@@ -1029,7 +1217,7 @@ function renderLibCards() {
     const b = document.createElement('button');
     b.className = 'card';
     b.dataset.style = s.id;
-    const fake = { text: LANG === 'ar' ? 'كادر' : 'Kadr', style: { ...textDefaults(false), ...s.s, size: 46, strokeW: (s.s.strokeW || 0) * 0.45 }, x: 0.5, y: 0.5, dur: 9 };
+    const fake = { text: LANG === 'ar' ? 'كادر' : 'Kadr', style: { ...presetStyle(s.id), size: 46, strokeW: (s.s.strokeW || 0) * 0.45, shadowBlur: 8, shadowDist: 5, glowSize: 16 }, x: 0.5, y: 0.5, dur: 9 };
     b.appendChild(cardCanvas(ctx => { ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180); drawTextItem(ctx, { w: 240, h: 180 }, fake, 5); }));
     ts.appendChild(b);
   }

@@ -69,7 +69,7 @@
     for (const it of q.items) {
       if (typeof it.x === 'number' && it.type !== 'text') it.x *= k;
       if (typeof it.y === 'number' && it.type !== 'text') it.y *= k;
-      if (it.style) { it.style.size *= k; it.style.strokeW *= k; }
+      if (it.style) for (const f of ['size', 'strokeW', 'spacing', 'shadowBlur', 'shadowDist', 'glowSize']) if (typeof it.style[f] === 'number') it.style[f] *= k;
     }
     return q;
   }
