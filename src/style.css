@@ -362,3 +362,6 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .fpn { margin: 0; font-size: 10.5px; line-height: 1.4; color: var(--dim); border-top: 1px solid var(--stroke); padding-top: 7px; }
 .fr.busy { opacity: .5; pointer-events: none; } .fr.busy svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* in-place text editor (double-click a text in the preview) */
+#tedit { position: absolute; z-index: 6; resize: none; overflow: hidden; padding: 4px 8px; border: 1.5px solid var(--accent); border-radius: 8px; background: rgba(0, 0, 0, .45); outline: none; transform-origin: 50% 50%; white-space: pre-wrap; }

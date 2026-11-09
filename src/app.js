@@ -515,10 +515,21 @@ function textState(it, lt) {
 function drawTextItem(ctx, pr, it, lt) {
   it = S.animAt(it, lt);
   const st = { ...textDefaults(it.track === 'c1'), ...it.style }, s = textState({ ...it, style: st }, lt);
-  const tokens = caseText(it.text, st.caseMode).split(/\s+/).filter(Boolean);
+  // Enter starts a new line; each paragraph reads right-to-left or left-to-right on its own
+  // (auto: its first letter decides; the dir buttons force one way for the whole text).
+  const tokens = [], brk = new Set(), tokR = [];
+  for (const para of caseText(it.text, st.caseMode).split('\n')) {
+    const w = para.split(/\s+/).filter(Boolean);
+    if (!w.length) continue;
+    const r = st.dir === 'rtl' ? true : st.dir === 'ltr' ? false : /^[^A-Za-z\u0590-\u08FF]*[\u0590-\u08FF]/.test(para);
+    if (tokens.length) brk.add(tokens.length);
+    for (const x of w) { tokens.push(x); tokR.push(r); }
+  }
   const alpha = s.alpha * clamp(num(it.opacity, 1), 0, 1);
   if (alpha <= 0 || !tokens.length || s.sc <= 0 || s.sx <= 0 || s.sy <= 0) return;
-  const rtl = /[֐-ࣿ]/.test(it.text);
+  if (ctx === vctx && it.id === editId) return; // being edited in place: the editor box shows it
+  const rtl = tokR[0];
+  let R = rtl;
   ctx.save();
   ctx.font = `${st.italic ? 'italic ' : ''}${st.weight} ${st.size}px "${st.font}"`;
   wantFont(`${st.weight} 40px "${st.font}"`);
@@ -527,17 +538,16 @@ function drawTextItem(ctx, pr, it, lt) {
   if ('letterSpacing' in ctx) ctx.letterSpacing = (arab ? 0 : num(st.spacing, 0)) + 'px';
   ctx.textBaseline = 'middle';
   ctx.direction = 'ltr';
-  ctx.textAlign = rtl ? 'right' : 'left';
   const space = ctx.measureText(' ').width + (arab ? num(st.spacing, 0) * 3 : 0), maxW = pr.w * 0.86;
   const widths = tokens.map(tk => ctx.measureText(tk).width);
   const lines = [];
   let cur = [], w = 0;
   tokens.forEach((tk, i) => {
-    if (cur.length && w + space + widths[i] > maxW) { lines.push({ idx: cur, w }); cur = []; w = 0; }
+    if (cur.length && (brk.has(i) || w + space + widths[i] > maxW)) { lines.push({ idx: cur, w, rtl: tokR[cur[0]] }); cur = []; w = 0; }
     w += (cur.length ? space : 0) + widths[i];
     cur.push(i);
   });
-  if (cur.length) lines.push({ idx: cur, w });
+  if (cur.length) lines.push({ idx: cur, w, rtl: tokR[cur[0]] });
   let shown = tokens;
   if (s.chars < Infinity) {
     let left = s.chars;
@@ -571,7 +581,7 @@ function drawTextItem(ctx, pr, it, lt) {
     if (st.hlBg && hlOK && i === s.word) { // box behind the word being spoken
       const w = widths[i], p = st.size * 0.14;
       ctx.save(); ctx.fillStyle = st.hlBg; ctx.beginPath();
-      ctx.roundRect((rtl ? x - w : x) - p, y - st.size * 0.62, w + p * 2, st.size * 1.24, st.size * 0.2); ctx.fill(); ctx.restore();
+      ctx.roundRect((R ? x - w : x) - p, y - st.size * 0.62, w + p * 2, st.size * 1.24, st.size * 0.2); ctx.fill(); ctx.restore();
     }
     if (st.glowOn) {
       ctx.save();
@@ -590,6 +600,8 @@ function drawTextItem(ctx, pr, it, lt) {
   };
   lines.forEach((ln, li) => {
     const y = top + li * lh, x0 = lineLeft(ln);
+    R = ln.rtl;
+    ctx.textAlign = R ? 'right' : 'left';
     if (st.bgOn) {
       ctx.save();
       ctx.globalAlpha = alpha * num(st.bgAlpha, 1);
@@ -599,12 +611,12 @@ function drawTextItem(ctx, pr, it, lt) {
       ctx.fill();
       ctx.restore();
     }
-    let x = rtl ? x0 + ln.w : x0;
+    let x = R ? x0 + ln.w : x0;
     for (const i of ln.idx) {
       const txt = shown[i];
       if (txt) {
         if (s.tok) {
-          const k = s.tok(i), mid = rtl ? x - widths[i] / 2 : x + widths[i] / 2;
+          const k = s.tok(i), mid = R ? x - widths[i] / 2 : x + widths[i] / 2;
           if (k.a > 0 && k.sc > 0) {
             ctx.save();
             ctx.globalAlpha = alpha * k.a;
@@ -614,7 +626,7 @@ function drawTextItem(ctx, pr, it, lt) {
           }
         } else glyphs(txt, x, y, i);
       }
-      x += (rtl ? -1 : 1) * (widths[i] + space);
+      x += (R ? -1 : 1) * (widths[i] + space);
     }
     if (st.underline) {
       ctx.fillStyle = st.gradOn ? st.color : st.color;
@@ -632,6 +644,7 @@ function visibleTexts(pr, time) {
 
 const view = $('#view'), vctx = view.getContext('2d');
 const textBoxes = new Map(); // text id -> on-screen box, filled while drawing the preview
+let editId = null; // text being edited in place on the preview (not drawn on the canvas meanwhile)
 const selBox = $('#stage').appendChild(Object.assign(document.createElement('div'), { id: 'selbox', hidden: true,
   innerHTML: '<i data-sh="nw"></i><i data-sh="ne"></i><i data-sh="sw"></i><i data-sh="se"></i><button data-sh="del"></button><button data-sh="rot"></button>' }));
 selBox.querySelector('[data-sh="del"]').innerHTML = icon('x');
@@ -1206,7 +1219,7 @@ function inspector() {
   if (inspTab === 'tText') {
     const st = { ...textDefaults(it.track === 'c1'), ...it.style };
     it.style = st;
-    h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`, timing);
+    h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`);
     const pOpen = (() => { try { return localStorage.getItem('kadr.presetsOpen') === '1'; } catch { return false; } })();
     h.push(`<div class="grp"><div class="gh ghx"><span>${tr('presets')}</span><button class="ib pTog${pOpen ? ' open' : ''}" data-ptog title="${tr(pOpen ? 'showLess' : 'showMore')}">${icon('chevron-down')}</button></div>` +
       `<div class="tpresets${pOpen ? '' : ' collapsed'}">${TEXT_STYLES.map(x => `<button data-tpreset="${x.id}" title="${x.id}"></button>`).join('')}</div></div>`);
@@ -1218,6 +1231,7 @@ function inspector() {
         `<button data-tog="italic" class="${st.italic ? 'on' : ''}" title="${tr('italic')}"><i>I</i></button></div></div>` +
       `<div class="tbar"><span>${tr('caseMode')}</span><div class="tg">${[['upper', 'TT'], ['lower', 'tt'], ['title', 'Tt']].map(([v, l]) => `<button data-set="caseMode" data-v="${v}" class="${st.caseMode === v ? 'on' : ''}" title="${tr('case_' + v)}">${l}</button>`).join('')}</div></div>` +
       `<div class="tbar"><span>${tr('align')}</span><div class="tg">${['left', 'center', 'right'].map(v => `<button data-set="align" data-v="${v}" class="${st.align === v ? 'on' : ''}" title="${tr('al_' + v)}">${icon('align-' + v)}</button>`).join('')}</div></div>` +
+      `<div class="tbar"><span>${tr('dir')}</span><div class="tg">${[['ltr', 'pilcrow-right'], ['rtl', 'pilcrow-left']].map(([v, ic]) => `<button data-set="dir" data-v="${v}" class="${st.dir === v ? 'on' : ''}" title="${tr('dir_' + v + 'T')}">${icon(ic)}</button>`).join('')}</div></div>` +
       `<div class="row2">${fld.range('style.spacing', 'spacing', -5, 40, 1, it)}${fld.range('style.lineH', 'lineH', 0.8, 2.5, 0.05, it, 1.3)}</div>` +
       `<div class="inl">${fld.color('style.color', 'color', it)}${fld.check('style.gradOn', 'gradient', it)}${st.gradOn ? fld.color('style.fill2', 'color2', it) : ''}${it.words ? fld.color('style.hl', 'hl', it) : ''}</div>`));
     h.push(grp('stroke', fld.range('style.strokeW', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color('style.stroke', 'strokeColor', it)}</div>`));
@@ -1472,7 +1486,7 @@ $('#inspBody').addEventListener('click', e => {
   if (ts) {
     snapshot();
     const k = ts.dataset.set, v = ts.dataset.v;
-    it.style[k] = k === 'caseMode' && it.style[k] === v ? 'none' : v;
+    it.style[k] = k === 'caseMode' && it.style[k] === v ? 'none' : k === 'dir' && it.style[k] === v ? 'auto' : v; // a second click turns it back off
     return refresh();
   }
   const an = e.target.closest('[data-anim]');
@@ -1556,6 +1570,51 @@ selBox.addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (changed) { renderTimeline(); inspector(); } }, { once: true });
 });
+view.addEventListener('dblclick', e => {
+  const r = view.getBoundingClientRect(), k = P.w / r.width;
+  const hit = hitAt((e.clientX - r.left) * k, (e.clientY - r.top) * k);
+  if (hit && isText(hit)) editTextInline(hit);
+});
+function editTextInline(it) {
+  const b = textBoxes.get(it.id);
+  if (!b || editId) return;
+  setPlaying(false);
+  select(it.id);
+  const st = { ...textDefaults(it.track === 'c1'), ...it.style }, orig = it.text;
+  const vr = view.getBoundingClientRect(), sr = $('#stage').getBoundingClientRect(), k = vr.width / P.w;
+  const fs = st.size * propNow(it, 'scale') * k, w = Math.max(160, b.w * k + fs);
+  const ta = document.createElement('textarea');
+  ta.id = 'tedit';
+  ta.value = it.text;
+  ta.dir = st.dir === 'rtl' || st.dir === 'ltr' ? st.dir : 'auto';
+  Object.assign(ta.style, {
+    font: `${st.italic ? 'italic ' : ''}${st.weight} ${fs}px "${st.font}", Cairo`, lineHeight: num(st.lineH, 1.3),
+    color: st.color, textAlign: st.align || 'center', width: w + 'px',
+    left: vr.left - sr.left + b.cx * k - w / 2 + 'px', transform: `rotate(${b.rot}deg)`,
+  });
+  $('#stage').appendChild(ta);
+  editId = it.id;
+  needsDraw = true;
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; ta.style.top = vr.top - sr.top + b.cy * k - ta.offsetHeight / 2 + 'px'; };
+  fit();
+  ta.focus(); ta.select();
+  let snapped = false;
+  ta.oninput = () => { if (!snapped) { snapshot(); snapped = true; } it.text = ta.value; fit(); };
+  const done = keep => {
+    if (editId !== it.id) return;
+    editId = null;
+    if (!keep) it.text = orig;
+    ta.remove();
+    if (!it.text.trim()) it.text = orig; // an emptied text keeps its old words
+    refresh();
+  };
+  ta.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') done(false);
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) done(true);
+  };
+  ta.onblur = () => done(true);
+}
 view.addEventListener('pointerdown', e => {
   const r = view.getBoundingClientRect(), k = P.w / r.width, x0 = e.clientX, y0 = e.clientY;
   if (e.button !== 0) return;
