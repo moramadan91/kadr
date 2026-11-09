@@ -295,6 +295,14 @@ async fn system_fonts() -> Vec<String> {
     }).await.unwrap_or_default()
 }
 
+// Autosave target for projects that were never saved to a file.
+#[tauri::command]
+fn recovery_path(app: AppHandle) -> R<String> {
+    let dir = app.path().app_data_dir().map_err(err)?.join("recovery");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    Ok(dir.join("autosave.kadr").to_string_lossy().into_owned())
+}
+
 fn fonts_dir(app: &AppHandle) -> R<PathBuf> { Ok(app.path().app_data_dir().map_err(err)?.join("fonts")) }
 
 // Google Fonts families downloaded inside the app: { family: [file paths] }.
@@ -444,7 +452,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
-            probe, save_project, open_project, work_begin, work_end, write_frame, export_run,
+            probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run,
             cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
         ])
         .setup(|app| {

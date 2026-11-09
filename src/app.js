@@ -2064,17 +2064,28 @@ async function updateDialog() {
     <div id="uState" class="ustate"></div>
     <div class="umode"><div class="gh">${tr('updHow')}</div>
       ${['auto', 'manual'].map(m => `<label class="uopt"><input type="radio" name="um" value="${m}"${updMode.get() === m ? ' checked' : ''}><span><b>${tr('upd_' + m)}</b><small>${tr('upd_' + m + 'Hint')}</small></span></label>`).join('')}</div>
-    <div class="acts"><span class="flex"></span><button id="uClose">${tr('close')}</button><button class="primary" id="uGo" hidden></button></div></div>`;
+    <div class="acts"><button id="uCheck">${icon('refresh-cw')}${tr('updCheck')}</button><span class="flex"></span><button id="uClose">${tr('close')}</button><button class="primary" id="uGo" hidden></button></div></div>`;
+  paintIcons($('#mBox'));
   $('#mBox').querySelectorAll('[name="um"]').forEach(r => (r.onchange = () => updMode.set(r.value)));
   $('#uClose').onclick = hideModal;
   const st = $('#uState'), go = $('#uGo');
   const show = (html, btn, run) => { st.innerHTML = html; go.hidden = !btn; if (btn) { go.textContent = btn; go.disabled = false; go.onclick = run; } };
+  const chk = $('#uCheck');
+  chk.onclick = () => check();
   if (updReady) return show(`<p>${tr('updReady', { v: esc(updReady.version) })}</p>`, tr('updRestart'), installNow);
+  check();
+  // "Check for updates" button: asks the update server now, every time it is pressed
+  async function check() {
+  chk.disabled = true; chk.classList.add('busy');
   show(`<p class="hint">${tr('updChecking')}</p>`);
-  if (!TA.updater) return show(`<p class="hint">${tr('updNoUpdater')}</p>`);
+  if (!TA.updater) { chk.disabled = false; chk.classList.remove('busy'); return show(`<p class="hint">${tr('updNoUpdater')}</p>`); }
   let u;
-  try { u = await TA.updater.check(); } catch (e) { updLog(e); return show(`<p>${tr('updOffline')}</p>`, tr('retry'), updateDialog); }
-  if (!u) return show(`<p class="ok">${icon('check')} ${tr('updLatest')}</p>`);
+  try { u = await TA.updater.check(); } catch (e) { updLog(e); u = false; }
+  if (!$('#uCheck')) return; // dialog closed meanwhile
+  chk.disabled = false; chk.classList.remove('busy');
+  const when = `<small class="uwhen">${tr('updLast')} ${new Date().toLocaleTimeString(LANG === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit' })}</small>`;
+  if (u === false) return show(`<p>${tr('updOffline')}</p>${when}`);
+  if (!u) return show(`<p class="ok">${icon('check')} ${tr('updLatest')}</p>${when}`);
   const notes = u.body ? `<p class="hint unotes">${esc(u.body)}</p>` : '';
   show(`<p><b>${tr('updNew', { v: esc(u.version) })}</b></p>${notes}`, tr('updGet'), async () => {
     go.disabled = true;
@@ -2090,6 +2101,7 @@ async function updateDialog() {
       installNow();
     } catch (e) { updLog(e); show(`<p>${tr('updFailed')}</p>`, tr('retry'), updateDialog); }
   });
+  }
 }
 $('#bUpd').onclick = updateDialog;
 let toastTimer;
@@ -2176,6 +2188,7 @@ async function newProj(welcome) {
     hideModal();
     P = Object.assign(newProject(), { w, h, fps: +$('#npFps').value, res: +$('#npRes').value, name: $('#npName').value.trim() || tr('untitled') });
     projectPath = null; sel = null; t = 0; dirty = false;
+    lastAuto = JSON.stringify(P); clearRecovery();
     undoStack.length = redoStack.length = 0;
     binSel.clear();
     syncSettings();
@@ -2386,8 +2399,47 @@ async function save(as) {
   projectPath = f;
   recent.add(f);
   dirty = false;
+  lastAuto = JSON.stringify(P);
+  clearRecovery();
   refresh();
   toast(tr('saved'));
+}
+// Autosave: a project with a file is written to it ~2s after each change; untitled work goes to a
+// recovery file that reopens on the next launch (crash, force quit, power cut).
+let lastAuto = '', recPath = null, autoBusy = false;
+const clearRecovery = () => lsSet('kadr.recovery', 0);
+async function autosave() {
+  if (!MEDIA_BASE || autoBusy) return;
+  const js = JSON.stringify(P);
+  if (js === lastAuto) return;
+  if (!projectPath && !P.items.length && !Object.keys(P.media).length) return;
+  autoBusy = true;
+  try {
+    if (projectPath) {
+      await inv('save_project', { path: projectPath, json: js });
+      if (JSON.stringify(P) === js) { dirty = false; $('#pname').textContent = $('#pname').textContent.replace(/ •$/, ''); }
+    } else {
+      recPath = recPath || await inv('recovery_path');
+      await inv('save_project', { path: recPath, json: js });
+      lsSet('kadr.recovery', 1);
+    }
+    lastAuto = js;
+  } catch (e) { /* try again on the next tick */ } finally { autoBusy = false; }
+}
+setInterval(autosave, 2000);
+async function restoreRecovery() {
+  if (!lsGet('kadr.recovery', 0)) return false;
+  try {
+    const r = await inv('open_project', { path: await inv('recovery_path') });
+    P = Object.assign(newProject(), r.project);
+  } catch { clearRecovery(); return false; }
+  projectPath = null; sel = null; t = 0; dirty = true;
+  lastAuto = JSON.stringify(P);
+  undoStack.length = redoStack.length = 0;
+  syncSettings();
+  refresh();
+  toast(tr('recovered'));
+  return true;
 }
 async function open() {
   if (dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
@@ -2403,6 +2455,7 @@ async function openPath(f, asked) {
   projectPath = f;
   recent.add(f);
   sel = null; t = 0; dirty = false;
+  lastAuto = JSON.stringify(P); clearRecovery();
   undoStack.length = redoStack.length = 0;
   syncSettings();
   refresh();
@@ -2536,13 +2589,14 @@ $('#bKeys').onclick = showKeys;
 let quitting = false;
 TA.event.listen('quit-requested', async () => {
   if (quitting) return;
+  await autosave();
   if (!dirty || !P.items.length && !Object.keys(P.media).length) return quitNow();
   quitting = true;
   $('#modal').hidden = false;
   $('#mBox').innerHTML = `<h3>${tr('quitTitle')}</h3><p class="hint">${tr('quitAsk')}</p><div class="acts"><button id="qNo">${tr('dontSave')}</button><span class="flex"></span><button id="qCancel">${tr('cancel')}</button><button class="primary" id="qSave">${tr('save')}</button></div>`;
   const done = () => { quitting = false; hideModal(); };
   $('#qCancel').onclick = done;
-  $('#qNo').onclick = () => quitNow();
+  $('#qNo').onclick = () => { clearRecovery(); quitNow(); };
   $('#qSave').onclick = async () => { done(); await save(); if (!dirty) quitNow(); };
 });
 window.addEventListener('keydown', e => {
@@ -2570,7 +2624,7 @@ requestAnimationFrame(loop);
 setTimeout(autoUpdate, 3000);
 
 inv('dev_demo').then(async d => {
-  if (!d.paths || !d.paths.length) return newProj(true);
+  if (!d.paths || !d.paths.length) return (await restoreRecovery()) || newProj(true);
   const ids = addToBin(await inv('probe', { paths: d.paths }));
   for (const id of ids) addMedia(id, P.media[id].kind === 'image' ? 'v2' : null, P.media[id].kind === 'image' ? 1 : null);
   const pic = P.items.find(i => P.media[i.media]?.kind === 'image');

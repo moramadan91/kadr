@@ -283,7 +283,9 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .box:has(.upd) { width: min(420px, 92vw); }
 .upd { display: grid; gap: 12px; min-width: 0; }
 .upd p { margin: 0; }
-.upd .acts { flex-wrap: wrap; }
+.upd .acts { flex-wrap: nowrap; align-items: center; } .upd .acts button { white-space: nowrap; }
+#uCheck svg { width: 14px; height: 14px; } #uCheck.busy svg { animation: spin 1s linear infinite; }
+.uwhen { display: block; margin-top: 4px; color: var(--dim); font-size: 11px; }
 .upd h3 { margin: 0; }
 .upd .ustate { min-height: 0; font-size: 13px; line-height: 1.5; } .upd .ustate:empty { display: none; }
 .upd .ustate .ok { display: flex; gap: 6px; align-items: center; color: var(--accent); }
