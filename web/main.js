@@ -108,8 +108,8 @@ $$('.spot').forEach((s, i) => {
   c.className = 'crop';
   c.style.backgroundSize = `${(100 / w) * 100}% auto`;
   c.style.backgroundPosition = `${(x / (100 - w)) * 100}% ${(y / (100 - h)) * 100}%`;
-  c.style.aspectRatio = `${w * 1920} / ${h * 1080}`;
-  c.style.height = `min(240px, calc((100vw - 82px) * ${(h * 1080) / (w * 1920)}))`;
+  c.style.aspectRatio = `${w * 1600} / ${h * 1140}`;
+  c.style.height = `min(240px, calc((100vw - 82px) * ${(h * 1140) / (w * 1600)}))`;
   Object.assign(s.style, { left: x + '%', top: y + '%', width: w + '%', height: h + '%' });
   $$('.step')[i].prepend(c);
 });

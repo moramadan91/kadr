@@ -30,7 +30,8 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 svg { width: 1em; height: 1em; flex: none; }
-img { display: block; max-width: 100%; height: auto; }
+img, video { display: block; max-width: 100%; height: auto; }
+.stage-in video, .zoom video { width: 100%; }
 .wrap { width: min(1200px, 100% - 32px); margin-inline: auto; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 .skip { position: absolute; inset-inline-start: 12px; top: -60px; z-index: 50; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: 10px; font-weight: 600; }
