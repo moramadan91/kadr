@@ -1157,10 +1157,20 @@ function renderBin() {
     const m = P.media[id], url = esc(urlOf(m));
     const th = m.kind === 'video' ? `<video src="${url}#t=0.5" muted preload="metadata"></video>`
       : m.kind === 'image' ? `<img src="${url}">` : icon('music');
-    return `<div class="mi${binSel.has(id) ? ' sel' : ''}" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span>${used.has(id) ? `<span class="used" title="${tr('inUse')}">${icon('check')}</span>` : ''}</div><div class="nm">${esc(m.name)}</div></div>`;
+    return `<div class="mi${binSel.has(id) ? ' sel' : ''}" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span>${used.has(id) ? `<span class="used" title="${tr('inUse')}">${icon('check')}</span>` : ''}<button class="del" data-del title="${tr('del')}">${icon('trash-2')}</button></div><div class="nm">${esc(m.name)}</div></div>`;
   }).join('');
+  $('#binAll').innerHTML = icon('check');
+  paintBinSel();
 }
-function paintBinSel() { $$('#binList .mi').forEach(el => el.classList.toggle('sel', binSel.has(el.dataset.mid))); }
+function paintBinSel() {
+  $$('#binList .mi').forEach(el => el.classList.toggle('sel', binSel.has(el.dataset.mid)));
+  const n = binSel.size, b = $('#binDel');
+  b.hidden = !n;
+  b.innerHTML = `${icon('trash-2')}<span>${n > 1 ? n : ''}</span>`;
+  b.title = n > 1 ? tr('delN', { n }) : tr('del');
+}
+$('#binAll').onclick = () => { focusZone = 'bin'; binOrder().forEach(id => binSel.add(id)); paintBinSel(); };
+$('#binDel').onclick = () => deleteMedia(picked());
 function binPick(mid, e) {
   focusZone = 'bin';
   if (e.shiftKey && binAnchor) {
@@ -1188,7 +1198,8 @@ $('#binView').onclick = () => { binView = binView === 'grid' ? 'list' : 'grid'; 
 // Pointer drag from the bin (HTML5 drag-and-drop is off on Windows while native file drop is on).
 $('#binList').addEventListener('pointerdown', e => {
   const mi = e.target.closest('.mi');
-  if (!mi) { if (e.button === 0) { binSel.clear(); paintBinSel(); } focusZone = 'bin'; return; }
+  if (e.target.closest('[data-del]')) { e.stopPropagation(); return deleteMedia([mi.dataset.mid]); }
+  if (!mi) { focusZone = 'bin'; if (e.button === 0) binMarquee(e); return; }
   if (e.button !== 0) return;
   const mid = mi.dataset.mid, x0 = e.clientX, y0 = e.clientY, ghost = $('#ghost');
   const wasSel = binSel.has(mid) && !e.shiftKey && !(e.metaKey || e.ctrlKey);
@@ -1217,6 +1228,26 @@ $('#binList').addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', up, { once: true });
 });
+// Drag on empty space: rubber-band select (adds to the selection with ⌘/shift).
+function binMarquee(e) {
+  const list = $('#binList'), keep = e.metaKey || e.ctrlKey || e.shiftKey, base = keep ? new Set(binSel) : new Set();
+  if (!keep) binSel.clear();
+  paintBinSel();
+  const box = list.appendChild(Object.assign(document.createElement('div'), { className: 'marq' }));
+  const x0 = e.clientX, y0 = e.clientY;
+  const mv = ev => {
+    const l = Math.min(x0, ev.clientX), r = Math.max(x0, ev.clientX), t = Math.min(y0, ev.clientY), b = Math.max(y0, ev.clientY), L = list.getBoundingClientRect();
+    Object.assign(box.style, { left: l - L.left + list.scrollLeft + 'px', top: t - L.top + list.scrollTop + 'px', width: r - l + 'px', height: b - t + 'px' });
+    binSel.clear(); base.forEach(id => binSel.add(id));
+    for (const el of list.querySelectorAll('.mi')) {
+      const q = el.getBoundingClientRect();
+      if (q.right > l && q.left < r && q.bottom > t && q.top < b) binSel.add(el.dataset.mid);
+    }
+    paintBinSel();
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); box.parentNode.removeChild(box); }, { once: true });
+}
 $('#binList').addEventListener('dblclick', e => { if (e.target.closest('.mi')) addMany(picked()); });
 $('#binList').addEventListener('contextmenu', e => {
   e.preventDefault();
