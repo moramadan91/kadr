@@ -675,6 +675,18 @@ fn cleanup(st: &AppState) {
 }
 
 #[tauri::command]
+fn splash_show(app: AppHandle) {
+    if let Some(s) = app.get_webview_window("splash") { let _ = s.show(); }
+}
+
+#[tauri::command]
+fn splash_done(app: AppHandle) {
+    let Some(s) = app.get_webview_window("splash") else { return };
+    if let Some(w) = app.get_webview_window("main") { let _ = w.show(); let _ = w.set_focus(); }
+    let _ = s.destroy();
+}
+
+#[tauri::command]
 fn path_exists(path: String) -> bool { Path::new(&path).exists() }
 
 #[tauri::command]
@@ -712,19 +724,16 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, splash_show, splash_done, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             app.manage(mcp::Bridge::start(app.handle().clone()));
-            // launch intro runs in its own small window; the editor loads hidden behind it
+            // launch intro runs in its own small window (it calls splash_done when it ends); the editor
+            // loads hidden behind it. Fallback in case the intro never reports back.
             let h = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(2900));
-                if let Some(w) = h.get_webview_window("main") { let _ = w.show(); let _ = w.set_focus(); }
-                if let Some(s) = h.get_webview_window("splash") { let _ = s.destroy(); }
-            });
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(6)); splash_done(h); });
             Ok(())
         })
         .on_menu_event(|app, e| if e.id() == "quit" { let _ = app.emit("quit-requested", ()); })

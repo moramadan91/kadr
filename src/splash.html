@@ -1,47 +1,18 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Maqto</title><style>
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
-/* launch intro, in its own borderless window; Rust shows the editor and closes this at 2.9 s */
-#intro { position: fixed; inset: 0; display: grid; place-items: center; animation: iOut .35s 2.55s ease-in forwards; }
-#intro .isq { position: relative; width: 100vmin; aspect-ratio: 1; border-radius: 6.8%; background: #141518; overflow: hidden; animation: iBox .55s cubic-bezier(.16,1,.3,1) both, iShake .32s 1.32s linear both; }
-#intro svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#intro .ipat { animation: iDim .5s 1.2s ease-out forwards; }
-#intro .ipat .b { opacity: 0; transform: translate(260px, -420px); animation: iBar .75s 0s cubic-bezier(.16,1,.3,1) forwards; }
-#intro .ipat .s { opacity: 0; transform: scale(0); transform-box: fill-box; transform-origin: center; animation: iPop .5s 0s cubic-bezier(.34,1.56,.64,1) forwards; }
-#intro .isym { transform-box: fill-box; transform-origin: center; animation: iSlam .34s 1.02s cubic-bezier(.7,0,.84,0) both; }
-#intro .is1, #intro .is2 { transform-box: fill-box; }
-#intro .is1 { animation: iS1 .34s 1.02s cubic-bezier(.7,0,.84,0) both; }
-#intro .is2 { animation: iS2 .34s 1.02s cubic-bezier(.7,0,.84,0) both; }
-#intro .iw > * { transform-box: fill-box; animation: iLet .42s 1.5s cubic-bezier(.16,1,.3,1) both; }
-#intro .iflash { position: absolute; inset: 0; background: #5cd3c6; opacity: 0; animation: iFlash .45s 1.34s ease-out forwards; }
-#intro .iring { position: absolute; left: 50%; top: 46%; width: 30%; aspect-ratio: 1; margin: -15% 0 0 -15%; border-radius: 50%; border: 3px solid #5cd3c6; opacity: 0; animation: iRing .6s 1.34s cubic-bezier(.16,1,.3,1) forwards; }
-#intro .isheen { position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.12) 50%, transparent 58%); transform: translateX(-70%); animation: iSheen .7s 2.0s cubic-bezier(.4,0,.2,1) forwards; }
-@keyframes iBox { from { transform: scale(.4) rotate(-12deg); opacity: 0; border-radius: 50%; } to { transform: none; opacity: 1; border-radius: 6.8%; } }
-@keyframes iBar { to { opacity: 1; transform: none; } }
-@keyframes iPop { to { opacity: 1; transform: none; } }
-@keyframes iDim { to { opacity: .45; } }
-@keyframes iSlam { from { transform: scale(3.2) rotate(-8deg); opacity: 0; } 60% { opacity: 1; } to { transform: none; opacity: 1; } }
-@keyframes iS1 { from { transform: translate(-40%, 60%); } to { transform: none; } }
-@keyframes iS2 { from { transform: translate(30%, -30%); } to { transform: none; } }
-@keyframes iShake { 0%, 100% { translate: 0 0; } 20% { translate: -5px 4px; } 40% { translate: 4px -3px; } 60% { translate: -3px 2px; } 80% { translate: 2px -1px; } }
-@keyframes iFlash { 0% { opacity: .55; } 100% { opacity: 0; } }
-@keyframes iRing { from { transform: scale(.4); opacity: .9; border-width: 6px; } to { transform: scale(3.4); opacity: 0; border-width: 1px; } }
-@keyframes iLet { from { transform: translateY(60%) scale(.8); clip-path: inset(0 0 100% 0); opacity: 0; } to { transform: none; clip-path: inset(0); opacity: 1; } }
-@keyframes iSheen { to { transform: translateX(70%); } }
+/* launch intro in its own borderless window. The pattern and the logo drawing are a pre-rendered
+   video (intro.mp4, made in Chrome: WebKit drops SVG stroke-draw animations); the box entrance and
+   the fade out are CSS. splash.js starts it once the window is on screen. */
+#intro { position: fixed; inset: 0; display: grid; place-items: center; }
+#intro .isq { position: relative; width: 100vmin; aspect-ratio: 1; border-radius: 6.8%; background: #141518; overflow: hidden; transform: scale(.4) rotate(-12deg); opacity: 0; }
+#intro video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#intro.go { animation: iOut .245s 1.82s ease-in forwards; }
+#intro.go .isq { animation: iBox .385s cubic-bezier(.16,1,.3,1) forwards; }
+@keyframes iBox { to { transform: none; opacity: 1; } }
 @keyframes iOut { to { opacity: 0; transform: scale(1.06); } }
-@media (prefers-reduced-motion: reduce) { #intro * { animation-duration: .01s !important; animation-delay: 0s !important; } }
 </style></head>
 <body data-tauri-drag-region>
-<div id="intro" aria-hidden="true">
-  <div class="isq">
-    <svg class="ipat" viewBox="210.3 87.69 420.31 420.31" preserveAspectRatio="xMidYMid slice"><g fill="#5cd3c6"><polygon class="b" style="animation-delay:0.18s" fill-opacity="0.16" points="150 40 196 40 -126 560 -172 560"/><polygon class="b" style="animation-delay:0.24s" fill-opacity="0.1" points="250 40 272 40 -50 560 -72 560"/><polygon class="b" style="animation-delay:0.30s" fill-opacity="0.22" points="330 40 394 40 72 560 8 560"/><polygon class="b" style="animation-delay:0.36s" fill-opacity="0.12" points="455 40 485 40 163 560 133 560"/><polygon class="b" style="animation-delay:0.42s" fill-opacity="0.18" points="560 40 612 40 290 560 238 560"/><polygon class="b" style="animation-delay:0.48s" fill-opacity="0.09" points="650 40 670 40 348 560 328 560"/><polygon class="b" style="animation-delay:0.54s" fill-opacity="0.2" points="720 40 760 40 438 560 398 560"/><polygon class="b" style="animation-delay:0.60s" fill-opacity="0.5" points="395 40 404 40 82 560 73 560"/><polygon class="b" style="animation-delay:0.66s" fill-opacity="0.45" points="610 40 617 40 295 560 288 560"/><polygon class="s" style="animation-delay:0.35s" fill-opacity="0.6" points="408 315 441 315 399 382 366 382"/><polygon class="s" style="animation-delay:0.40s" fill-opacity="0.6" points="593 160 623 160 585 222 555 222"/><polygon class="s" style="animation-delay:0.45s" fill-opacity="0.6" points="565 120 585 120 564 153 544 153"/><polygon class="s" style="animation-delay:0.50s" fill-opacity="0.6" points="492 330 514 330 486 375 464 375"/><polygon class="s" style="animation-delay:0.55s" fill-opacity="0.25" points="483 146 497 146 479 177 464 177"/><polygon class="s" style="animation-delay:0.60s" fill-opacity="0.35" points="216 449 242 449 204 511 178 511"/><polygon class="s" style="animation-delay:0.65s" fill-opacity="0.35" points="403 434 427 434 393 488 369 488"/><polygon class="s" style="animation-delay:0.70s" fill-opacity="0.6" points="202 116 229 116 195 170 168 170"/><polygon class="s" style="animation-delay:0.75s" fill-opacity="0.25" points="658 433 686 433 653 487 625 487"/><polygon class="s" style="animation-delay:0.80s" fill-opacity="0.25" points="436 92 461 92 434 136 409 136"/></g></svg>
-    <i class="iflash"></i><i class="iring"></i>
-    <svg class="ilogo" viewBox="210.3 87.69 420.31 420.31"><g fill="#5cd3c6">
-      <g class="isym"><g class="is1"><polygon points="286.43 303.37 303.09 277.23 342.17 215.53 291.79 215.49 259.81 266.04 236.1 303.36 286.43 303.37"/></g><g class="is2"><path d="M432.36,232.63l-25.11,39.54-19.66,31.2h217.01s.75,0,.75,0c.09,0,.09-.2,0-.22l-.63-.09-2.84-.39-41.24-5.92-83.41-11.98-13.3-2.01,10.23-16.35,15.16-23.81,17.16-27.09h-124.68s-11.37,10.05-11.37,10.05l-35.06,31.23-19.18,30.35-10.43,16.23h46.84s10.9-9.49,10.9-9.49l20.42-18.27,18.6-16.44,29.85-26.55Z"/></g>
-      
-      </g><g class="iw"><polygon points="285.01 338.22 285.02 380.14 266.6 380.14 266.62 338.22 253.37 338.23 253.36 380.19 235 380.19 234.99 321.58 310.19 321.58 316.77 328.24 316.77 380.16 298.33 380.16 298.37 338.22 285.01 338.22" style="animation-delay:1.500s"/><path d="M371.73,365.47h-28.65s0,14.7,0,14.7h-18.42s0-51.73,0-51.73l6.85-6.86h52.05s6.6,6.6,6.6,6.6l.02,51.97h-18.51s.05-14.68.05-14.68ZM343.08,338.19v10.93s28.67.01,28.67.01v-10.93s-28.67-.01-28.67-.01Z" style="animation-delay:1.555s"/><path d="M468.97,363.36l.03,16.8h-63.88s-7.22-6.96-7.22-6.96l.06-44.85,6.76-6.77h51.85s6.72,6.77,6.72,6.77l-.03,29.43-5.49,5.53,11.2.05ZM416.31,338.19v25.17s28.77,0,28.77,0v-25.17s-28.77,0-28.77,0Z" style="animation-delay:1.610s"/><polygon points="511.21 380.18 492.84 380.17 492.77 372.7 492.75 338.22 470.25 338.22 470.28 321.57 533.7 321.58 533.73 338.22 511.19 338.23 511.21 380.18" style="animation-delay:1.665s"/><path d="M598.92,380.15h-51.27s-7.13-6.89-7.13-6.89c-.16-.55-.1-1.47.06-2.18v-42.95s6.58-6.56,6.58-6.56h52.08s6.68,6.69,6.68,6.69l-.07,44.95-6.93,6.93ZM587.45,338.2h-28.68s0,25.36,0,25.36h28.68s0-25.36,0-25.36Z" style="animation-delay:1.720s"/></g>
-    </g></svg>
-    <i class="isheen"></i>
-  </div>
-</div>
+<div id="intro" aria-hidden="true"><div class="isq"><video src="intro.mp4" muted playsinline preload="auto"></video></div></div>
+<script src="splash.js"></script>
 </body></html>
