@@ -23,6 +23,7 @@ const EN = {
   f5: 'Export up to 4K', f5p: 'H.264 and HEVC, hardware accelerated on Mac.',
   f6: 'Voiceover recording', f6p: 'Record narration in the app and it lands on the timeline.',
   f7: 'Automatic updates', f7p: 'Every new version reaches you on its own, signed and verified.',
+  f9: 'Write the prompt in Claude Code, watch the video build itself', f9p: 'Maqto ships an MCP server. Connect it once and Claude adds texts, motion, keyframes and transitions to the timeline live, looks at the frame to check its work, and exports.',
   tEye: 'A tour of the app', tTitle: 'Everything where you expect it.',
   s1: 'Timeline', s1p: 'Drag in video, images and audio. The main track is magnetic so there are no gaps, and S splits a clip.',
   s2: 'Library and captions', s2p: 'Import your files, pick a text style, or press Auto captions to transcribe Arabic speech.',
