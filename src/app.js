@@ -2206,7 +2206,7 @@ function inspector() {
   bind('#fillSwap',() => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
   bind('#colMatch', () => colorMatchPick(it));
 }
-// one-time download of the AI frame engine (RIFE, ~35 MB)
+// one-time download of the AI frame engine (RIFE, under 20 MB)
 $('#inspBody').addEventListener('click', async e => {
   if (!e.target.closest('[data-rifeget]')) return;
   if (!(await TA.dialog.ask(tr('rifeAsk'), { title: tr('smoothSlow') }))) return;
