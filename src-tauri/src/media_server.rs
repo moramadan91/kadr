@@ -16,7 +16,7 @@ pub struct MediaServer {
     allowed: Mutex<HashSet<PathBuf>>,
 }
 
-fn random_token() -> String {
+pub fn random_token() -> String {
     let mut out = String::new();
     for i in 0..2u64 {
         let mut h = std::collections::hash_map::RandomState::new().build_hasher();

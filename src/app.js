@@ -4188,6 +4188,125 @@ refresh();
 requestAnimationFrame(loop);
 setTimeout(autoUpdate, 3000);
 
+/* ---------- MCP: Claude Code drives the open project live (`kadr --mcp`, see src-tauri/src/mcp.rs) ---------- */
+const MCP_TOOLS = [
+  ['get_project', 'The open project: size, fps, duration, playhead, lanes, media bin and every item as stored (learn item fields from it).', {}],
+  ['catalog', 'Names you can use: text style presets and text style fields, text/clip animations (in/out/loop), transitions, effects (fx), filters (preset), layer types, easings, keyframe props, aspect ratios.', {}],
+  ['new_project', 'Start an empty project (the old one stays one undo away).', { ratio: { type: 'string', description: 'e.g. 9:16, 16:9, 1:1' } }],
+  ['set_project', 'Change project settings.', { ratio: { type: 'string' }, fps: { type: 'number' }, name: { type: 'string' } }],
+  ['import_media', 'Add files (absolute paths: video, audio, images) to the media bin. Returns their media ids. add=true also puts each on the timeline, back to back.', { paths: { type: 'array', items: { type: 'string' } }, add: { type: 'boolean' } }, ['paths']],
+  ['add_items', 'Add items to the timeline. Each needs type: "text" {text, start, dur, style_id?, style?{...fields}, x?, y? (0..1 of frame, default 0.5), anim?, out?, loop?} | "clip" {media (id), start?, dur?, track?, in?, speed?, x?, y? (px from centre), scale?} | "layer" {kind: solid|gradient|shadow|vignette, start, dur, fill?{c1,c2,a1,a2,...}} | "effect" {fx: id from catalog.fx OR preset: id from catalog.filters, start, dur}. Any extra field is set on the item as is. Returns the new item ids.', { items: { type: 'array', items: { type: 'object' } } }, ['items']],
+  ['update_items', 'Change items. set: fields to assign (objects such as style, fill, fx are merged; null removes a field). Transition into a clip: set {trans: {id, dur}}. Timing: start, dur (seconds).', { updates: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, set: { type: 'object' } }, required: ['id', 'set'] } } }, ['updates']],
+  ['set_keyframes', 'Animate x, y, scale, rotate or opacity of an item: keys are [time from the item start in seconds, value]; replaces that prop\'s keys ([] clears). Values use the item\'s units (text x/y 0..1; clip x/y px from centre; scale 1 = 100%; rotate degrees; opacity 0..1).', { id: { type: 'string' }, props: { type: 'object', description: '{ "scale": [[0,0.8],[0.5,1]], "opacity": [[0,0],[0.3,1]] }' } }, ['id', 'props']],
+  ['delete_items', 'Remove items by id.', { ids: { type: 'array', items: { type: 'string' } } }, ['ids']],
+  ['preview', 'Move the playhead to time (seconds) and return the rendered frame as an image. Use it to check your work.', { time: { type: 'number' } }, ['time']],
+  ['play', 'Play from a time (seconds) on the user\'s screen; stop: true pauses.', { from: { type: 'number' }, stop: { type: 'boolean' } }],
+  ['undo', 'Undo the last change (each tool call is one step).', { redo: { type: 'boolean' } }],
+  ['export', 'Render the project to an mp4 at path (absolute). Waits until done.', { path: { type: 'string' }, fps: { type: 'number' } }, ['path']],
+].map(([name, description, properties, required]) => ({ name, description, inputSchema: { type: 'object', properties, ...(required ? { required } : {}) } }));
+
+const atT = (time, fn) => { const keep = t; t = Math.max(0, num(time, t)); try { return fn(); } finally { t = keep; } };
+const mergeSet = (o, set) => {
+  for (const [k, v] of Object.entries(set || {})) {
+    if (v === null) delete o[k];
+    else if (v && typeof v === 'object' && !Array.isArray(v) && o[k] && typeof o[k] === 'object' && k !== 'trans') Object.assign(o[k], v);
+    else o[k] = v;
+  }
+};
+const mcpPic = async time => {
+  setPlaying(false); seek(time);
+  await new Promise(r => setTimeout(r, 700)); // video elements seek and decode
+  draw();
+  const k = Math.min(1, 720 / Math.max(view.width, view.height)), c = document.createElement('canvas');
+  c.width = Math.round(view.width * k); c.height = Math.round(view.height * k);
+  c.getContext('2d').drawImage(view, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82).split(',')[1];
+};
+const MCP = {
+  get_project: () => ({ w: P.w, h: P.h, fps: P.fps, name: P.name, duration: +total().toFixed(3), playhead: +t.toFixed(3), tracks: P.tracks,
+    media: Object.fromEntries(Object.entries(P.media).map(([id, m]) => [id, { kind: m.kind, name: m.name, dur: m.dur, w: m.w, h: m.h, path: m.path, fill: m.fill, adj: m.adj }])), items: P.items }),
+  catalog: () => ({ text_styles: TEXT_STYLES.map(s => s.id), text_style_fields: textDefaults(), text_anim_in: ANIM_IN, text_anim_out: ANIM_OUT, text_anim_loop: ANIM_LOOP,
+    clip_anim_in: Object.keys(S.VA_IN), clip_anim_out: Object.keys(S.VA_OUT), clip_anim_loop: Object.keys(S.VA_LOOP),
+    transitions: [...S.TRANS, ...S.GLT], fx: S.FX, filters: Object.keys(S.PRESETS), layers: LAYERS, blends: ['normal', ...Object.keys(BLENDS)],
+    keyframe_props: S.KF, ratios: Object.keys(ASPECTS) }),
+  new_project: a => { snapshot(); P = newProject(); if (ASPECTS[a.ratio]) [P.w, P.h] = ASPECTS[a.ratio]; sel = null; projectPath = null; t = 0; syncSettings(); return { w: P.w, h: P.h }; },
+  set_project: a => {
+    if (a.ratio) { if (!ASPECTS[a.ratio]) throw new Error('ratio must be one of ' + Object.keys(ASPECTS).join(', ')); [P.w, P.h] = ASPECTS[a.ratio]; }
+    if (a.fps) P.fps = clamp(Math.round(a.fps), 12, 120);
+    if (a.name) P.name = a.name;
+    syncSettings(); return { w: P.w, h: P.h, fps: P.fps };
+  },
+  import_media: async a => {
+    const ids = addToBin(await inv('probe', { paths: a.paths }));
+    const items = a.add ? ids.map(id => addMedia(id, null, null).id) : [];
+    return { media: ids, items };
+  },
+  add_items: a => a.items.map(x => {
+    const { type, start, dur, style_id, style, kind, fx, preset, media: mid, track, ...rest } = x;
+    let it;
+    if (type === 'text') {
+      const d = num(dur, 3), slot = atT(start, () => textSlot(d));
+      it = { id: uid(), type: 'text', ...slot, dur: d, text: String(x.text ?? ''), style: { ...presetStyle(style_id), ...(style || {}) }, x: 0.5, y: 0.5, anim: 'fade', out: 'fade' };
+      P.items.push(it);
+    } else if (type === 'clip') {
+      if (!P.media[mid]) throw new Error('unknown media id ' + mid + ' (import_media first)');
+      it = addMedia(mid, track, start == null ? null : +start);
+      if (dur != null) it.dur = +dur;
+    } else if (type === 'layer') {
+      if (!LAYERS[kind]) throw new Error('layer kind must be one of ' + Object.keys(LAYERS).join(', '));
+      atT(start, () => addFill(kind));
+      it = item(sel); it.dur = num(dur, 5); mergeSet(it.fill, x.fill);
+    } else if (type === 'effect') {
+      if (fx ? !S.FX.includes(fx) : !S.PRESETS[preset]) throw new Error('unknown effect; see catalog fx / filters');
+      atT(start, () => addAdj(fx ? 'fx' : 'preset', fx || preset));
+      it = item(sel); it.dur = num(dur, 3);
+    } else throw new Error('type must be text, clip, layer or effect');
+    delete rest.text; delete rest.fill;
+    mergeSet(it, rest);
+    return it.id;
+  }),
+  update_items: a => a.updates.map(u => { const it = item(u.id); if (!it) throw new Error('no item ' + u.id); mergeSet(it, u.set); return it.id; }),
+  set_keyframes: a => {
+    const it = item(a.id);
+    if (!it) throw new Error('no item ' + a.id);
+    for (const [k, keys] of Object.entries(a.props)) {
+      if (!S.KF.includes(k)) throw new Error('keyframe props: ' + S.KF.join(', '));
+      it.kf ??= {};
+      if (keys && keys.length) it.kf[k] = keys.map(([x, v]) => [+(+x).toFixed(4), +v]).sort((p, q) => p[0] - q[0]); else delete it.kf[k];
+    }
+    if (!S.hasKf(it)) delete it.kf;
+    return it.id;
+  },
+  delete_items: a => { const ids = new Set(a.ids); P.items = P.items.filter(i => !ids.has(i.id)); if (sel && !item(sel)) sel = null; return a.ids; },
+  play: a => { if (a.stop) setPlaying(false); else { if (a.from != null) seek(+a.from); setPlaying(true); } return { playing }; },
+  undo: a => { restore(a.redo ? redoStack : undoStack, a.redo ? undoStack : redoStack); return { undo: undoStack.length, redo: redoStack.length }; },
+  export: async a => { setPlaying(false); await doExport({ k: 1, fps: a.fps || P.fps, codec: 'h264', video: a.path, quality: 'rec' }); return { path: a.path, exists: await inv('path_exists', { path: a.path }) }; },
+};
+const MCP_READ = new Set(['get_project', 'catalog', 'preview', 'play', 'undo', 'export']);
+async function mcpCall(method, p) {
+  if (method === 'ping') return {};
+  if (method === 'tools/list') return { tools: MCP_TOOLS };
+  const name = p && p.name, a = (p && p.arguments) || {};
+  hideModal();
+  if (name === 'preview') return { content: [{ type: 'image', data: await mcpPic(+a.time || 0), mimeType: 'image/jpeg' }, { type: 'text', text: `frame at ${fmt(t)}` }] };
+  if (!MCP[name]) throw new Error('unknown tool ' + name);
+  const n = undoStack.length;
+  if (!MCP_READ.has(name)) snapshot();
+  try {
+    const r = await MCP[name](a);
+    return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+  } finally {
+    if (!MCP_READ.has(name)) { undoStack.length = Math.min(undoStack.length, n + 1); dirty = true; } // one undo step per call
+    refresh(); needsDraw = true;
+  }
+}
+TA.event.listen('mcp-call', async e => {
+  const { id, method, params } = e.payload;
+  let out;
+  try { out = { result: await mcpCall(method, params) }; } catch (err) { out = { error: cleanErr(err) }; }
+  inv('mcp_reply', { id, result: out });
+});
+
 inv('dev_demo').then(async d => {
   if (!d.paths || !d.paths.length) return newProj(true); // always the start screen; unsaved work waits there as a card
   const ids = addToBin(await inv('probe', { paths: d.paths }));

@@ -1,4 +1,7 @@
+mod mcp;
 mod media_server;
+
+pub fn mcp_stdio() { mcp::serve_stdio() }
 
 use media_server::MediaServer;
 use serde_json::{json, Value};
@@ -672,12 +675,12 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
-            let _ = app;
+            app.manage(mcp::Bridge::start(app.handle().clone()));
             Ok(())
         })
         .on_menu_event(|app, e| if e.id() == "quit" { let _ = app.emit("quit-requested", ()); })
