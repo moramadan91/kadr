@@ -71,7 +71,7 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 #inspTabs button { flex-direction: row; font-size: 13px; font-weight: 600; }
 
 /* media bin */
-#binList.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin: 8px 0 12px; }
+#binList.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 8px 0 12px; }
 #binList.list { display: grid; gap: 3px; margin: 8px 0 12px; }
 #binList.list .mi { display: flex; align-items: center; gap: 8px; border-radius: 8px; }
 #binList.list .mi .th { width: 54px; flex: none; aspect-ratio: 16/10; }
@@ -93,7 +93,7 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 .acts .flex { flex: 1; }
 .mi { border-radius: 12px; overflow: hidden; cursor: grab; background: var(--well); border: 1px solid var(--stroke); }
 .mi:hover { border-color: rgba(92, 211, 198, .5); }
-.mi .th { aspect-ratio: 16/10; background: #000; display: grid; place-items: center; color: var(--dim); position: relative; }
+.mi .th { aspect-ratio: 1; background: #000; display: grid; place-items: center; color: var(--dim); position: relative; }
 .mi .th video, .mi .th img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .mi .th .du { position: absolute; bottom: 4px; inset-inline-end: 4px; background: rgba(0,0,0,.6); border-radius: 5px; padding: 0 5px; font-size: 10px; direction: ltr; }
 .mi .nm { padding: 3px 6px; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: ltr; text-align: start; }
@@ -266,7 +266,11 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 .mi .th .del { position: absolute; top: 3px; inset-inline-end: 3px; width: 22px; height: 22px; padding: 0; border-radius: 6px; display: grid; place-items: center; background: rgba(0,0,0,.65); border: 0; color: #fff; opacity: .55; cursor: pointer; }
 .mi:hover .th .del, .mi.sel .th .del { opacity: 1; }
 .mi .th .del:hover { background: #e5484d; }
-.mi .th .del svg { width: 13px; height: 13px; }
+.mi .th .del svg, .mi .th .add svg { width: 13px; height: 13px; }
+.mi .th .add { position: absolute; top: 3px; inset-inline-end: 28px; width: 22px; height: 22px; padding: 0; border-radius: 6px; display: grid; place-items: center; background: rgba(0,0,0,.65); border: 0; color: #fff; opacity: .55; cursor: pointer; }
+.mi:hover .th .add, .mi.sel .th .add { opacity: 1; }
+.mi .th .add:hover { background: var(--accent); color: var(--accent-ink); }
+#binList.list .mi .th .add { display: none; }
 #binList.list .mi .th .del { inset-inline-end: auto; inset-inline-start: 3px; }
 #binDel { display: flex; align-items: center; gap: 3px; color: #ff6b6b; }
 #binDel[hidden] { display: none; }
@@ -563,3 +567,26 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .pxb.insp { margin: 4px 0 10px; height: 30px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: rgba(255, 255, 255, .04); font-size: 12.5px; color: var(--text, #e8eaed); }
 .pxb.insp.done { color: var(--accent); }
 .pxb.insp.done i { width: 0; }
+
+/* launch intro: 3 s logo sting over the app, removed on animationend */
+#intro { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0b0c0e; animation: iOut .45s 2.55s cubic-bezier(.5,0,.75,0) forwards; }
+#intro .isq { position: relative; width: min(46vmin, 420px); aspect-ratio: 1; border-radius: 6.8%; background: #141518; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.55); animation: iBox .7s cubic-bezier(.16,1,.3,1) both, iBoxOut .45s 2.55s cubic-bezier(.5,0,.75,0) forwards; }
+#intro svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#intro .ipat polygon { opacity: 0; animation: iShard .9s var(--d) cubic-bezier(.16,1,.3,1) forwards, iDrift 3s var(--d) linear forwards; }
+#intro .is1, #intro .is2 { transform-box: fill-box; }
+#intro .is1 { animation: iS1 .6s .45s cubic-bezier(.16,1,.3,1) both; }
+#intro .is2 { animation: iS2 .65s .55s cubic-bezier(.16,1,.3,1) both; }
+#intro .iflash { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0); opacity: 0; animation: iFlash .55s 1s cubic-bezier(.3,0,.2,1) forwards; }
+#intro .iw > * { transform-box: fill-box; animation: iLet .5s calc(1.2s + var(--i) * .07s) cubic-bezier(.16,1,.3,1) both; }
+#intro .isheen { position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 42%, rgba(92,211,198,.16) 50%, transparent 58%); transform: translateX(-70%); animation: iSheen .8s 1.85s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes iBox { from { transform: scale(.55) rotate(-9deg); opacity: 0; border-radius: 50%; } to { transform: none; opacity: 1; border-radius: 6.8%; } }
+@keyframes iBoxOut { to { transform: scale(1.08); } }
+@keyframes iOut { to { opacity: 0; visibility: hidden; } }
+@keyframes iShard { from { opacity: 0; transform: translate(26px, -42px); } to { opacity: 1; transform: none; } }
+@keyframes iDrift { to { translate: -10px 16px; } }
+@keyframes iS1 { from { transform: translate(-70%, 110%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes iS2 { from { transform: translate(55%, 0); clip-path: inset(0 0 0 100%); } to { transform: none; clip-path: inset(0); } }
+@keyframes iFlash { 0% { transform: scaleX(0); opacity: 1; } 60% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes iLet { from { transform: translateY(45%); clip-path: inset(0 0 100% 0); opacity: 0; } to { transform: none; clip-path: inset(0); opacity: 1; } }
+@keyframes iSheen { to { transform: translateX(70%); } }
+@media (prefers-reduced-motion: reduce) { #intro, #intro * { animation-duration: .01s !important; animation-delay: 0s !important; } #intro { animation: iOut .3s .8s forwards !important; } }

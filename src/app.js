@@ -1377,7 +1377,7 @@ $('#rows').addEventListener('pointerdown', e => {
 }, true);
 // Lanes sit at the bottom of the timeline (CapCut-style), about two lanes above its lower edge; new lanes grow upward.
 function laneGap() {
-  const sc = $('#scroll'), n = shownTracks().length, g = Math.max(0, sc.clientHeight - $('#ruler').offsetHeight - (n + 2) * ROW);
+  const sc = $('#scroll'), n = shownTracks().length, g = Math.max(0, sc.clientHeight - $('#ruler').offsetHeight - (n + 0.5) * ROW);
   $('#rows').style.marginTop = $('#heads').style.marginTop = g + 'px';
 }
 new ResizeObserver(() => laneGap()).observe($('#scroll'));
@@ -2906,7 +2906,7 @@ function renderBin() {
     const m = P.media[id], url = esc(urlOf(m));
     const th = m.kind === 'video' ? `<video src="${url}#t=0.5" muted preload="metadata"></video>`
       : m.kind === 'image' ? `<img src="${url}">` : icon('music');
-    return `<div class="mi${binSel.has(id) ? ' sel' : ''}" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span>${used.has(id) ? `<span class="used" title="${tr('inUse')}">${icon('check')}</span>` : ''}<button class="del" data-del title="${tr('del')}">${icon('trash-2')}</button></div><div class="nm">${esc(m.name)}</div></div>`;
+    return `<div class="mi${binSel.has(id) ? ' sel' : ''}" data-mid="${id}" title="${esc(m.path)}"><div class="th">${th}<span class="du">${m.dur ? fmt(m.dur) : tr('image')}</span>${used.has(id) ? `<span class="used" title="${tr('inUse')}">${icon('check')}</span>` : ''}<button class="add" data-add title="${tr('addToTl')}">${icon('plus')}</button><button class="del" data-del title="${tr('del')}">${icon('trash-2')}</button></div><div class="nm">${esc(m.name)}</div></div>`;
   }).join('');
   $('#binAll').innerHTML = icon('check');
   paintBinSel();
@@ -2948,6 +2948,7 @@ $('#binView').onclick = () => { binView = binView === 'grid' ? 'list' : 'grid'; 
 $('#binList').addEventListener('pointerdown', e => {
   const mi = e.target.closest('.mi');
   if (e.target.closest('[data-del]')) { e.stopPropagation(); return deleteMedia([mi.dataset.mid]); }
+  if (e.target.closest('[data-add]')) { e.stopPropagation(); focusZone = 'bin'; return addMany([mi.dataset.mid]); }
   if (!mi) { focusZone = 'bin'; if (e.button === 0) binMarquee(e); return; }
   if (e.button !== 0) return;
   const mid = mi.dataset.mid, x0 = e.clientX, y0 = e.clientY, ghost = $('#ghost');
@@ -4341,6 +4342,7 @@ TA.event.listen('mcp-call', async e => {
   inv('mcp_reply', { id, result: out });
 });
 
+$('#intro')?.addEventListener('animationend', e => { if (e.target.id === 'intro') e.target.remove(); });
 inv('dev_demo').then(async d => {
   if (!d.paths || !d.paths.length) return newProj(true); // always the start screen; unsaved work waits there as a card
   const ids = addToBin(await inv('probe', { paths: d.paths }));
