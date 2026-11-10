@@ -3180,7 +3180,7 @@ const LAYERS = {
   solid: { type: 'solid', c1: '#5cd3c6', a1: 1 },
 };
 function renderLayers() {
-  $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="56"></canvas></i><span>${tr('ly_' + id)}</span></button>`).join('');
+  $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="56"></canvas></i><span>${tr('ly_' + id)}</span><i class="plus" title="${tr('addLayer')}">${icon('plus')}</i></button>`).join('');
   for (const c of $$('#layerCards canvas')) {
     const g = c.getContext('2d');
     g.fillStyle = '#7d8a96'; g.fillRect(0, 0, 96, 56); g.fillStyle = '#b8c4cc'; g.fillRect(0, 34, 96, 22); // a little "scene" under the layer
@@ -3191,8 +3191,9 @@ function addFill(id) {
   const mid = 'fill_' + uid();
   P.media[mid] = { kind: 'image', fill: true, name: tr('ly_' + id), w: P.w, h: P.h, path: '' };
   const busy = tk => P.items.some(i => i.track === tk && i.start < t + 5 && i.start + i.dur > t);
-  const tk = (P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id)) || { id: 'v2' }).id;
-  const it = addMedia(mid, tk, t);
+  let tk = P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id));
+  if (!tk) { tk = { id: 'v' + uid(), kind: 'video' }; P.tracks.splice(P.tracks.findIndex(x => x.kind === 'video'), 0, tk); } // never stack on a busy lane: new top video track
+  const it = addMedia(mid, tk.id, t);
   it.fill = { ...FILL_DEF, ...LAYERS[id] };
   inspTab = 'tVideo';
   refresh();
