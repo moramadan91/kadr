@@ -334,7 +334,7 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .tpl .star svg { width: 13px; height: 13px; }
 .tpl .star.on svg { fill: #ffd43b; stroke: #ffd43b; }
 #rows { position: relative; }
-#rows .marq { position: absolute; border: 1px solid var(--accent); background: rgba(92, 211, 198, .12); pointer-events: none; z-index: 5; }
+#rows .marq, #scroll > .marq { position: absolute; border: 1px solid var(--accent); background: rgba(92, 211, 198, .12); pointer-events: none; z-index: 5; }
 #selbox { position: absolute; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); pointer-events: none; transform-origin: 50% 50%; }
 #selbox i { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); pointer-events: auto; }
 #selbox i[data-sh="nw"] { left: -7px; top: -7px; cursor: nwse-resize; } #selbox i[data-sh="se"] { right: -7px; bottom: -7px; cursor: nwse-resize; }

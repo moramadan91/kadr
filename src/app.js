@@ -1391,19 +1391,11 @@ function follow() {
 
 /* ---------- timeline ---------- */
 const TRACK_COLOR = { video: 'rgb(62,132,255)', audio: 'rgb(74,210,110)', text: 'rgb(168,112,255)' };
-// Speed-curve clips show their curve on the clip: the speed line plus a dot at every curve point.
-function curveMarks(it) {
-  if (!S.hasCurve(it)) return '';
-  const c = it.curve, y = v => (50 - Math.log10(clamp(v, 0.1, 10)) * 40).toFixed(1); // 0.1x bottom, 10x top
-  const line = Array.from({ length: 41 }, (_, i) => `${(i * 2.5).toFixed(1)},${y(S.rateAt(it, it.dur * i / 40))}`).join(' ');
-  return `<svg class="cvl" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${line}"/></svg>` +
-    c.pts.map(p => `<i class="cvp" style="left:${(S.fAtU(c, p[0]) * 100).toFixed(2)}%;top:${y(S.rateAt(it, it.dur * S.fAtU(c, p[0])))}%"></i>`).join('');
-}
 function clipLabel(it) {
   const off = it.hidden ? icon('eye-off') : '';
   if (isText(it)) return off + icon('type') + esc(it.text);
   const m = media(it);
-  return off + icon(m.adj ? 'zap' : m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
+  return off + icon(m.adj ? 'zap' : m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
 }
 // Lanes on screen: only the ones holding a clip, plus the main lane (and a lane a drag just made).
 const laneKeep = new Set();
@@ -1451,7 +1443,7 @@ function renderTimeline() {
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = TS.map(x => `<div class="head${x.locked ? ' locked' : ''}" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i><em>${esc(trackLabel(x))}</em>${laneBtns(x)}</div>`).join('');
   $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
   laneGap();
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
@@ -1734,12 +1726,12 @@ function toggleSel(id) {
 }
 // Drag on an empty part of the timeline: rubber-band select. A plain click still moves the playhead.
 function tlMarquee(e) {
-  const rows = $('#rows'), x0 = e.clientX, y0 = e.clientY, keep = e.metaKey || e.ctrlKey || e.shiftKey, base = new Set(keep ? selIds() : []);
+  const rows = $('#rows'), sc = $('#scroll'), x0 = e.clientX, y0 = e.clientY, keep = e.metaKey || e.ctrlKey || e.shiftKey, base = new Set(keep ? selIds() : []);
   let box = null;
   const mv = ev => {
-    if (!box) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return; box = rows.appendChild(Object.assign(document.createElement('div'), { className: 'marq' })); }
-    const l = Math.min(x0, ev.clientX), r = Math.max(x0, ev.clientX), tp = Math.min(y0, ev.clientY), b = Math.max(y0, ev.clientY), R = rows.getBoundingClientRect();
-    Object.assign(box.style, { left: l - R.left + 'px', top: tp - R.top + 'px', width: r - l + 'px', height: b - tp + 'px' });
+    if (!box) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return; box = sc.appendChild(Object.assign(document.createElement('div'), { className: 'marq' })); }
+    const l = Math.min(x0, ev.clientX), r = Math.max(x0, ev.clientX), tp = Math.min(y0, ev.clientY), b = Math.max(y0, ev.clientY), R = sc.getBoundingClientRect();
+    Object.assign(box.style, { left: l - R.left + sc.scrollLeft + 'px', top: tp - R.top + sc.scrollTop + 'px', width: r - l + 'px', height: b - tp + 'px' });
     const ids = new Set(base);
     for (const c of rows.querySelectorAll('.clip')) { const q = c.getBoundingClientRect(); if (q.right > l && q.left < r && q.bottom > tp && q.top < b) ids.add(c.dataset.id); }
     msel.clear();
@@ -2149,20 +2141,13 @@ function inspector() {
       (S.fxKey(it) && !dnLive(it) ? `<p class="hint work">${tr('dnWork')}</p>` : '')));
     if (media(it).kind === 'audio') h.push(fades);
   } else if (inspTab === 'tSpeed') {
-    const cv = S.hasCurve(it) ? it.curve : null, sub = cv ? 'curve' : spdSub;
-    h.push(`<div class="seg">${['std', 'curve'].map(x => `<button data-ssub="${x}" class="${x === sub ? 'on' : ''}">${tr('sp_' + x)}</button>`).join('')}</div>`);
     const durRow = `<div class="f"><div class="lb"><span>${tr('dur')}</span></div><div class="spdur"><span>${S.srcLen(it).toFixed(1)}s</span><i></i><input type="number" data-k="dur" step="0.1" value="${+it.dur.toFixed(2)}"></div></div>`;
-    if (sub === 'std') {
-      const sp = num(it.speed, 1);
-      h.push(`<div class="f"><div class="lb"><span>${tr('speed')}</span><b data-show="spdLog">×${sp}</b></div><div class="spd"><input type="range" data-k="spdLog" min="-1" max="1" step="0.005" value="${Math.log10(sp)}" list="spdTicks"><input type="number" data-k="speed" min="0.1" max="10" step="0.05" value="${sp}"></div>` +
-        `<datalist id="spdTicks"><option value="-1"></option><option value="-0.699"></option><option value="-0.301"></option><option value="0"></option><option value="0.301"></option><option value="0.699"></option><option value="1"></option></datalist>` +
-        `<div class="ticks"><span>0.1x</span><span>0.5x</span><span>1x</span><span>2x</span><span>5x</span><span>10x</span></div></div>`, durRow);
-    } else {
-      h.push(`<div class="cvgrid">${['none', ...Object.keys(S.CURVES)].map(c => `<button data-curve="${c}" class="${(cv ? cv.id : 'none') === c ? 'on' : ''}">${c === 'none' ? icon('x') : curveSvg(S.CURVES[c], c === 'custom')}<span>${tr('cv_' + c)}</span></button>`).join('')}</div>`);
-      if (cv) h.push(durRow, pxBar(it, 'insp'), `<div class="cved"><svg id="cvEd" viewBox="0 0 300 160" preserveAspectRatio="none"></svg><div class="cvbtns"><button id="cvReset">${tr('reset')}</button><button id="cvAdd" title="${tr('cv_add')}">+</button><button id="cvDel" title="${tr('cv_del')}">−</button></div></div>`);
-    }
+    const sp = num(it.speed, 1);
+    h.push(`<div class="f"><div class="lb"><span>${tr('speed')}</span><b data-show="spdLog">×${sp}</b></div><div class="spd"><input type="range" data-k="spdLog" min="-1" max="1" step="0.005" value="${Math.log10(sp)}" list="spdTicks"><input type="number" data-k="speed" min="0.1" max="10" step="0.05" value="${sp}"></div>` +
+      `<datalist id="spdTicks"><option value="-1"></option><option value="-0.699"></option><option value="-0.301"></option><option value="0"></option><option value="0.301"></option><option value="0.699"></option><option value="1"></option></datalist>` +
+      `<div class="ticks"><span>0.1x</span><span>0.5x</span><span>1x</span><span>2x</span><span>5x</span><span>10x</span></div></div>`, durRow);
     if (media(it).kind === 'video' || media(it).hasAudio || media(it).kind === 'audio') h.push(`<div class="inl">${fld.check('pitch', 'pitchShift', it)}</div>`);
-    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr(rifeTool ? 'smoothHintAi' : 'smoothHint')}</p>`, rifeTool ? '' : `<button class="ghost" data-rifeget>${icon('download')}<span>${tr('rifeGet')}</span></button>`, cv ? '' : pxBar(it, 'insp'));
+    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr(rifeTool ? 'smoothHintAi' : 'smoothHint')}</p>`, rifeTool ? '' : `<button class="ghost" data-rifeget>${icon('download')}<span>${tr('rifeGet')}</span></button>`, pxBar(it, 'insp'));
   } else if (inspTab === 'tAdjust') {
     h.push(`<div class="seg csub">${['basic', 'hsl', 'curves', 'wheels', 'lut', 'mask'].map(x => `<button data-csub="${x}" class="${x === colSub ? 'on' : ''}">${tr('cs_' + x)}</button>`).join('')}</div>`);
     const C = it.color || {};
@@ -2220,7 +2205,6 @@ function inspector() {
     const fake = { text: 'Aa', style: { ...presetStyle(b.dataset.tpreset, false), size: 96, strokeW: num(presetStyle(b.dataset.tpreset).strokeW, 0) * 1.1, shadowBlur: 10, shadowDist: 8, glowSize: 26 }, x: 0.5, y: 0.5, dur: 9 };
     b.appendChild(cardCanvas(ctx => drawTextItem(ctx, { w: 240, h: 180 }, fake, 5), 64, 48));
   });
-  if ($('#cvEd')) cvEditor(it);
   if ($('#ccEd')) colorCurveEditor(it);
   if ($('.whls')) wheelsUI(it);
   if ($('.looks')) lookThumbs(it);
@@ -2303,25 +2287,8 @@ $('#inspTabs').addEventListener('click', e => {
   if (b) { inspTab = b.dataset.itab; inspector(); }
 });
 
-let editing = false, animSub = 'in', spdSub = 'std', colSub = 'basic', hslSel = 'red', curCh = 'l';
+let editing = false, animSub = 'in', colSub = 'basic', hslSel = 'red', curCh = 'l';
 
-/* ---------- speed curves ---------- */
-const cvY = (v, h) => (1 - (Math.log10(v) + 1) / 2) * h; // 10x top, 0.1x bottom
-function curveSvg(pts, flat) {
-  if (flat) return `<svg viewBox="0 0 60 40" class="cvth"><path d="M8 12h44M8 20h44M8 28h44" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="12" r="3"/><circle cx="34" cy="20" r="3"/><circle cx="44" cy="28" r="3"/></svg>`;
-  const d = Array.from({ length: 41 }, (_, i) => `${i ? 'L' : 'M'}${(i / 40 * 56 + 2).toFixed(1)} ${(cvY(S.curveSpeed(pts, i / 40), 32) + 4).toFixed(1)}`).join('');
-  return `<svg viewBox="0 0 60 40" class="cvth"><path d="M2 12h56M2 28h56" class="gl"/><path d="M2 20h56" class="gl1"/><path d="${d}" class="cv"/></svg>`;
-}
-function setCurve(it, id) {
-  snapshot();
-  const src = S.srcLen(it);
-  if (id === 'none') { delete it.curve; it.speed = 1; it.dur = src; }
-  else { it.curve = { id, pts: S.CURVES[id].map(p => [...p]), src }; it.speed = 1; it.dur = S.curveDur(it.curve); }
-  cvSel = -1;
-  refresh();
-}
-let cvSel = -1;
-// Graph editor: drag points (ends move up/down only), + adds a point at the playhead, − removes the chosen one.
 // A clip's frame (at its local time lt) as 96px pixels, for auto colour. Videos use a spare element.
 // Background colour for the chroma key: the most common colour around the frame's edges.
 async function keyPick(it) {
@@ -2482,60 +2449,6 @@ function lookThumbs(it) {
     b.getContext('2d').putImageData(out, 0, 0);
   }
 }
-function cvEditor(it) {
-  const svg = $('#cvEd'), W = 300, H = 160;
-  const paint = () => {
-    const c = it.curve, d = Array.from({ length: 121 }, (_, i) => `${i ? 'L' : 'M'}${(i / 120 * W).toFixed(1)} ${cvY(S.curveSpeed(c.pts, i / 120), H).toFixed(1)}`).join('');
-    const lt = t - it.start, ph = lt >= 0 && lt <= it.dur ? S.uAtF(c, lt / it.dur) * W : -10;
-    svg.innerHTML = `<path d="M0 ${H / 4}H${W}M0 ${H * 3 / 4}H${W}" class="gl"/><path d="M0 ${H / 2}H${W}" class="gl1"/>` +
-      `<text x="4" y="12">10x</text><text x="4" y="${H / 2 - 4}">1x</text><text x="4" y="${H - 4}">0.1x</text>` +
-      `<path d="${d}" class="cv"/><line x1="${ph}" x2="${ph}" y1="0" y2="${H}" class="ph"/>` +
-      c.pts.map((p, i) => `<circle data-pt="${i}" cx="${p[0] * W}" cy="${cvY(p[1], H)}" r="7" class="${i === cvSel ? 'on' : ''}"/>`).join('');
-    const dd = $('#inspBody [data-k="dur"]');
-    if (dd && document.activeElement !== dd) dd.value = +it.dur.toFixed(2);
-  };
-  const commit = pts => { it.curve = { ...it.curve, pts, edited: true }; it.dur = S.curveDur(it.curve); pack(); renderTimeline(); needsDraw = true; paint(); };
-  paint();
-  svg.onpointerdown = e => {
-    const c = e.target.closest('[data-pt]');
-    if (!c) return;
-    const i = +c.dataset.pt, n = it.curve.pts.length, r = svg.getBoundingClientRect();
-    cvSel = i;
-    snapshot();
-    const mv = ev => {
-      const pts = it.curve.pts.map(p => [...p]);
-      const y = clamp((ev.clientY - r.top) / r.height, 0, 1), v = Math.pow(10, (1 - y) * 2 - 1);
-      pts[i][1] = +(Math.abs(Math.log10(v)) < 0.03 ? 1 : v).toFixed(3); // snap to 1x
-      if (i > 0 && i < n - 1) pts[i][0] = +clamp((ev.clientX - r.left) / r.width, pts[i - 1][0] + 0.02, pts[i + 1][0] - 0.02).toFixed(4);
-      commit(pts);
-    };
-    mv(e);
-    window.addEventListener('pointermove', mv);
-    window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); dirty = true; inspector(); }, { once: true });
-  };
-  $('#cvReset').onclick = () => { snapshot(); cvSel = -1; commit(S.CURVES[it.curve.id].map(p => [...p])); };
-  $('#cvAdd').onclick = () => {
-    const c = it.curve, lt = t - it.start;
-    let u = lt > 0 && lt < it.dur ? S.uAtF(c, lt / it.dur) : null;
-    if (u == null || c.pts.some(p => Math.abs(p[0] - u) < 0.03)) { // widest gap's middle
-      let g = 0;
-      for (let i = 1; i < c.pts.length; i++) if (c.pts[i][0] - c.pts[i - 1][0] > c.pts[g + 1][0] - c.pts[g][0]) g = i - 1;
-      u = (c.pts[g][0] + c.pts[g + 1][0]) / 2;
-    }
-    snapshot();
-    const pts = [...c.pts.map(p => [...p]), [+u.toFixed(4), +S.curveSpeed(c.pts, u).toFixed(3)]].sort((a, b) => a[0] - b[0]);
-    cvSel = pts.findIndex(p => p[0] === +u.toFixed(4));
-    commit(pts);
-  };
-  $('#cvDel').onclick = () => {
-    const c = it.curve;
-    if (cvSel <= 0 || cvSel >= c.pts.length - 1) return toast(tr('cv_pick'));
-    snapshot();
-    const pts = c.pts.filter((_, i) => i !== cvSel);
-    cvSel = -1;
-    commit(pts);
-  };
-}
 $('#inspBody').addEventListener('input', e => {
   const nk = e.target.dataset.num;
   if (!nk || e.target.value === '' || !isFinite(+e.target.value)) return;
@@ -2611,14 +2524,6 @@ $('#inspBody').addEventListener('click', e => {
     if (cur && cur !== 'none') startAnimPreview(it); else animPreview = null;
     return;
   }
-  const ss = e.target.closest('[data-ssub]');
-  if (ss) {
-    spdSub = ss.dataset.ssub;
-    if (spdSub === 'std' && S.hasCurve(it)) { snapshot(); const src = S.srcLen(it); delete it.curve; it.speed = 1; it.dur = src; return refresh(); }
-    return inspector();
-  }
-  const cb = e.target.closest('[data-curve]');
-  if (cb) { setCurve(it, cb.dataset.curve); return; }
   const fv = e.target.closest('[data-fav]');
   if (fv) {
     const f = lsGet('kadr.tplFav', []), id = fv.dataset.fav;
@@ -3144,6 +3049,8 @@ function ctxMenu(e, items) {
   setTimeout(() => window.addEventListener('pointerdown', ev => { if (!m.contains(ev.target)) m.hidden = true; }, { once: true }));
 }
 $('#rows').addEventListener('pointerdown', () => (focusZone = 'tl'), true);
+// The lanes sit at the bottom; a drag in the empty space above them selects too
+$('#scroll').addEventListener('pointerdown', e => { if (e.target === $('#scroll') && e.button === 0) { focusZone = 'tl'; tlMarquee(e); } });
 $('#rows').addEventListener('contextmenu', e => {
   e.preventDefault();
   const c = e.target.closest('.clip');
@@ -3151,8 +3058,28 @@ $('#rows').addEventListener('contextmenu', e => {
   select(c.dataset.id);
   const it = item(c.dataset.id), vid = !isText(it) && media(it).kind === 'video';
   ctxMenu(e, [['split', () => splitAt()], ['k_copy', copySel], ['k_cut', cutSel], ['k_paste', pasteClip], ['dup', duplicateSel],
-    vid && ['freeze', freezeFrame], !isText(it) && media(it).kind !== 'audio' && ['rotate90', rotateSel], (isText(it) || media(it).kind !== 'audio') && [it.hidden ? 'showLayer' : 'hideLayer', toggleHidden], ['-'], ['del', removeSel, 'danger']]);
+    vid && ['freeze', freezeFrame], vid && media(it).hasAudio && ['extractAudio', extractAudio], !isText(it) && media(it).kind !== 'audio' && ['rotate90', rotateSel], (isText(it) || media(it).kind !== 'audio') && [it.hidden ? 'showLayer' : 'hideLayer', toggleHidden], ['-'], ['del', removeSel, 'danger']]);
 });
+
+// The clip's sound as its own clip on a free audio lane under it (same file, same timing); the video goes silent.
+function extractAudio() {
+  const it = sel && item(sel), m = it && !isText(it) && media(it);
+  if (!m || m.kind !== 'video' || !m.hasAudio) return;
+  snapshot();
+  let aid = Object.keys(P.media).find(k => P.media[k].path === m.path && P.media[k].kind === 'audio');
+  if (!aid) P.media[aid = uid()] = { ...m, kind: 'audio', name: m.name.replace(/\.[^.]+$/, '') + ' · ' + tr('audioWord'), added: Date.now() };
+  const end = it.start + it.dur, free = x => !P.items.some(i => i.track === x.id && i.start < end - 1e-6 && it.start < i.start + i.dur - 1e-6);
+  let lane = P.tracks.find(x => x.kind === 'audio' && free(x));
+  if (!lane) P.tracks.push(lane = { id: 'a' + uid(), kind: 'audio' });
+  const a = { id: uid(), track: lane.id, media: aid, start: it.start, dur: it.dur, in: it.in, speed: it.speed, volume: num(it.volume, 1) };
+  if (it.afIn) a.fadeIn = it.afIn; // a video's sound fades live in afIn/afOut, an audio clip's in fadeIn/fadeOut
+  if (it.afOut) a.fadeOut = it.afOut;
+  if (it.pitch != null) a.pitch = it.pitch;
+  it.muted = true;
+  P.items.push(a);
+  sel = a.id; msel.clear(); inspTab = null;
+  dirty = true; refresh(); renderBin();
+}
 
 /* ---------- hide / show layers ---------- */
 const hideRow = it => `<button class="wide hidebtn${it.hidden ? ' on' : ''}" id="hideBtn">${icon(it.hidden ? 'eye-off' : 'eye')}${tr(it.hidden ? 'showLayer' : 'hideLayer')}</button>`;
@@ -3374,7 +3301,7 @@ async function stabilize(it) {
 function addToBin(res) {
   const added = [];
   for (const m of res.ok) {
-    const have = Object.entries(P.media).find(([, x]) => x.path === m.path);
+    const have = Object.entries(P.media).find(([, x]) => x.path === m.path && x.kind === m.kind);
     if (have) { added.push(have[0]); continue; }
     const id = uid();
     P.media[id] = { ...m, added: Date.now() };
@@ -4045,6 +3972,8 @@ async function toggleRecord() {
 
 /* ---------- project ---------- */
 function syncSettings() {
+  // speed curves were removed: old projects keep the clip at 1x over its whole source range
+  for (const it of P.items) if (it.curve) { const src = S.srcLen(it); delete it.curve; it.speed = 1; it.dur = src; }
   const ar = Object.keys(ASPECTS).find(k => ASPECTS[k][0] === P.w && ASPECTS[k][1] === P.h);
   $('#aspect').innerHTML = Object.keys(ASPECTS).map(r => `<option>${r}</option>`).join('') + (ar ? '' : `<option value="custom">${P.w}×${P.h}</option>`);
   $('#aspect').value = ar || 'custom';
