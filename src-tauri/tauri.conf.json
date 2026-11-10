@@ -76,7 +76,7 @@
     ],
     "macOS": {
       "signingIdentity": "-",
-      "minimumSystemVersion": "12.0",
+      "minimumSystemVersion": "13.4",
       "infoPlist": "Info.plist"
     },
     "windows": {
