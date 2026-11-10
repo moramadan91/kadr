@@ -213,19 +213,22 @@ function rifeFor(it) {
   }
   return '';
 }
-// Remove background: an AI matte video per source file (MODNet), multiplied into the clip's alpha
-let matteTool = false;
-inv('matte_ready').then(v => (matteTool = v), () => {});
+// Remove background: an AI matte video per source file, multiplied into the clip's alpha.
+// Two models: people (MODNet) and objects/products (BiRefNet-lite)
+const matteTool = {};
+const mtKind = it => (it.rmbgKind === 'object' ? 'object' : 'person');
+for (const k of ['person', 'object']) inv('matte_ready', { kind: k }).then(v => (matteTool[k] = v), () => {});
 const matteOk = new Map(), mattePath = new Map(), matteProg = new Map();
 function matteFor(it) {
-  if (!it.rmbg || !matteTool || !media(it) || media(it).kind !== 'video') return null;
-  const k = media(it).path;
+  if (!it.rmbg || !media(it) || media(it).kind !== 'video' || !matteTool[mtKind(it)]) return null;
+  const k = mtKey(it);
   if (mattePath.has(k)) return mattePath.get(k);
-  if (!matteOk.has(k)) matteOk.set(k, inv('matte_make', { path: k, job: it.id })
+  if (!matteOk.has(k)) matteOk.set(k, inv('matte_make', { path: media(it).path, job: it.id, kind: mtKind(it), full: !!it.rmbgFull })
     .then(p => { mattePath.set(k, p); needsDraw = true; if (inspTab === 'tVideo') inspector(); return p; }, e => { mattePath.set(k, null); toast(cleanErr(e)); return null; }));
   return '';
 }
-const matteWait = it => (matteFor(it), matteOk.get(media(it).path) || Promise.resolve(null));
+const mtKey = it => media(it).path + '|' + mtKind(it) + (mtKind(it) === 'object' && it.rmbgFull ? '|full' : '');
+const matteWait = it => (matteFor(it), matteOk.get(mtKey(it)) || Promise.resolve(null));
 TA.event.listen('matteprog', e => { matteProg.set(e.payload.job, e.payload.p); const b = document.querySelector(`[data-mtbar="${e.payload.job}"]`); if (b) { b.style.setProperty('--p', e.payload.p); b.querySelector('em').textContent = tr('mtPrep').replace('{p}', Math.round(e.payload.p * 100)); } });
 function matteEl(it) {
   const key = chainKey(it) + '|mt', url = urlOf({ path: matteFor(it) });
@@ -2122,10 +2125,13 @@ function inspector() {
     const K = it.chroma || {};
     if (!FM && media(it).kind === 'video') {
       const mf = matteFor(it), mp = matteProg.get(it.id) || 0;
+      const ob = mtKind(it) === 'object';
       h.push(grp('rmbgSec', `<div class="inl">${fld.check('rmbg', 'rmbgOn', it)}</div>` +
-        (it.rmbg && !matteTool ? `<button class="ghost" data-matteget>${icon('download')}<span>${tr('matteGet')}</span></button>` : '') +
+        (it.rmbg ? fld.select('rmbgKind', 'rmbgKind', [['person', tr('rmbgPerson')], ['object', tr('rmbgObject')]], it) : '') +
+        (it.rmbg && ob ? `<div class="inl">${fld.check('rmbgFull', 'rmbgFull', it)}</div>` : '') +
+        (it.rmbg && !matteTool[mtKind(it)] ? `<button class="ghost" data-matteget>${icon('download')}<span>${tr(ob ? 'matteGetObj' : 'matteGet')}</span></button>` : '') +
         (mf === '' ? `<div class="pxb insp" data-mtbar="${it.id}" style="--p:${mp}"><i></i><em>${tr('mtPrep').replace('{p}', Math.round(mp * 100))}</em></div>` : '') +
-        `<p class="hint">${tr('rmbgHint')}</p>`));
+        `<p class="hint">${tr(ob ? 'rmbgHintObj' : 'rmbgHint')}</p>`));
     }
     if (!FM) h.push(grp('keySec', `<div class="inl">${fld.check('chroma.on', 'keyOn', it)}</div>` + (K.on ? `<div class="row2"><label>${tr('keyColor')}<input type="color" data-k="chroma.color" value="${esc(K.color || '#00ff00')}"></label><button id="keyPick" data-i="pipette"><span>${tr('keyPick')}</span></button></div>` +
       fld.range('chroma.sim', 'keySim', 0.01, 1, 0.01, it, 0.3) + fld.range('chroma.blend', 'keyBlend', 0, 1, 0.01, it, 0.1) : '') + `<p class="hint">${tr('keyHint')}</p>`));
@@ -2256,8 +2262,9 @@ function inspector() {
 }
 $('#inspBody').addEventListener('click', async e => {
   if (!e.target.closest('[data-matteget]')) return;
-  if (!(await TA.dialog.ask(tr('matteAsk'), { title: tr('rmbgSec') }))) return;
-  try { progress(tr('p_matte_dl'), 0); await inv('matte_download'); matteTool = true; hideModal(); toast(tr('matteOk')); inspector(); }
+  const it = sel && item(sel), kind = it ? mtKind(it) : 'person';
+  if (!(await TA.dialog.ask(tr(kind === 'object' ? 'matteAskObj' : 'matteAsk'), { title: tr('rmbgSec') }))) return;
+  try { progress(tr('p_matte_dl'), 0); await inv('matte_download', { kind }); matteTool[kind] = true; hideModal(); toast(tr('matteOk')); inspector(); }
   catch (err) { hideModal(); toast(cleanErr(err)); }
 });
 // one-time download of the AI frame engine (RIFE, under 20 MB)
@@ -3919,7 +3926,7 @@ async function doExport(o) {
       const rife = {};
       for (const it of P.items.filter(i => pxNeeds(i) && smoothSlow(i) && rifeTool)) { progress(tr('p_rife'), 0); const r = await rifeWait(it); if (r) rife[it.id] = r; }
       const mattes = {};
-      for (const it of P.items.filter(i => i.rmbg && matteTool && media(i) && media(i).kind === 'video')) { progress(tr('p_matte'), 0); const r = await matteWait(it); if (r) mattes[it.id] = r; }
+      for (const it of P.items.filter(i => i.rmbg && matteTool[mtKind(i)] && media(i) && media(i).kind === 'video')) { progress(tr('p_matte'), 0); const r = await matteWait(it); if (r) mattes[it.id] = r; }
       const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks, rife, mattes });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: null, duration });
