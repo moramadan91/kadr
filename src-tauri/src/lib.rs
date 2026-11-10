@@ -542,16 +542,24 @@ async fn model_download(app: AppHandle) -> R<()> {
 // ---------- fonts ----------
 // Families installed on this computer (any app's fonts), names only: the webview draws them by name.
 #[tauri::command]
-async fn system_fonts() -> Vec<String> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn system_fonts(srv: State<'_, Arc<MediaServer>>) -> Result<Value, ()> {
+    // WebKit only draws OS fonts by name, not ones the user installed, so the page loads each family from its files
+    let srv = srv.inner().clone();
+    Ok(tauri::async_runtime::spawn_blocking(move || {
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
-        let mut v: Vec<String> = db.faces().filter_map(|f| f.families.first().map(|x| x.0.clone()))
-            .filter(|n| !n.starts_with('.')).collect();
-        v.sort_by_key(|a| a.to_lowercase());
-        v.dedup();
-        v
-    }).await.unwrap_or_default()
+        let mut fams: std::collections::BTreeMap<String, (String, Vec<Value>)> = Default::default();
+        for f in db.faces() {
+            let Some(name) = f.families.first().map(|x| x.0.clone()).filter(|n| !n.starts_with('.')) else { continue };
+            let path = match &f.source { fontdb::Source::File(p) => p.clone(), fontdb::Source::SharedFile(p, _) => p.clone(), _ => continue };
+            let e = fams.entry(name.to_lowercase()).or_insert_with(|| (name.clone(), vec![]));
+            if f.index > 0 { continue; } // FontFace can't pick a face inside a collection: first one only
+            let p = path.to_string_lossy().into_owned();
+            srv.allow(&p);
+            e.1.push(json!({ "path": p, "weight": f.weight.0, "italic": f.style != fontdb::Style::Normal }));
+        }
+        Value::Array(fams.into_values().map(|(n, files)| json!({ "family": n, "files": files })).collect())
+    }).await.unwrap_or(Value::Array(vec![])))
 }
 
 // Autosave target for projects that were never saved to a file.

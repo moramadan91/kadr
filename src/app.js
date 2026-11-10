@@ -76,9 +76,16 @@ function fontPicker(it) {
     }
     if (q) rows = rows.filter(r => r[0].toLowerCase().includes(q));
     const more = rows.length > 400;
-    $('#fpL').innerHTML = rows.slice(0, 400).map(([f, k]) => `<div class="fr${f === cur ? ' on' : ''}" data-font="${esc(f)}"><span class="fn"${k === 'dl' ? '' : ` style="font-family:'${esc(f)}',Cairo"`}>${esc(f)}</span><span class="fs"${k === 'dl' ? '' : ` style="font-family:'${esc(f)}',Cairo"`}>أبجد Aa</span>${k === 'dl' ? icon('download') : ''}</div>`).join('') +
+    $('#fpL').innerHTML = rows.slice(0, 400).map(([f, k]) => `<div class="fr${f === cur ? ' on' : ''}" data-font="${esc(f)}"${k === 'dl' ? '' : ' data-ff'}><span class="fn">${esc(f)}</span><span class="fs">أبجد Aa</span>${k === 'dl' ? icon('download') : ''}</div>`).join('') +
       (more ? `<p class="hint">${tr('fontMore', { n: rows.length - 400 })}</p>` : rows.length ? '' : `<p class="hint">${tr('fontNone')}</p>`);
     paintIcons($('#fpL'));
+    // preview each row in its own font only once it scrolls into view (loading hundreds of files at once is slow)
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      if (!e.isIntersecting) return;
+      io.unobserve(e.target);
+      for (const sp of e.target.querySelectorAll('.fn, .fs')) sp.style.fontFamily = `"${e.target.dataset.font}", Cairo`;
+    }), { root: $('#fpL') });
+    $$('#fpL [data-ff]').forEach(r => io.observe(r));
   };
   list();
   $('#fpQ').oninput = list;
@@ -4290,7 +4297,12 @@ window.addEventListener('keydown', e => {
 (async () => {
 MEDIA_BASE = await inv('media_base');
 inv('fonts_downloaded').then(m => { for (const [f, files] of Object.entries(m || {})) regFont(f, files); ensureFonts(); }).catch(() => {});
-inv('system_fonts').then(v => { FontLib.sys = v || []; }).catch(() => {});
+inv('system_fonts').then(v => {
+  // every family registered from its own files; a face only loads when something draws with it
+  for (const f of v || []) for (const x of f.files) document.fonts.add(new FontFace(f.family, `url("${MEDIA_BASE + encodeURIComponent(x.path)}")`, { weight: String(x.weight), style: x.italic ? 'italic' : 'normal' }));
+  FontLib.sys = (v || []).map(f => f.family);
+  needsDraw = true;
+}).catch(() => {});
 paintIcons();
 applyLang();
 setLibTab('media');
