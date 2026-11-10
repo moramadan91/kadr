@@ -85,6 +85,25 @@ vec4 film(vec4 c,vec2 u,float k){float f=floor(p*24.);c.rgb+=(h1(floor(u*R*.5)+f
     float yl=-.62+fi*.42+x*.35+sin(x*6.+fi)*.05;float W=AS()*.5+.1;
     M=max(M,step(abs(s.y-yl)-.27+(n-.5)*.06,0.)*step(x,-W+2.*W*t+(n-.5)*.05));}
   M=max(M,step(.98,q));vec4 c=X(u,p);return film(vec4(mix(c.rgb,${col}*(.8+.35*n),M),1.),u,b*.5);}`;
+  // seamless-pack helpers: elastic and bounce easing, rounded box, voronoi shards
+  const G = `float el(float x){return 1.-pow(2.,-9.*x)*cos(x*PI*4.5);}
+float bo(float x){if(x<1./2.75)return 7.5625*x*x;if(x<2./2.75){x-=1.5/2.75;return 7.5625*x*x+.75;}if(x<2.5/2.75){x-=2.25/2.75;return 7.5625*x*x+.9375;}x-=2.625/2.75;return 7.5625*x*x+.984375;}
+float rr(vec2 q,vec2 h,float r){vec2 d=abs(q)-h+r;return length(max(d,0.))+min(max(d.x,d.y),0.)-r;}
+vec2 cell(vec2 q){vec2 i=floor(q),f=fract(q);float md=9.;vec2 mc=vec2(0.);for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 g=vec2(float(x),float(y));
+  vec2 o=vec2(h1(i+g),h1(i+g+9.));vec2 r=g+o-f;float d=dot(r,r);if(d<md){md=d;mc=i+g+o;}}return mc;}
+`;
+  // the next clip pushes in from the top on an elastic or bouncing ease
+  const flatE = (ease) => G + `vec4 tr(vec2 u){float e=${ease}(p),b=max(sin(PI*min(p*1.6,1.)),0.);float y=u.y-(1.-e);vec2 d=vec2(0.,.15*b);
+  return y>=0.?dbB(vec2(u.x,y),d):dbA(vec2(u.x,y+1.),d);}`;
+  // perspective: both clips ride tilted cards sideways, receding (in) or coming close (out)
+  const persp = (sg, z) => G + `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float h=AS();float ang=${sg}.*.6*b;vec3 e1=ry(vec3(1.,0.,0.),ang),e2=vec3(0.,1.,0.);
+  vec3 A=card(u,vec3(-e*2.2*h,0.,${z}*b),e1,e2),B=card(u,vec3((1.-e)*2.2*h,0.,${z}*b),e1,e2);
+  if(A.z>0.)return dbA(A.xy,vec2(.08*b,0.));if(B.z>0.)return dbB(B.xy,vec2(.08*b,0.));return bg(u);}`;
+  // stripes at angle a: alternate bands push the frame opposite ways, each band starting a little later
+  const stripes = (a, n) => G + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 s=sq(u);vec2 d=vec2(cos(${a}),sin(${a}));float band=floor(dot(s,vec2(-d.y,d.x))*${n}.+100.);
+  float t=clamp((p-.3*fract(band*.618))/.7,0.,1.),e=io(t),sg=mod(band,2.)<.5?1.:-1.,S=AS()*abs(d.x)+abs(d.y);
+  vec2 ua=(s+d*sg*e*S)/vec2(AS(),1.)+.5,ub=(s+d*sg*(e-1.)*S)/vec2(AS(),1.)+.5;vec2 m=d/vec2(AS(),1.)*.12*sin(PI*t);
+  return inb(ua)?dbA(ua,m):dbB(ub,m);}`;
   const LIST = [
     // camera moves (lens zoom, whips, spins): the cut happens in the middle, hidden by the motion
     ['lensIn', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.+2.*t),.45*t);}
@@ -258,6 +277,55 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
     ['fCard', 'film', F + `vec4 tr(vec2 u){float e=io(p);vec2 s=sq(u);float hw=AS()*.5+.2;float c=mix(-2.*hw-.3,2.*hw+.3,e);float x=s.x-s.y*.3,L=c-hw,Rr=c+hw;
   vec4 o=x<L?TB(u):TA(u);float m=smoothstep(L-.01,L+.01,x)*smoothstep(Rr+.01,Rr-.01,x);
   o.rgb=mix(o.rgb,vec3(.87)*(.94+.06*vn(u*R*.3)),m);o.rgb*=1.-smoothstep(.12,0.,abs(x-Rr-.04))*(1.-m)*.35;return o;}`],
+    // seamless pack: zooms, spins, glitches, flats, perspective, stripes, glass, fades
+    ['vZoomElastic', 'cam', G + `vec4 tr(vec2 u){if(p<.4){float t=ei(p/.4);return zbA(zm(u,vec2(.5),1.+2.*t),.5*t);}float t=(p-.4)/.6;
+  return zbB(zm(u,vec2(.5),1.+.6*(1.-el(t))),.4*(1.-smoothstep(0.,.35,t)));}`],
+    ['vZoomOptics', 'cam', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=zm(bulge(u,-2.5*b),vec2(.5),1.+1.5*b);return p<.5?zbA(v,.35*b):zbB(v,.35*b);}`],
+    ['vZoomPixel', 'cam', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=zm(u,vec2(.5),1.+.8*b);float N=mix(500.,14.,pow(b,1.5));vec2 Gd=vec2(N*AS(),N);
+  vec2 q=(floor(v*Gd)+.5)/Gd;return p<.5?zbA(q,.2*b):zbB(q,.2*b);}`],
+    ['vSpinCorner', 'cam', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float a=e<.5?e*PI*.5:(e-1.)*PI*.5;vec4 s=vec4(0.);
+  for(int i=0;i<12;i++){vec2 v=rc(u,vec2(0.),a+.3*b*(float(i)/11.-.5));s+=e<.5?TA(v):TB(v);}return s/12.;}`],
+    ['vSpinElastic', 'cam', G + `vec4 tr(vec2 u){if(p<.4){float t=ei(p/.4);return sbA(rc(u,vec2(.5),t*PI*.5),.6*t);}float t=(p-.4)/.6;
+  return sbB(rc(u,vec2(.5),-(1.-el(t))*PI*.5),.6*(1.-smoothstep(0.,.4,t)));}`],
+    ['vCamFocus', 'cam', G + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float k=smoothstep(0.,.3,b),s=1.-.06*k;vec2 v=(u-.5)/s+.5;vec4 c=p<.5?bA(v,.05*b):bB(v,.05*b);
+  c.rgb=mix(c.rgb,vec3(1.),pow(b,3.)*.7);vec2 q=(u-.5)*vec2(AS(),1.);c.rgb=mix(c.rgb,vec3(.05),smoothstep(0.,.003,rr(q,vec2(AS()*.5*s,.5*s),.03))*k);
+  float ch=(step(abs(q.x),.0015)*step(abs(q.y),.04)+step(abs(q.y),.0015)*step(abs(q.x),.04))*b;c.rgb=mix(c.rgb,vec3(1.),ch*.7);return c;}`],
+    ['vInvert', 'glitch', `vec4 tr(vec2 u){float f=floor(p*14.);float on=step(.25,p)*step(p,.8)*step(.35,h1(vec2(f,1.)));vec2 v=u+vec2((h1(vec2(f,2.))-.5)*.08*on,0.);
+  vec4 c=X(v,p);if(on>.5)c.rgb=1.-c.rgb;return c;}`],
+    ['vBadSignal', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*20.),row=floor(u.y*60.);
+  float j=(h1(vec2(row,f))-.5)*.25*b*b*step(.6,h1(vec2(row*.3,f+3.)));vec2 v=u+vec2(j+sin(u.y*400.+p*90.)*.004*b,0.);vec4 c=X(v,p);
+  float L=dot(c.rgb,vec3(.3,.59,.11));c.rgb=mix(c.rgb,vec3(L)*1.2+.1,smoothstep(.3,.9,b));c.rgb+=(h1(u*R+f)-.5)*.25*b;return c;}`],
+    ['vTvNoise', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*30.);float n=h1(floor(u*R*.5)+f*1.7),s=smoothstep(.25,.75,b);
+  vec4 c=X(u+vec2(0.,(h1(vec2(f,4.))-.5)*.1*s),p);c.rgb=mix(c.rgb,vec3(n)-step(.85,fract(u.y*3.+p*4.))*.25,s*.95);return c;}`],
+    ['vAberr', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*16.),row=floor(u.y*24.);vec2 v=u+vec2((h1(vec2(row,f))-.5)*.3*b,0.),d=vec2(.03*b,0.),m=vec2(.2*b,0.);
+  return p<.5?vec4(dbA(v+d,m).r,dbA(v,m).g,dbA(v-d,m).b,1.):vec4(dbB(v+d,m).r,dbB(v,m).g,dbB(v-d,m).b,1.);}`],
+    ['vMagnify', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*12.);vec2 v=u;float hit=0.;
+  for(int i=0;i<5;i++){float fi=float(i);vec2 c0=vec2(h1(vec2(f,fi)),h1(vec2(fi,f+1.))),hs=vec2(.08+.2*h1(vec2(f+fi,2.)),.03+.08*h1(vec2(f,fi+5.)));
+    if(abs(u.x-c0.x)<hs.x&&abs(u.y-c0.y)<hs.y&&h1(vec2(fi,f*3.))<b){v=c0+(u-c0)/1.8+vec2(.05,0.);hit=1.;}}
+  vec4 c=p<.5?rgbA(v,vec2(.012*b,0.)):rgbB(v,vec2(.012*b,0.));float bar=step(abs(u.y-h1(vec2(f,9.))),.006)*step(u.x,h1(vec2(f,10.)))*b;
+  c.rgb=mix(c.rgb,vec3(1.,.55,.2),bar*.8)*(1.+.25*hit*b);return c;}`],
+    ['vOffset', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*10.);float o=(h1(vec2(f,3.))-.5)*.8*b;float x=fract(u.x+o);vec2 v=vec2(x,u.y);
+  vec4 c=p<.5?rgbA(v,vec2(.02*b,0.)):rgbB(v,vec2(.02*b,0.));c.rgb+=(exp(-x*200.)+exp(-(1.-x)*200.))*.3*b;return c;}`],
+    ['vElastic', 'slide', flatE('el')],
+    ['vBounce', 'slide', flatE('bo')],
+    ['vSplit2', 'slide', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float sg=u.y>.5?1.:-1.;vec2 v=u+vec2(sg*e,0.),d=vec2(.2*b,0.);
+  if(v.x>=0.&&v.x<=1.)return dbA(v,d);return dbB(v-vec2(sg,0.),d);}`],
+    ['vPerspIn', '3d', persp(1, '.6')],
+    ['vPerspOut', '3d', persp(-1, '-.4')],
+    ['vStripesD', 'mask', stripes('.785', 7)],
+    ['vStripesH', 'mask', stripes('0.', 8)],
+    ['vStripesV', 'mask', stripes('1.5708', 8)],
+    ['vGlass', 'warp', G + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 s=sq(u);vec2 d=vec2(.7071,-.7071);float band=floor(dot(s,vec2(-d.y,d.x))*3.5+100.);
+  float t=clamp((p-.35*fract(band*.618))/.65,0.,1.),e=io(t),S=AS()*abs(d.x)+abs(d.y),x=dot(s,d),edge=mix(-S*.5-.15,S*.5+.15,e);
+  vec2 off=d*(1.-e)*.35/vec2(AS(),1.);vec4 c=x<edge?rgbB(u+off,vec2(.008*sin(PI*t),0.)):TA(u-d*e*.05/vec2(AS(),1.));
+  c.rgb+=exp(-abs(x-edge)*120.)*.6*sin(PI*t);return c;}`],
+    ['vGlassBroken', 'warp', G + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 k=vec2(5.*AS(),5.);vec2 c=cell(u*k);vec2 v=u+(vec2(h1(c),h1(c+3.))-.5)*.25*b;
+  float edge=step(.001,length(c-cell(u*k+.015)))*b;vec4 o=p<.5?rgbA(v,vec2(.01*b,0.)):rgbB(v,vec2(.01*b,0.));o.rgb+=edge*.5;return o;}`],
+    ['vWarp', 'warp', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 v=vec2(.5+(u.x-.5)/(1.+3.*b)+e*2.,u.y+sin(u.x*12.+p*8.)*.03*b),d=vec2(.3*b,0.);
+  return e<.5?dbA(v,d):dbB(v-vec2(2.,0.),d);}`],
+    ['vExposure', 'light', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=p<.5?bA(u,.01*b):bB(u,.01*b);c.rgb=mix(c.rgb,1.-exp(-c.rgb*(1.+4.*pow(b,1.5))),smoothstep(0.,.3,b));
+  c.rgb=mix(c.rgb,vec3(1.),pow(b,6.));return c;}`],
+    ['vFadeBlur', 'blur', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=p<.5?bA(u,.05*b):bB(u,.05*b);c.rgb*=1.-b*b;return c;}`],
   ];
   const CATS = ['cam', 'blur', 'glitch', 'light', 'film', '3d', 'mask', 'slide', 'warp'];
   const api = { HEAD, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
