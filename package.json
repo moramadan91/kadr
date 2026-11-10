@@ -1,7 +1,7 @@
 {
   "name": "kadr",
   "productName": "Maqto",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "private": true,
   "description": "Desktop video editor: timeline, Arabic auto-captions, text motion, color.",
   "scripts": {
