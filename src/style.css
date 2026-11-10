@@ -6,7 +6,7 @@
   --glass: rgba(255, 255, 255, .06); --glass-hi: rgba(255, 255, 255, .11); --stroke: rgba(255, 255, 255, .11);
   --well: rgba(0, 0, 0, .28);
   --video: 62, 132, 255; --image: 46, 200, 170; --audio: 74, 210, 110; --text-c: 168, 112, 255;
-  --row: 46px; --r: 16px;
+  --row: 37px; --r: 16px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; }
@@ -154,7 +154,7 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 .row.over::before { background: rgba(92, 211, 198, .12); }
 .clip {
   --c: var(--video);
-  position: absolute; top: 6px; bottom: 6px; border-radius: 8px; z-index: 1; overflow: hidden; cursor: grab; display: flex; align-items: center; color: #fff; font-size: 11px;
+  position: absolute; top: 5px; bottom: 5px; border-radius: 7px; z-index: 1; overflow: hidden; cursor: grab; display: flex; align-items: center; color: #fff; font-size: 11px;
   background: linear-gradient(180deg, rgba(var(--c), .62), rgba(var(--c), .38));
   border: 1px solid rgba(255, 255, 255, .22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25);
 }
@@ -534,3 +534,7 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .chip:hover { color: var(--text, #fff); }
 .chip.on { background: var(--accent); color: var(--accent-ink); }
 .tv canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+#textStyles { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#textStyles .plus, #textStyles .fav { width: 20px; height: 20px; top: 4px; } #textStyles .plus { inset-inline-end: 4px; } #textStyles .fav { inset-inline-start: 4px; }
+#textStyles .plus svg, #textStyles .fav svg { width: 12px; height: 12px; }

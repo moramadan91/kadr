@@ -101,7 +101,7 @@ function fontPicker(it) {
 }
 function closeFontPop() { const p = $('#fpop'); if (p) { p._off(); p.remove(); } }
 const ACCENT = '#5cd3c6';
-const ROW = 46;
+const ROW = 37;
 const IN_T = 0.35, OUT_T = 0.25;
 const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
 
@@ -753,6 +753,17 @@ function mkGlx() {
   return { frame, check: id => { init(); prog(id); } };
 }
 const GLX = { main: mkGlx(), thumb: mkGlx(), A: document.createElement('canvas'), B: document.createElement('canvas') };
+// Shader transitions coming up in the next 2 s get compiled (and the outgoing clip's last frame
+// fetched) ahead of time, so the first frame of the transition doesn't stall playback.
+function warmTrans() {
+  for (const b of P.items) {
+    if (!b.trans || !S.GLT.includes(b.trans.id) || b.start < t - 0.05 || b.start > t + 2) continue;
+    const T = S.transIn(P, b);
+    if (!T) continue;
+    try { GLX.main.check(T.id); } catch {}
+    if (media(T.prev) && media(T.prev).kind === 'video') tailFrame(T.prev);
+  }
+}
 function glTransAt(tid, time, ov) {
   if (ov) return null;
   for (const b of P.items) {
@@ -763,7 +774,7 @@ function glTransAt(tid, time, ov) {
   return null;
 }
 function drawGlTrans(ctx, gt, time, srcA, srcB) {
-  const k = ctx === vctx ? Math.min(1, 640 / Math.max(P.w, P.h)) : 1, w = Math.round(P.w * k), h = Math.round(P.h * k);
+  const k = ctx === vctx ? Math.min(1, (playing ? 480 : 640) / Math.max(P.w, P.h)) : 1, w = Math.round(P.w * k), h = Math.round(P.h * k);
   for (const c of [GLX.A, GLX.B]) {
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(k, 0, 0, k, 0, 0);
@@ -1193,6 +1204,7 @@ function loop(now) {
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
   if (inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
   if (libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
+  if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
   requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
@@ -1335,6 +1347,7 @@ $('#rows').addEventListener('pointerdown', e => {
       it.start = Math.max(0, s);
       const tk = it.track;
       dropLane(it, ev.clientY, lane);
+      if (magnet) settle(it, lane);
       if (it.track === tk) { const el = $(`.clip[data-id="${it.id}"]`); if (el) { el.style.left = it.start * pps + 'px'; needsDraw = true; return; } }
     } else if (mode === 'l') {
       // a curved clip can only be shortened (its curve covers the source range it has)
@@ -1359,7 +1372,7 @@ $('#rows').addEventListener('pointerdown', e => {
   const lane = { nt: null, from: it.track };
   const onUp = () => {
     window.removeEventListener('pointermove', onMove);
-    if (changed) { dropLaneEnd(lane); refresh(); }
+    if (changed) { if (lane.gap != null && it.track === 'v1') it.start = lane.gap; dropLaneEnd(lane); refresh(); }
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp, { once: true });
@@ -1381,6 +1394,28 @@ function dropLane(it, clientY, lane) {
   P.tracks.splice(clamp(i, 0, P.tracks.length), 0, lane.nt);
   it.track = lane.nt.id;
   renderTimeline();
+}
+// Magnet on: on the main lane the other clips close up around a gap where the dragged clip will land;
+// on other lanes the clip stops against its neighbour instead of sliding over it.
+function settle(it, lane) {
+  lane.gap = null;
+  const others = P.items.filter(q => q !== it && q.track === it.track).sort((a, b) => a.start - b.start);
+  if (it.track === 'v1') {
+    const idx = others.filter(q => q.start + q.dur / 2 < it.start).length;
+    let at = 0;
+    others.forEach((q, i) => {
+      if (i === idx) { lane.gap = at; at += it.dur; }
+      if (q.start !== at) { q.start = at; const el = $(`.clip[data-id="${q.id}"]`); if (el) el.style.left = at * pps + 'px'; }
+      at += q.dur;
+    });
+    if (lane.gap == null) lane.gap = at;
+    return;
+  }
+  for (let k = 0; k < 4; k++) {
+    const q = others.find(q => q.start < it.start + it.dur - 1e-6 && it.start < q.start + q.dur - 1e-6);
+    if (!q) return;
+    it.start = it.start + it.dur / 2 < q.start + q.dur / 2 && q.start >= it.dur ? q.start - it.dur : q.start + q.dur;
+  }
 }
 // After the drag: lanes left empty by it go away (the built-in ones stay).
 function dropLaneEnd(lane) {
@@ -1535,10 +1570,23 @@ function addMedia(mid, trackId, start) {
   return it;
 }
 
+// Where a new text goes: after the selected text on its lane, else at the playhead on the Text lane,
+// moved along past any text it would cover.
+function textSlot(dur) {
+  const s = sel && item(sel);
+  let track = 't1', start = t;
+  if (s && isText(s) && s.track !== 'c1') { track = s.track; start = s.start + s.dur; }
+  for (let k = 0; k < 50; k++) {
+    const q = P.items.find(i => i.track === track && i.start < start + dur - 1e-6 && start < i.start + i.dur - 1e-6);
+    if (!q) break;
+    start = q.start + q.dur;
+  }
+  return { track, start };
+}
 function addText(styleId) {
   snapshot();
   const st = presetStyle(styleId);
-  const it = { id: uid(), type: 'text', track: 't1', start: t, dur: 3, text: tr('defaultText'), style: st, x: 0.5, y: 0.5, anim: 'pop', out: 'fade' };
+  const it = { id: uid(), type: 'text', ...textSlot(3), dur: 3, text: tr('defaultText'), style: st, x: 0.5, y: 0.5, anim: 'pop', out: 'fade' };
   P.items.push(it);
   sel = it.id;
   inspTab = null;
@@ -2694,7 +2742,7 @@ function setLibTab(tab) {
   libTab = tab;
   if (tab === 'trans') renderTrans();
   if (tab === 'filters' || tab === 'effects') renderLookCards();
-  if (tab === 'layers') { renderLayers(); renderOverlays(); }
+  if (tab === 'layers') renderLayers();
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -3000,28 +3048,6 @@ function addFill(id) {
   refresh();
 }
 $('#layerCards').addEventListener('click', e => { const b = e.target.closest('[data-layer]'); if (b) addFill(b.dataset.layer); });
-// Overlay clips from the user's library (app data/overlays): added above the video in screen mode, so black drops out.
-let ovLib = null;
-async function renderOverlays() {
-  if (!ovLib) { try { ovLib = await inv('overlay_library'); } catch { ovLib = []; } }
-  $('#ovCards').innerHTML = !ovLib.length ? '' : `<div class="gh">${tr('overlays')}</div><div class="trcards">${ovLib.map((o, i) =>
-    `<button class="trc" data-ov="${i}"><i class="lv"><video muted loop playsinline preload="metadata" src="${urlOf({ path: o.path })}#t=1"></video></i><span>${esc(o.name)}</span></button>`).join('')}</div>`;
-}
-$('#ovCards').addEventListener('pointerover', e => { const v = e.target.closest('[data-ov]')?.querySelector('video'); if (v && v.paused) v.play().catch(() => {}); });
-$('#ovCards').addEventListener('pointerout', e => { const v = e.target.closest('[data-ov]')?.querySelector('video'); if (v && !e.relatedTarget?.closest?.('[data-ov]')) v.pause(); });
-$('#ovCards').addEventListener('click', async e => {
-  const b = e.target.closest('[data-ov]');
-  if (!b) return;
-  const [mid] = addToBin(await inv('probe', { paths: [ovLib[+b.dataset.ov].path] }));
-  if (!mid) return;
-  const busy = tk => P.items.some(i => i.track === tk && i.start < t + 3 && i.start + i.dur > t);
-  let tk = P.tracks.find(x => x.kind === 'video' && x.id !== 'v1' && !busy(x.id));
-  if (!tk) { tk = { id: 'v' + uid(), kind: 'video' }; P.tracks.splice(P.tracks.findIndex(x => x.kind === 'video'), 0, tk); }
-  const it = addMedia(mid, tk.id, t);
-  it.blend = 'screen'; it.muted = true;
-  inspTab = 'tVideo'; refresh();
-});
-
 /* ---------- sound effects pane ---------- */
 let sfxLib = null;
 const sfxAudio = new Audio();
@@ -3168,12 +3194,13 @@ function sampleScene(ctx) {
 function renderLibCards() {
   const ts = $('#textStyles');
   ts.innerHTML = '';
-  for (const s of TEXT_STYLES) {
-    const b = document.createElement('button');
+  for (const id of favFirst('style', TEXT_STYLES.map(x => x.id))) {
+    const s = TEXT_STYLES.find(x => x.id === id), b = document.createElement('button');
     b.className = 'card';
     b.dataset.style = s.id;
+    b.innerHTML = `<i class="plus" title="${tr('addText')}">${icon('plus')}</i>` + favStar('style', s.id);
     const fake = { text: LANG === 'ar' ? 'ماكتو' : 'Maqto', style: { ...presetStyle(s.id), size: 46, strokeW: (s.s.strokeW || 0) * 0.45, shadowBlur: 8, shadowDist: 5, glowSize: 16 }, x: 0.5, y: 0.5, dur: 9 };
-    b.appendChild(cardCanvas(ctx => { ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180); drawTextItem(ctx, { w: 240, h: 180 }, fake, 5); }));
+    b.prepend(cardCanvas(ctx => { ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180); drawTextItem(ctx, { w: 240, h: 180 }, fake, 5); }));
     ts.appendChild(b);
   }
   renderLookCards();
@@ -3199,13 +3226,19 @@ function renderLookCards() {
       const b = document.createElement('button');
       b.className = 'card' + (on === x || (x === 'none' && !on) ? ' on' : '');
       b.dataset[attr] = x;
-      b.appendChild(cardCanvas(paint(x)));
+      b.appendChild(cardCanvas(x === 'none' ? noneSign : paint(x)));
       b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>${x === 'none' ? '' : `<i class="plus" data-plus title="${tr('addLayer')}">${icon('plus')}</i>` + favStar(attr, x)}`);
       box.appendChild(b);
     }
   };
   fill($('#filterCards'), Object.keys(S.PRESETS), 'preset', p => ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180), 'p_', it && it.preset);
   fill($('#fxCards'), ['none', ...S.FX], 'fx', f => f === 'none' ? ctx => ctx.drawImage(scene, 0, 0, 240, 180) : ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
+}
+function noneSign(ctx) {
+  ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180);
+  ctx.strokeStyle = '#ff4d4f'; ctx.lineWidth = 12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(120, 84, 44, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(89, 115); ctx.lineTo(151, 53); ctx.stroke();
 }
 // Favourites (star on a card): kept per list in this computer's settings, shown first.
 let favs = lsGet('kadr.favs', {});
@@ -3219,7 +3252,7 @@ document.addEventListener('click', e => {
   const k = st.dataset.favk, id = st.parentElement.dataset[k], l = favs[k] || [];
   favs = { ...favs, [k]: l.includes(id) ? l.filter(x => x !== id) : [...l, id] };
   lsSet('kadr.favs', favs);
-  if (k === 'tr') renderTrans(); else renderLookCards();
+  if (k === 'tr') renderTrans(); else if (k === 'style') renderLibCards(); else renderLookCards();
 }, true);
 function addAdj(kind, id) {
   const mid = 'adj_' + uid();
@@ -3287,7 +3320,7 @@ $('#stickerList').addEventListener('click', e => {
   const b = e.target.closest('[data-st]');
   if (!b) return;
   snapshot();
-  const it = { id: uid(), type: 'text', track: 't1', start: t, dur: 3, text: b.dataset.st, style: { ...presetStyle('plain'), size: Math.round(Math.min(P.w, P.h) * 0.22) }, x: 0.5, y: 0.5, anim: 'pop', out: 'fade', sticker: true };
+  const it = { id: uid(), type: 'text', ...textSlot(3), dur: 3, text: b.dataset.st, style: { ...presetStyle('plain'), size: Math.round(Math.min(P.w, P.h) * 0.22) }, x: 0.5, y: 0.5, anim: 'pop', out: 'fade', sticker: true };
   P.items.push(it);
   sel = it.id; inspTab = 'tAnim'; dirty = true;
   refresh();
