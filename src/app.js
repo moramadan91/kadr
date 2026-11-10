@@ -206,6 +206,33 @@ function rifeFor(it) {
   }
   return '';
 }
+// Remove background: an AI matte video per source file (MODNet), multiplied into the clip's alpha
+let matteTool = false;
+inv('matte_ready').then(v => (matteTool = v), () => {});
+const matteOk = new Map(), mattePath = new Map(), matteProg = new Map();
+function matteFor(it) {
+  if (!it.rmbg || !matteTool || !media(it) || media(it).kind !== 'video') return null;
+  const k = media(it).path;
+  if (mattePath.has(k)) return mattePath.get(k);
+  if (!matteOk.has(k)) matteOk.set(k, inv('matte_make', { path: k, job: it.id })
+    .then(p => { mattePath.set(k, p); needsDraw = true; if (inspTab === 'tVideo') inspector(); return p; }, e => { mattePath.set(k, null); toast(cleanErr(e)); return null; }));
+  return '';
+}
+const matteWait = it => (matteFor(it), matteOk.get(media(it).path) || Promise.resolve(null));
+TA.event.listen('matteprog', e => { matteProg.set(e.payload.job, e.payload.p); const b = document.querySelector(`[data-mtbar="${e.payload.job}"]`); if (b) { b.style.setProperty('--p', e.payload.p); b.querySelector('em').textContent = tr('mtPrep').replace('{p}', Math.round(e.payload.p * 100)); } });
+function matteEl(it) {
+  const key = chainKey(it) + '|mt', url = urlOf({ path: matteFor(it) });
+  let el = els.get(key);
+  if (el && el.dataset.src === url) return el;
+  if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
+  el = document.createElement('video');
+  Object.assign(el, { preload: 'auto', muted: true, playsInline: true, crossOrigin: 'anonymous' });
+  el.dataset.src = el.src = url;
+  el.addEventListener('seeked', () => (needsDraw = true));
+  mediaHold.appendChild(el); // WebKit only feeds fresh frames from a <video> in the document
+  els.set(key, el);
+  return el;
+}
 const rifeWait = it => (rifeFor(it), rifeOk.get(rifeKey(it)) || Promise.resolve(null));
 TA.event.listen('rifeprog', e => { const g = pxProg.get(e.payload.job); if (g) { g.p = e.payload.p * 0.85; pxPaint(e.payload.job); } });
 function proxyFor(it) {
@@ -396,6 +423,7 @@ function syncMedia() {
     if (S.fxKey(it) && !dnOk.has(fxId(it))) ensureDn(it).catch(() => {});
     const dn = dnLive(it);
     driveEl(elFor(it), it, dn);
+    if (matteFor(it)) driveEl(matteEl(it), it, true);
     if (dn) { const d = dnEl(it); driven.add(d); driveEl(d, it, false); }
   }
   for (const [k, e] of els) if (k.endsWith('|dn') && !driven.has(e) && !e.paused) e.pause();
@@ -514,11 +542,12 @@ const GL = (() => {
   // (N*N) x N strip — x = blue slice * N + red, y = green — read with trilinear blending.
   gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `precision highp float; varying vec2 uv; uniform sampler2D tex; uniform sampler2D lut; uniform vec4 rect;
     uniform vec3 slope; uniform vec3 icpt; uniform float sat; uniform float useLut; uniform float n; uniform vec3 key; uniform vec2 kuv;
-    uniform float fxId; uniform vec4 fxv; uniform vec2 bsz; uniform float ft;
+    uniform float fxId; uniform vec4 fxv; uniform vec2 bsz; uniform float ft; uniform sampler2D mat; uniform float useMat;
     vec3 lut3(vec3 v){ vec3 s = clamp(v, 0., 1.) * (n - 1.); float b0 = floor(s.b), b1 = min(b0 + 1., n - 1.);
       vec2 a = vec2((b0 * n + s.r + .5) / (n * n), (s.g + .5) / n), b = vec2((b1 * n + s.r + .5) / (n * n), (s.g + .5) / n);
       return mix(texture2D(lut, a).rgb, texture2D(lut, b).rgb, s.b - b0); }
-    vec4 grade(vec2 u){ vec4 c = texture2D(tex, rect.xy + clamp(u, 0., 1.) * rect.zw);
+    vec4 grade(vec2 u){ vec2 su = rect.xy + clamp(u, 0., 1.) * rect.zw; vec4 c = texture2D(tex, su);
+      if (useMat > .5) c.a *= texture2D(mat, su).r;
       if (key.z > 0.) { // chroma key: x = similarity, y = blend, z = on; kuv holds the key's CbCr
         vec2 p = vec2(dot(c.rgb, vec3(-.1146, -.3854, .5)), dot(c.rgb, vec3(.5, -.4542, -.0458)));
         float d = length(p - kuv) / 1.4142;
@@ -557,8 +586,10 @@ const GL = (() => {
   gl.bindTexture(gl.TEXTURE_2D, frameTex);
   texParams();
   const U = n => gl.getUniformLocation(prog, n);
-  const u = { fxId: U('fxId'), fxv: U('fxv'), bsz: U('bsz'), ft: U('ft'), key: U('key'), kuv: U('kuv'), rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat'), useLut: U('useLut'), n: U('n'), tex: U('tex'), lut: U('lut') };
-  gl.uniform1i(u.tex, 0); gl.uniform1i(u.lut, 1);
+  const u = { mat: U('mat'), useMat: U('useMat'), fxId: U('fxId'), fxv: U('fxv'), bsz: U('bsz'), ft: U('ft'), key: U('key'), kuv: U('kuv'), rect: U('rect'), slope: U('slope'), icpt: U('icpt'), sat: U('sat'), useLut: U('useLut'), n: U('n'), tex: U('tex'), lut: U('lut') };
+  gl.uniform1i(u.tex, 0); gl.uniform1i(u.lut, 1); gl.uniform1i(u.mat, 2);
+  const matTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, matTex); texParams(); gl.activeTexture(gl.TEXTURE0);
   const luts = new Map(); // baked table -> texture (a few recent ones)
   const lutTex = L => {
     let t = luts.get(L);
@@ -585,6 +616,8 @@ const GL = (() => {
     if (L) { const t = lutTex(L); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(u.n, S.LUT_N); }
     gl.bindTexture(gl.TEXTURE_2D, frameTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    gl.uniform1f(u.useMat, g.matte ? 1 : 0);
+    if (g.matte) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, matTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, g.matte); gl.activeTexture(gl.TEXTURE0); }
     gl.uniform4f(u.rect, sx / W, sy / H, sw / W, sh / H);
     gl.uniform3f(u.slope, g.ch[0].slope, g.ch[1].slope, g.ch[2].slope);
     gl.uniform3f(u.icpt, g.ch[0].intercept, g.ch[1].intercept, g.ch[2].intercept);
@@ -625,9 +658,10 @@ function lutFor(it) {
 // drawImage with the item's grade applied.
 function drawGraded(ctx, it, src, sx, sy, sw, sh, dx, dy, dw, dh, lt = 0) {
   const g = S.grade(it), adv = S.hasColor(it);
+  if (matteFor(it)) { const me = matteEl(it); if (me.readyState >= 2) g.matte = me; }
   if (S.hasKey(it)) g.chroma = { sim: num(it.chroma.sim, 0.3), blend: num(it.chroma.blend, 0.1), uv: S.keyUV(it.chroma.color) };
   g.fx = S.fxVals(it, lt, dw, dh); g.ft = lt;
-  if ((g.identity && !adv && !g.chroma && !g.fx) || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+  if ((g.identity && !adv && !g.chroma && !g.fx && !g.matte) || !GL) return ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
   const W = src.videoWidth || src.naturalWidth || src.width, H = src.videoHeight || src.naturalHeight || src.height;
   try { GL(ctx, src, W, H, sx, sy, sw, sh, dx, dy, dw, dh, g, adv ? lutFor(it) : null); }
   catch (e) { if (!drawGraded.warned) { drawGraded.warned = true; inv('dev_log', { msg: 'grade failed: ' + e }); } ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh); }
@@ -2079,6 +2113,13 @@ function inspector() {
     if (!FM) h.push(`<div id="cropGrp">${grp('cropSec', `<div class="row2">${fld.range('crop.l', 'cropL', 0, 0.45, 0.01, it)}${fld.range('crop.r', 'cropR', 0, 0.45, 0.01, it)}</div>` +
       `<div class="row2">${fld.range('crop.t', 'cropT', 0, 0.45, 0.01, it)}${fld.range('crop.b', 'cropB', 0, 0.45, 0.01, it)}</div>`)}</div>`);
     const K = it.chroma || {};
+    if (!FM && media(it).kind === 'video') {
+      const mf = matteFor(it), mp = matteProg.get(it.id) || 0;
+      h.push(grp('rmbgSec', `<div class="inl">${fld.check('rmbg', 'rmbgOn', it)}</div>` +
+        (it.rmbg && !matteTool ? `<button class="ghost" data-matteget>${icon('download')}<span>${tr('matteGet')}</span></button>` : '') +
+        (mf === '' ? `<div class="pxb insp" data-mtbar="${it.id}" style="--p:${mp}"><i></i><em>${tr('mtPrep').replace('{p}', Math.round(mp * 100))}</em></div>` : '') +
+        `<p class="hint">${tr('rmbgHint')}</p>`));
+    }
     if (!FM) h.push(grp('keySec', `<div class="inl">${fld.check('chroma.on', 'keyOn', it)}</div>` + (K.on ? `<div class="row2"><label>${tr('keyColor')}<input type="color" data-k="chroma.color" value="${esc(K.color || '#00ff00')}"></label><button id="keyPick" data-i="pipette"><span>${tr('keyPick')}</span></button></div>` +
       fld.range('chroma.sim', 'keySim', 0.01, 1, 0.01, it, 0.3) + fld.range('chroma.blend', 'keyBlend', 0, 1, 0.01, it, 0.1) : '') + `<p class="hint">${tr('keyHint')}</p>`));
     const lo = it.logo && it.logo.on;
@@ -2206,6 +2247,12 @@ function inspector() {
   bind('#fillSwap',() => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
   bind('#colMatch', () => colorMatchPick(it));
 }
+$('#inspBody').addEventListener('click', async e => {
+  if (!e.target.closest('[data-matteget]')) return;
+  if (!(await TA.dialog.ask(tr('matteAsk'), { title: tr('rmbgSec') }))) return;
+  try { progress(tr('p_matte_dl'), 0); await inv('matte_download'); matteTool = true; hideModal(); toast(tr('matteOk')); inspector(); }
+  catch (err) { hideModal(); toast(cleanErr(err)); }
+});
 // one-time download of the AI frame engine (RIFE, under 20 MB)
 $('#inspBody').addEventListener('click', async e => {
   if (!e.target.closest('[data-rifeget]')) return;
@@ -3864,7 +3911,9 @@ async function doExport(o) {
       await writeFills(Q, work);
       const rife = {};
       for (const it of P.items.filter(i => pxNeeds(i) && smoothSlow(i) && rifeTool)) { progress(tr('p_rife'), 0); const r = await rifeWait(it); if (r) rife[it.id] = r; }
-      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks, rife });
+      const mattes = {};
+      for (const it of P.items.filter(i => i.rmbg && matteTool && media(i) && media(i).kind === 'video')) { progress(tr('p_matte'), 0); const r = await matteWait(it); if (r) mattes[it.id] = r; }
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks, rife, mattes });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: null, duration });
       work = null;

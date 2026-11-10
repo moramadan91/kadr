@@ -21,6 +21,7 @@ ureq = "2"
 fontdb = "0.23"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+ort = "2.0.0-rc.15"
 
 [profile.release]
 codegen-units = 1

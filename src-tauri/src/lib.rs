@@ -1,5 +1,6 @@
 mod mcp;
 mod rife;
+mod matte;
 mod media_server;
 
 pub fn mcp_stdio() { mcp::serve_stdio() }
@@ -126,10 +127,12 @@ fn probe_one(p: &str) -> R<Value> {
     if rot == 90 || rot == 270 { std::mem::swap(&mut w, &mut h); }
     let num = |x: &Value| x.as_str().and_then(|s| s.parse::<f64>().ok());
     let dur = num(&j["format"]["duration"]).or_else(|| v.and_then(|v| num(&v["duration"]))).or_else(|| a.and_then(|a| num(&a["duration"]))).unwrap_or(0.0);
+    let fps = v.and_then(|v| v["avg_frame_rate"].as_str().or(v["r_frame_rate"].as_str())).and_then(|s| s.split_once('/'))
+        .and_then(|(a, b)| Some(a.parse::<f64>().ok()? / b.parse::<f64>().ok().filter(|b| *b > 0.0)?)).unwrap_or(0.0);
     let kind = if is_img { "image" } else if v.is_some() { "video" } else { "audio" };
     let name = Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     Ok(json!({ "path": p, "name": name, "kind": kind, "dur": if is_img { Value::Null } else { json!(dur) },
-        "w": w, "h": h, "hasAudio": a.is_some() && !is_img }))
+        "w": w, "h": h, "fps": fps, "hasAudio": a.is_some() && !is_img }))
 }
 
 #[tauri::command]
@@ -709,7 +712,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

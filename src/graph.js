@@ -129,6 +129,14 @@
         const ch = timeChain(it, fps, !!(o.rife && o.rife[it.id]));
         const TI = S.transIn(p, it0), TO = S.transOut(p, it0), d3 = v => (+v).toFixed(4);
         if (TO && !S.GLT.includes(TO.id)) ch.push(`tpad=stop_mode=clone:stop_duration=${f3(TO.d)}`); // hold the last frame under the next clip's transition
+        let vin = `${k}:v`;
+        const mt = o.mattes && o.mattes[it0.id];
+        if (mt) { // remove background: the AI matte (same timing as the source) becomes alpha before crop and scale
+          const mi = n++;
+          args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', mt);
+          fc.push(`[${k}:v]${ch.join(',')},scale=${m.w}:${m.h},format=yuva420p[bg${j}]`, `[${mi}:v]${ch.join(',')},scale=${m.w}:${m.h},format=gray[bgm${j}]`, `[bg${j}][bgm${j}]alphamerge[bgo${j}]`);
+          vin = `bgo${j}`; ch.length = 0; ch.push('null');
+        }
         if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
         if (S.hasKey(it)) { const K = it.chroma; ch.push('format=yuva444p', `chromakey=color=${String(K.color || '#00ff00').replace('#', '0x')}:similarity=${num(K.sim, 0.3).toFixed(3)}:blend=${num(K.blend, 0.1).toFixed(3)}`); }
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
@@ -140,7 +148,7 @@
         if (mk) { // mask: grey PNG at the box size, its brightness becomes the clip's alpha
           const mi = n++;
           args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur + 3), '-i', mk);
-          fc.push(`[${k}:v]${ch.join(',')},format=yuva420p[pm${j}]`, `[${mi}:v]scale=${L.cw}:${L.ch},format=gray[mm${j}]`, `[pm${j}][mm${j}]alphamerge[ma${j}]`);
+          fc.push(`[${vin}]${ch.join(',')},format=yuva420p[pm${j}]`, `[${mi}:v]scale=${L.cw}:${L.ch},format=gray[mm${j}]`, `[pm${j}][mm${j}]alphamerge[ma${j}]`);
           ch.length = 0; ch.push('null');
         }
         ch.push('format=yuva420p');
@@ -190,7 +198,7 @@
         if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
-        fc.push(`[${mk ? `ma${j}` : `${k}:v`}]${ch.join(',')}[v${j}]`);
+        fc.push(`[${mk ? `ma${j}` : vin}]${ch.join(',')}[v${j}]`);
         let tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;
         if (dyn) { // centre-based so size changes (scale/rotate canvas) stay anchored
           const px = ex('x', it.start, 't', 0), py = ex('y', it.start, 't', 0);
