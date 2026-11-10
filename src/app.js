@@ -878,23 +878,23 @@ function mkGlx() {
       if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(id + ': ' + gl.getShaderInfoLog(o));
       return o;
     };
-    const q = gl.createProgram(), vs = sh(gl.VERTEX_SHADER, GLX_VS), fs = sh(gl.FRAGMENT_SHADER, KadrGLT.HEAD + def[2] + '\nvoid main(){gl_FragColor=tr(uv0);}');
+    const q = gl.createProgram(), vs = sh(gl.VERTEX_SHADER, GLX_VS), fs = sh(gl.FRAGMENT_SHADER, KadrGLT.HEAD + def[2] + KadrGLT.MAIN);
     gl.attachShader(q, vs); gl.attachShader(q, fs);
     gl.linkProgram(q);
     gl.deleteShader(vs); gl.deleteShader(fs); // freed with the program
     if (!gl.getProgramParameter(q, gl.LINK_STATUS)) throw new Error(id + ': ' + gl.getProgramInfoLog(q));
-    pr = { q, a: gl.getAttribLocation(q, 'a'), tA: gl.getUniformLocation(q, 'tA'), tB: gl.getUniformLocation(q, 'tB'), p: gl.getUniformLocation(q, 'p'), R: gl.getUniformLocation(q, 'R') };
+    pr = { q, a: gl.getAttribLocation(q, 'a'), tA: gl.getUniformLocation(q, 'tA'), tB: gl.getUniformLocation(q, 'tB'), p: gl.getUniformLocation(q, 'p'), R: gl.getUniformLocation(q, 'RR'), D: gl.getUniformLocation(q, 'D') };
     progs.set(id, pr);
     return pr;
   };
-  const frame = (id, A, B, q) => {
+  const frame = (id, A, B, q, dir = 0, ease = 'lin') => {
     init();
     const pr = prog(id), w = A.width, h = A.height;
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     gl.viewport(0, 0, w, h); gl.useProgram(pr.q);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     [A, B].forEach((s, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, tex[i]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, s); });
-    gl.uniform1i(pr.tA, 0); gl.uniform1i(pr.tB, 1); gl.uniform1f(pr.p, clamp(q, 0, 1)); gl.uniform2f(pr.R, w, h);
+    gl.uniform1i(pr.tA, 0); gl.uniform1i(pr.tB, 1); gl.uniform1f(pr.p, KadrGLT.ease(ease, q)); gl.uniform2f(pr.R, w, h); gl.uniform1f(pr.D, dir);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.enableVertexAttribArray(pr.a); gl.vertexAttribPointer(pr.a, 2, gl.FLOAT, false, 0, 0);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return c;
@@ -919,7 +919,7 @@ function glTransAt(tid, time, ov) {
   for (const b of P.items) {
     if (b.track !== tid || !b.trans || !S.GLT.includes(b.trans.id) || time < b.start - 1.01 || time >= b.start + 1.01) continue;
     const T = S.transIn(P, b);
-    if (T && time >= b.start - T.d / 2 && time < b.start + T.d / 2) return { id: T.id, a: T.prev, b, q: (time - b.start + T.d / 2) / T.d };
+    if (T && time >= b.start - T.d / 2 && time < b.start + T.d / 2) return { id: T.id, dir: T.dir, ease: T.ease, a: T.prev, b, q: (time - b.start + T.d / 2) / T.d };
   }
   return null;
 }
@@ -932,7 +932,7 @@ function drawGlTrans(ctx, gt, time, srcA, srcB) {
   drawItem(GLX.A.getContext('2d'), gt.a, time, null, srcA);
   // before the cut B shows its source from before its in-point (or its first frame)
   drawItem(GLX.B.getContext('2d'), gt.b, Math.max(time, gt.b.start), null, srcB || (time < gt.b.start ? headSrc(gt.b) : undefined));
-  try { ctx.drawImage(GLX.main.frame(gt.id, GLX.A, GLX.B, gt.q), 0, 0, P.w, P.h); }
+  try { ctx.drawImage(GLX.main.frame(gt.id, GLX.A, GLX.B, gt.q, gt.dir, gt.ease), 0, 0, P.w, P.h); }
   catch (e) { console.error(e); ctx.drawImage(gt.q < 0.5 ? GLX.A : GLX.B, 0, 0, P.w, P.h); }
 }
 
@@ -3108,7 +3108,9 @@ function renderTrans() {
   const tg = transTarget(), T = tg && S.transIn(P, tg), cur = T ? T.id : 'none';
   $('#transHead').innerHTML = !tg ? `<p class="hint">${tr('trNone')}</p>` :
     `<p class="hint">${tr('trAt', { t: fmt(tg.start) })}</p>` + (T ? `<div class="f"><div class="lb"><span>${tr('dur')}</span><b>${T.d.toFixed(1)}s</b></div>` +
-      `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` : '');
+      `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` +
+      (S.GLT.includes(T.id) ? `<div class="f"><div class="lb"><span>${tr('trDir')}</span></div><div class="seg trseg" style="grid-template-columns:repeat(4,1fr)">${[0, 1, 2, 3].map(d => `<button data-trdir="${d}" class="${d === T.dir ? 'on' : ''}">${d ? d * 90 + '°' : tr('trDir0')}</button>`).join('')}</div></div>` +
+        `<div class="f"><div class="lb"><span>${tr('trEase')}</span></div><div class="seg trseg">${KadrGLT.EASES.map(k => `<button data-trease="${k}" class="${k === T.ease ? 'on' : ''}">${tr('tre_' + k)}</button>`).join('')}</div></div>` : '') : '');
   if (!TR_CATS.includes(trCat)) trCat = 'hot';
   $('#trCats').innerHTML = TR_CATS.map(c => `<button class="chip${c === trCat ? ' on' : ''}" data-cat="${c}">${tr('trc_' + c)}</button>`).join('');
   const ids = trCat === 'fav' ? favs.tr || [] : trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : KadrGLT.ids.filter(x => KadrGLT.cat[x] === trCat);
@@ -3122,6 +3124,12 @@ function renderTrans() {
     d.oninput = () => { tg.trans.dur = +d.value; d.previousElementSibling.lastElementChild.textContent = (+d.value).toFixed(1) + 's'; dirty = true; needsDraw = true; };
     d.onchange = () => { renderTimeline(); previewTrans(tg); };
   }
+  $$('#transHead [data-trdir], #transHead [data-trease]').forEach(b => b.onclick = () => {
+    snapshot();
+    if (b.dataset.trdir) { const v = +b.dataset.trdir; if (v) tg.trans.dir = v; else delete tg.trans.dir; }
+    else if (b.dataset.trease === 'lin') delete tg.trans.ease; else tg.trans.ease = b.dataset.trease;
+    dirty = true; needsDraw = true; renderTrans(); previewTrans(tg);
+  });
 }
 // Transition cards: the shader ones play on two sample pictures, each card at its own point in the loop.
 const TR_CATS = ['fav', 'hot', 'basic', ...KadrGLT.CATS];
@@ -3161,7 +3169,7 @@ $('#transCards').addEventListener('click', e => {
   if (!tg) return;
   snapshot();
   if (b.dataset.tr === 'none') delete tg.trans;
-  else tg.trans = { id: b.dataset.tr, dur: num(tg.trans && tg.trans.dur, 0.5) };
+  else tg.trans = { ...tg.trans, id: b.dataset.tr, dur: num(tg.trans && tg.trans.dur, 0.5) };
   dirty = true;
   select(tg.id); refresh();
   previewTrans(tg);
@@ -3679,7 +3687,7 @@ async function renderGlTrans(Q, work, fps) {
     for (let f = 0; f < N; f++) {
       if (cancelled) throw new Error(tr('cancelled'));
       ctx.clearRect(0, 0, P.w, P.h);
-      drawGlTrans(ctx, { id: T.id, a, b, q: f / N }, times[f], fa[f], fb[f]);
+      drawGlTrans(ctx, { id: T.id, dir: T.dir, ease: T.ease, a, b, q: f / N }, times[f], fa[f], fb[f]);
       const name = `x${gi}_${String(f).padStart(4, '0')}.png`;
       await png(name); names.push({ name, frames: 1 });
     }
@@ -4270,7 +4278,7 @@ const MCP_TOOLS = [
   ['set_project', 'Change project settings.', { ratio: { type: 'string' }, fps: { type: 'number' }, name: { type: 'string' } }],
   ['import_media', 'Add files (absolute paths: video, audio, images) to the media bin. Returns their media ids. add=true also puts each on the timeline, back to back.', { paths: { type: 'array', items: { type: 'string' } }, add: { type: 'boolean' } }, ['paths']],
   ['add_items', 'Add items to the timeline. Each needs type: "text" {text, start, dur, style_id?, style?{...fields}, x?, y? (0..1 of frame, default 0.5), anim?, out?, loop?} | "clip" {media (id), start?, dur?, track?, in?, speed?, x?, y? (px from centre), scale?} | "layer" {kind: solid|gradient|shadow|vignette, start, dur, fill?{c1,c2,a1,a2,...}} | "effect" {fx: id from catalog.fx OR preset: id from catalog.filters, start, dur}. Any extra field is set on the item as is. Returns the new item ids.', { items: { type: 'array', items: { type: 'object' } } }, ['items']],
-  ['update_items', 'Change items. set: fields to assign (objects such as style, fill, fx are merged; null removes a field). Transition into a clip: set {trans: {id, dur}}. Timing: start, dur (seconds).', { updates: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, set: { type: 'object' } }, required: ['id', 'set'] } } }, ['updates']],
+  ['update_items', 'Change items. set: fields to assign (objects such as style, fill, fx are merged; null removes a field). Transition into a clip: set {trans: {id, dur, dir (0-3: turns a shader transition 90° each), ease (lin|smooth|hit|soft|bounce|short)}}. Timing: start, dur (seconds).', { updates: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, set: { type: 'object' } }, required: ['id', 'set'] } } }, ['updates']],
   ['set_keyframes', 'Animate x, y, scale, rotate or opacity of an item: keys are [time from the item start in seconds, value]; replaces that prop\'s keys ([] clears). Values use the item\'s units (text x/y 0..1; clip x/y px from centre; scale 1 = 100%; rotate degrees; opacity 0..1).', { id: { type: 'string' }, props: { type: 'object', description: '{ "scale": [[0,0.8],[0.5,1]], "opacity": [[0,0],[0.3,1]] }' } }, ['id', 'props']],
   ['delete_items', 'Remove items by id.', { ids: { type: 'array', items: { type: 'string' } } }, ['ids']],
   ['preview', 'Move the playhead to time (seconds) and return the rendered frame as an image. Use it to check your work.', { time: { type: 'number' } }, ['time']],

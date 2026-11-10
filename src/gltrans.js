@@ -7,12 +7,17 @@
 varying vec2 uv0;
 uniform sampler2D tA, tB;
 uniform float p;
-uniform vec2 R;
+uniform vec2 RR;
+uniform float D;
+vec2 R;
 #define PI 3.14159265
 float AS(){return R.x/R.y;}
 vec2 mir(vec2 u){vec2 m=mod(u,2.);return mix(m,2.-m,step(1.,m));}
-vec4 TA(vec2 u){return texture2D(tA,mir(u));}
-vec4 TB(vec2 u){return texture2D(tB,mir(u));}
+// D turns the whole transition: the shader works in turned space, pictures are read back through dinv
+vec2 dfwd(vec2 s){return D<.5?s:D<1.5?vec2(s.y,1.-s.x):D<2.5?1.-s:vec2(1.-s.y,s.x);}
+vec2 dinv(vec2 u){return D<.5?u:D<1.5?vec2(1.-u.y,u.x):D<2.5?1.-u:vec2(u.y,1.-u.x);}
+vec4 TA(vec2 u){return texture2D(tA,mir(dinv(u)));}
+vec4 TB(vec2 u){return texture2D(tB,mir(dinv(u)));}
 bool inb(vec2 u){return u.x>=0.&&u.x<=1.&&u.y>=0.&&u.y<=1.;}
 float io(float x){return x<.5?4.*x*x*x:1.-pow(2.-2.*x,3.)*.5;}
 float ei(float x){return x*x*x;}
@@ -433,7 +438,13 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
   c.rgb=mix(c.rgb,vec3(1.),pow(b,4.)*.8);return c;}`],
 ];
   const CATS = ['cam', 'blur', 'glitch', 'light', 'film', 'shape', '3d', 'mask', 'slide', 'warp'];
-  const api = { HEAD, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
+  const MAIN = '\nvoid main(){R=(D>.5&&D<1.5)||D>2.5?RR.yx:RR;gl_FragColor=tr(dfwd(uv0));}';
+  // easing of the transition's progress (all stay inside 0..1, which every shader expects)
+  const EASES = ['lin', 'smooth', 'hit', 'soft', 'bounce', 'short'];
+  const bounce = x => x < 1 / 2.75 ? 7.5625 * x * x : x < 2 / 2.75 ? 7.5625 * (x -= 1.5 / 2.75) * x + .75 : x < 2.5 / 2.75 ? 7.5625 * (x -= 2.25 / 2.75) * x + .9375 : 7.5625 * (x -= 2.625 / 2.75) * x + .984375;
+  const ease = (k, q) => { q = Math.min(1, Math.max(0, q));
+    return k === 'smooth' ? q * q * (3 - 2 * q) : k === 'hit' ? 1 - (1 - q) ** 3 : k === 'soft' ? q * q : k === 'bounce' ? bounce(q) : k === 'short' ? Math.min(1, Math.max(0, (q - .25) * 2)) : q; };
+  const api = { HEAD, MAIN, EASES, ease, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrGLT = api;
 })(this);

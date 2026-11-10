@@ -586,7 +586,7 @@
     if (!T || !(TRANS.includes(T.id) || GLT.includes(T.id)) || !visualClip(p, it)) return null;
     const tol = 0.5 / (p.fps || 30);
     const prev = p.items.find(i => i.id !== it.id && i.track === it.track && visualClip(p, i) && Math.abs(i.start + i.dur - it.start) < tol);
-    return prev ? { id: T.id, d: clamp(num(T.dur, 0.5), 0.1, Math.min(2, it.dur)), prev } : null;
+    return prev ? { id: T.id, d: clamp(num(T.dur, 0.5), 0.1, Math.min(2, it.dur)), dir: num(T.dir, 0) & 3, ease: T.ease || 'lin', prev } : null;
   }
   function transOut(p, it) {
     for (const b of p.items) if (b !== it && b.track === it.track && b.trans) { const r = transIn(p, b); if (r && r.prev === it) return { ...r, next: b }; }
