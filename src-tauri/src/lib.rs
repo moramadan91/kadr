@@ -714,15 +714,22 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             app.manage(mcp::Bridge::start(app.handle().clone()));
+            // launch intro runs in its own small window; the editor loads hidden behind it
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(2900));
+                if let Some(w) = h.get_webview_window("main") { let _ = w.show(); let _ = w.set_focus(); }
+                if let Some(s) = h.get_webview_window("splash") { let _ = s.destroy(); }
+            });
             Ok(())
         })
         .on_menu_event(|app, e| if e.id() == "quit" { let _ = app.emit("quit-requested", ()); })
-        .on_window_event(|w, e| match e {
+        .on_window_event(|w, e| if w.label() == "main" { match e {
             // The page decides: it asks to save unsaved work, then calls quit_app.
             tauri::WindowEvent::CloseRequested { api, .. } => { api.prevent_close(); let _ = w.emit("quit-requested", ()); }
             tauri::WindowEvent::Destroyed => cleanup(&w.state::<AppState>()),
             _ => {}
-        })
+        } })
         .build(tauri::generate_context!())
         .expect("error while building Kadr")
         .run(|app, e| {

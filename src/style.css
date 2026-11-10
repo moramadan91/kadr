@@ -568,25 +568,3 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .pxb.insp.done { color: var(--accent); }
 .pxb.insp.done i { width: 0; }
 
-/* launch intro: 3 s logo sting over the app, removed on animationend */
-#intro { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0b0c0e; animation: iOut .45s 2.55s cubic-bezier(.5,0,.75,0) forwards; }
-#intro .isq { position: relative; width: min(46vmin, 420px); aspect-ratio: 1; border-radius: 6.8%; background: #141518; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.55); animation: iBox .7s cubic-bezier(.16,1,.3,1) both, iBoxOut .45s 2.55s cubic-bezier(.5,0,.75,0) forwards; }
-#intro svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#intro .ipat polygon { opacity: 0; animation: iShard .9s var(--d) cubic-bezier(.16,1,.3,1) forwards, iDrift 3s var(--d) linear forwards; }
-#intro .is1, #intro .is2 { transform-box: fill-box; }
-#intro .is1 { animation: iS1 .6s .45s cubic-bezier(.16,1,.3,1) both; }
-#intro .is2 { animation: iS2 .65s .55s cubic-bezier(.16,1,.3,1) both; }
-#intro .iflash { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0); opacity: 0; animation: iFlash .55s 1s cubic-bezier(.3,0,.2,1) forwards; }
-#intro .iw > * { transform-box: fill-box; animation: iLet .5s calc(1.2s + var(--i) * .07s) cubic-bezier(.16,1,.3,1) both; }
-#intro .isheen { position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 42%, rgba(92,211,198,.16) 50%, transparent 58%); transform: translateX(-70%); animation: iSheen .8s 1.85s cubic-bezier(.4,0,.2,1) forwards; }
-@keyframes iBox { from { transform: scale(.55) rotate(-9deg); opacity: 0; border-radius: 50%; } to { transform: none; opacity: 1; border-radius: 6.8%; } }
-@keyframes iBoxOut { to { transform: scale(1.08); } }
-@keyframes iOut { to { opacity: 0; visibility: hidden; } }
-@keyframes iShard { from { opacity: 0; transform: translate(26px, -42px); } to { opacity: 1; transform: none; } }
-@keyframes iDrift { to { translate: -10px 16px; } }
-@keyframes iS1 { from { transform: translate(-70%, 110%); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes iS2 { from { transform: translate(55%, 0); clip-path: inset(0 0 0 100%); } to { transform: none; clip-path: inset(0); } }
-@keyframes iFlash { 0% { transform: scaleX(0); opacity: 1; } 60% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
-@keyframes iLet { from { transform: translateY(45%); clip-path: inset(0 0 100% 0); opacity: 0; } to { transform: none; clip-path: inset(0); opacity: 1; } }
-@keyframes iSheen { to { transform: translateX(70%); } }
-@media (prefers-reduced-motion: reduce) { #intro, #intro * { animation-duration: .01s !important; animation-delay: 0s !important; } #intro { animation: iOut .3s .8s forwards !important; } }

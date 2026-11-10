@@ -12,6 +12,7 @@
     "windows": [
       {
         "label": "main",
+        "visible": false,
         "title": "Maqto",
         "width": 1480,
         "height": 920,
@@ -28,6 +29,20 @@
           ],
           "state": "active"
         }
+      },
+      {
+        "label": "splash",
+        "url": "splash.html",
+        "title": "Maqto",
+        "width": 380,
+        "height": 380,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false
       }
     ],
     "security": {

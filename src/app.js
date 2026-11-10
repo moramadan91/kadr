@@ -1298,12 +1298,12 @@ function clockTime() {
   let best = null;
   for (const it of P.items) {
     const m = media(it), el = els.get(chainKey(it));
-    // speed-curve clips change rate as they play; WebKit stalls on each change, so wall time leads there
-    if (!m || m.kind === 'image' || S.hasCurve(it) || !el || el.paused || el.ended || el.seeking || el.readyState < 3 || !active(it, t)) continue;
+    // speed-curve clips change rate as they play; WebKit stalls on each change, so wall time leads there (unless a retimed proxy plays)
+    if (!m || m.kind === 'image' || (S.hasCurve(it) && !el?._px) || !el || el.paused || el.ended || el.seeking || el.readyState < 3 || !active(it, t)) continue;
     if (best && best.it.track === 'v1') continue;
     best = { it, el };
   }
-  return best && best.it.start + S.ltAt(best.it, best.el.currentTime - num(best.it.in, 0));
+  return best && best.it.start + (best.el._px ? best.el.currentTime : S.ltAt(best.it, best.el.currentTime - num(best.it.in, 0))); // a retimed proxy plays timeline time at 1x
 }
 function setPlaying(v) {
   if (v) animPreview = null;
@@ -4342,7 +4342,6 @@ TA.event.listen('mcp-call', async e => {
   inv('mcp_reply', { id, result: out });
 });
 
-$('#intro')?.addEventListener('animationend', e => { if (e.target.id === 'intro') e.target.remove(); });
 inv('dev_demo').then(async d => {
   if (!d.paths || !d.paths.length) return newProj(true); // always the start screen; unsaved work waits there as a card
   const ids = addToBin(await inv('probe', { paths: d.paths }));
