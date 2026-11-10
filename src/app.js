@@ -4444,6 +4444,54 @@ async function mcpCall(method, p) {
     refresh(); needsDraw = true;
   }
 }
+/* ---------- assistant: the user's own Claude Code drives the editor through the MCP tools above ---------- */
+const asst = { session: '', job: null, el: null, failed: false };
+const LOGIN_RE = /Not logged in|Please run \/login|Failed to authenticate|OAuth session expired/i;
+function asstPanel() {
+  if (asst.el) return asst.el;
+  const el = asst.el = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'asst', hidden: true }));
+  el.innerHTML = `<header><b>${icon('sparkles')}${tr('asst')}</b><span class="flex"></span><button class="ib" id="asNew" title="${tr('asstNew')}">${icon('plus')}</button><button class="ib" id="asClose">${icon('x')}</button></header>
+    <div id="asLog"><p class="hint">${tr('asstHello')}</p></div>
+    <form id="asForm"><textarea id="asIn" rows="2" dir="auto" placeholder="${tr('asstPh')}"></textarea><button class="primary" id="asGo">${icon('arrow-up')}</button></form>`;
+  paintIcons(el);
+  $('#asClose').onclick = () => (el.hidden = true);
+  $('#asNew').onclick = () => { if (asst.job) return; asst.session = ''; $('#asLog').innerHTML = `<p class="hint">${tr('asstHello')}</p>`; };
+  $('#asIn').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); asstSend(); } });
+  $('#asForm').onsubmit = e => { e.preventDefault(); asst.job ? inv('assistant_stop', { job: asst.job }) : asstSend(); };
+  return el;
+}
+const asstMsg = (cls, html) => { const log = $('#asLog'), d = log.appendChild(Object.assign(document.createElement('div'), { className: 'am ' + cls })); d.innerHTML = html; log.scrollTop = log.scrollHeight; return d; };
+const asstBusy = on => { const b = $('#asGo'); b.innerHTML = icon(on ? 'square' : 'arrow-up'); paintIcons(b); asst.el.classList.toggle('busy', on); };
+async function asstSend() {
+  const q = $('#asIn').value.trim();
+  if (!q || asst.job) return;
+  if (!(await inv('assistant_ready'))) return asstMsg('err', tr('asstMissing'));
+  $('#asIn').value = '';
+  asstMsg('me', esc(q));
+  const job = asst.job = uid(), wait = asstMsg('ai work', `<i></i><i></i><i></i>`);
+  asstBusy(true);
+  asst.failed = false;
+  try { await inv('assistant_ask', { prompt: q, session: asst.session, job }); }
+  catch (e) { if (!asst.failed) asstMsg('err', esc(cleanErr(e))); } // the result event already said why
+  wait.remove();
+  asst.job = null; asstBusy(false);
+}
+TA.event.listen('assistant-ev', e => {
+  const { job, ev } = e.payload;
+  if (job !== asst.job) return;
+  if (ev.session_id) asst.session = ev.session_id;
+  const wait = $('#asLog .work');
+  if (ev.type === 'assistant') for (const c of ev.message?.content || []) {
+    if (c.type === 'text' && c.text.trim() && !LOGIN_RE.test(c.text)) asstMsg('ai', esc(c.text.trim()).replace(/\n/g, '<br>'));
+    else if (c.type === 'tool_use') asstMsg('tool', `${icon('wand-sparkles')}<span>${esc(String(c.name).replace(/^mcp__maqto__/, '').replace(/_/g, ' '))}</span>`);
+    if (wait) $('#asLog').appendChild(wait);
+  }
+  if (ev.type === 'result' && LOGIN_RE.test(ev.result || '')) { asst.failed = true; asstMsg('err', tr('asstLogin')); }
+  else if (ev.type === 'result' && (ev.is_error || ev.subtype !== 'success')) { asst.failed = true; asstMsg('err', esc(ev.result || ev.subtype)); }
+  paintIcons($('#asLog'));
+});
+$('#bAsst').onclick = () => { const el = asstPanel(); el.hidden = !el.hidden; if (!el.hidden) $('#asIn').focus(); };
+
 TA.event.listen('mcp-call', async e => {
   const { id, method, params } = e.payload;
   let out;
