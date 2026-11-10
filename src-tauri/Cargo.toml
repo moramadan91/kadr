@@ -1,6 +1,6 @@
 [package]
 name = "kadr"
-version = "1.0.9"
+version = "1.0.10"
 description = "Kadr video editor"
 edition = "2021"
 
