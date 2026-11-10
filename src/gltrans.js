@@ -25,14 +25,16 @@ vec2 rot(vec2 q,float a){float c=cos(a),s=sin(a);return vec2(c*q.x-s*q.y,s*q.x+c
 vec2 zm(vec2 u,vec2 c,float z){return c+(u-c)/z;}
 vec2 rc(vec2 u,vec2 c,float a){vec2 k=vec2(AS(),1.);return rot((u-c)*k,a)/k+c;}
 vec2 sq(vec2 u){return (u-.5)*vec2(AS(),1.);}
-vec4 zbA(vec2 u,float k){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TA(.5+(u-.5)*(1.-k*float(i)/11.));return s/12.;}
-vec4 zbB(vec2 u,float k){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TB(.5+(u-.5)*(1.-k*float(i)/11.));return s/12.;}
-vec4 dbA(vec2 u,vec2 d){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TA(u+d*(float(i)/11.-.5));return s/12.;}
-vec4 dbB(vec2 u,vec2 d){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TB(u+d*(float(i)/11.-.5));return s/12.;}
-vec4 sbA(vec2 u,float a){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TA(rc(u,vec2(.5),a*(float(i)/11.-.5)));return s/12.;}
-vec4 sbB(vec2 u,float a){vec4 s=vec4(0.);for(int i=0;i<12;i++)s+=TB(rc(u,vec2(.5),a*(float(i)/11.-.5)));return s/12.;}
-vec4 bA(vec2 u,float r){vec4 s=vec4(0.);for(int i=0;i<5;i++)for(int j=0;j<5;j++)s+=TA(u+vec2(float(i)-2.,float(j)-2.)*r*vec2(1./AS(),1.)*.5);return s/25.;}
-vec4 bB(vec2 u,float r){vec4 s=vec4(0.);for(int i=0;i<5;i++)for(int j=0;j<5;j++)s+=TB(u+vec2(float(i)-2.,float(j)-2.)*r*vec2(1./AS(),1.)*.5);return s/25.;}
+float jit(){return h1(gl_FragCoord.xy+fract(p*7.));}
+vec4 zbA(vec2 u,float k){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TA(.5+(u-.5)*(1.-k*(float(i)+j)/20.));return s/20.;}
+vec4 zbB(vec2 u,float k){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TB(.5+(u-.5)*(1.-k*(float(i)+j)/20.));return s/20.;}
+vec4 dbA(vec2 u,vec2 d){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TA(u+d*((float(i)+j)/20.-.5));return s/20.;}
+vec4 dbB(vec2 u,vec2 d){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TB(u+d*((float(i)+j)/20.-.5));return s/20.;}
+vec4 sbA(vec2 u,float a){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TA(rc(u,vec2(.5),a*((float(i)+j)/20.-.5)));return s/20.;}
+vec4 sbB(vec2 u,float a){vec4 s=vec4(0.);float j=jit();for(int i=0;i<20;i++)s+=TB(rc(u,vec2(.5),a*((float(i)+j)/20.-.5)));return s/20.;}
+vec2 spiral(int i,float r){float f=float(i)+.5;float a=f*2.39996+jit()*6.283;return vec2(cos(a),sin(a))*sqrt(f/24.)*r*vec2(1./AS(),1.);}
+vec4 bA(vec2 u,float r){vec4 s=vec4(0.);for(int i=0;i<24;i++)s+=TA(u+spiral(i,r));return s/24.;}
+vec4 bB(vec2 u,float r){vec4 s=vec4(0.);for(int i=0;i<24;i++)s+=TB(u+spiral(i,r));return s/24.;}
 vec4 rgbA(vec2 u,vec2 d){vec4 g=TA(u);return vec4(TA(u+d).r,g.g,TA(u-d).b,g.a);}
 vec4 rgbB(vec2 u,vec2 d){vec4 g=TB(u);return vec4(TB(u+d).r,g.g,TB(u-d).b,g.a);}
 vec4 X(vec2 u,float w){return w<.5?TA(u):TB(u);}
@@ -73,12 +75,12 @@ vec4 bg(vec2 u){return mix(bA(u,.06),bB(u,.06),smoothstep(.3,.7,p))*vec4(.35,.35
   const LIST = [
     // camera moves (lens zoom, whips, spins): the cut happens in the middle, hidden by the motion
     ['lensIn', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.+2.*t),.45*t);}
-  float t=eo(p*2.-1.);return zbB(zm(u,vec2(.5),.5+.5*t),.45*(1.-t));}`],
-    ['lensOut', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.-.5*t),.45*t);}
-  float t=eo(p*2.-1.);return zbB(zm(u,vec2(.5),3.-2.*t),.45*(1.-t));}`],
+  float t=eo(p*2.-1.);return zbB(zm(u,vec2(.5),2.6-1.6*t),.45*(1.-t));}`],
+    ['lensOut', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.-.2*t),-.6*t);}
+  float t=eo(p*2.-1.);return zbB(zm(u,vec2(.5),1.8-.8*t),-.6*(1.-t));}`],
     ['lensRgb', 'cam', `vec4 tr(vec2 u){float b=pow(sin(PI*p),2.);vec2 d=(u-.5)*.06*b;float k=.45*b;
   if(p<.5){vec2 v=zm(u,vec2(.5),1.+2.*ei(p*2.));vec4 g=zbA(v,k);return vec4(zbA(v+d,k).r,g.g,zbA(v-d,k).b,g.a);}
-  vec2 v=zm(u,vec2(.5),.5+.5*eo(p*2.-1.));vec4 g=zbB(v,k);return vec4(zbB(v+d,k).r,g.g,zbB(v-d,k).b,g.a);}`],
+  vec2 v=zm(u,vec2(.5),2.6-1.6*eo(p*2.-1.));vec4 g=zbB(v,k);return vec4(zbB(v+d,k).r,g.g,zbB(v-d,k).b,g.a);}`],
     ['whipL', 'cam', whip(1, 0)], ['whipR', 'cam', whip(-1, 0)], ['whipU', 'cam', whip(0, -1)], ['whipD', 'cam', whip(0, 1)],
     ['whipRgb', 'cam', whip(1, 0, true)],
     ['spinZoom', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return sbA(zm(rc(u,vec2(.5),-t*2.4),vec2(.5),1.+.7*t),.9*t);}
@@ -86,10 +88,10 @@ vec4 bg(vec2 u){return mix(bA(u,.06),bB(u,.06),smoothstep(.3,.7,p))*vec4(.35,.35
     ['turbo', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);float k=abs(sin(p*PI*4.));float z=1.+.35*k*b+1.2*b*b;return p<.5?zbA(zm(u,vec2(.5),z),.5*b):zbB(zm(u,vec2(.5),z),.5*b);}`],
     ['shakeCam', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);float f=floor(p*26.);vec2 o=(vec2(h1(vec2(f,1.)),h1(vec2(f,2.)))-.5)*.14*b;
   float a=(h1(vec2(f,3.))-.5)*.12*b;vec2 v=zm(rc(u,vec2(.5),a),vec2(.5),1.+.15*b)+o;return p<.5?dbA(v,o*.8):dbB(v,o*.8);}`],
-    ['bounce', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return TA(zm(bulge(u,-.7*t),vec2(.5),1.-.4*t));}
-  float t=p*2.-1.;float s=1.-.4*exp(-5.*t)*cos(9.*t);return TB(zm(bulge(u,-.7*(1.-t)*(1.-t)),vec2(.5),s));}`],
+    ['bounce', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);vec2 v=zm(bulge(u,-.5*t),vec2(.5),1.-.35*t);return inb(v)?TA(v):bg(u);}
+  float t=p*2.-1.;float s=1.-.35*exp(-5.*t)*cos(9.*t);vec2 v=zm(bulge(u,-.5*(1.-t)*(1.-t)),vec2(.5),s);return inb(v)?TB(v):bg(u);}`],
     ['focus', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=zm(u,vec2(.5),1.+.08*b);vec4 c=p<.5?bA(v,.05*b):bB(v,.05*b);return c*vec4(vec3(1.+.25*b),1.);}`],
-    ['blink', 'cam', `vec4 tr(vec2 u){float c=pow(sin(PI*p),1.6);float x=u.x*2.-1.;float edge=(1.-c)*(1.-.35*x*x);float d=abs(u.y-.5)*2.;
+    ['blink', 'cam', `vec4 tr(vec2 u){float c=pow(sin(PI*p),2.6);float x=u.x*2.-1.;float edge=1.-c;float d=abs(u.y-.5)*2.+.12*c*x*x;
   vec4 img=p<.5?bA(u,.04*c):bB(u,.04*c);return mix(img,vec4(0.,0.,0.,1.),smoothstep(edge-.06,edge+.02,d));}`],
     ['rewind', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);float f=floor(p*30.);vec2 v=u;v.x+=(h1(vec2(floor(u.y*70.),f))-.5)*.08*b;v.y+=b*.05*sin(p*40.);
   vec4 c=p<.5?rgbA(v,vec2(.012*b,0.)):rgbB(v,vec2(.012*b,0.));float g=dot(c.rgb,vec3(.3,.59,.11));c.rgb=mix(c.rgb,vec3(g),.6*b);
@@ -115,26 +117,26 @@ vec4 bg(vec2 u){return mix(bA(u,.06),bB(u,.06),smoothstep(.3,.7,p))*vec4(.35,.35
     ['slices', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);float row=floor(u.y*24.);float r=h1(vec2(row,7.));vec2 v=u+vec2((r-.5)*.6*b*b,0.);
   return p+(r-.5)*.3<.5?TA(v):TB(v);}`],
     ['digital', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 k=vec2(28./AS(),28.)*(1.-.75*b);vec2 c=floor(u*k);float r=h1(c+floor(p*14.));
-  vec2 v=mix(u,(c+.5)/k,step(.5,b));vec4 col=r<p?TB(v):TA(v);col.rgb=mix(col.rgb,floor(col.rgb*4.)/4.,b);return col;}`],
+  vec2 v=mix(u,(c+.5)/k,step(.85,b));vec4 col=r<p?TB(v):TA(v);col.rgb=mix(col.rgb,floor(col.rgb*6.)/6.,.5*b*b);return col;}`],
     ['vhs', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=u;float band=step(.92,fract(u.y*3.-p*4.));v.x+=band*.05*b+(vn(vec2(u.y*90.,p*50.))-.5)*.03*b;
-  vec4 c=p<.5?rgbA(v,vec2(.02*b,0.)):rgbB(v,vec2(.02*b,0.));c.rgb+=(h1(u*R+p)-.5)*.25*b;return c;}`],
+  vec4 c=p<.5?rgbA(v,vec2(.02*b,0.)):rgbB(v,vec2(.02*b,0.));c.rgb+=(h1(u*R+p)-.5)*.1*b;return c;}`],
     ['smear', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);float row=floor(u.y*80.);float on=step(.55,h1(vec2(row,floor(p*12.))));vec2 v=u;v.x=mix(u.x,floor(u.x*2.+h1(vec2(row,3.)))/2.,on*b);
   return p<.5?rgbA(v,vec2(.01*b,0.)):rgbB(v,vec2(.01*b,0.));}`],
     ['rgbSplit', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 d=vec2(.06,.015)*b*sign(sin(p*50.));vec2 v=zm(u,vec2(.5),1.+.1*b);return p<.5?rgbA(v,d):rgbB(v,d);}`],
     // light
-    ['flash', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);float w=pow(b,2.2);vec4 c=p<.5?bA(u,.03*b):bB(u,.03*b);return vec4(mix(c.rgb*(1.+2.*w),vec3(1.),w),c.a);}`],
-    ['leakWarm', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.35,.65,p));float g=exp(-pow((u.x+u.y*.4-(p*1.9-.4))*2.2,2.));
-  float n=fbm(u*2.+vec2(p*2.,0.));vec3 L=mix(vec3(1.,.42,.12),vec3(1.,.85,.5),n)*g*(.6+n)*b*1.8;return vec4(1.-(1.-c.rgb)*(1.-min(L,1.)),c.a);}`],
+    ['flash', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);float w=pow(b,5.);vec4 c=p<.5?bA(u,.03*b):bB(u,.03*b);return vec4(mix(c.rgb*(1.+2.*w),vec3(1.),w),c.a);}`],
+    ['leakWarm', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.35,.65,p));float g=exp(-pow((u.x+u.y*.4-(p*1.9-.4))*3.,2.));
+  float n=fbm(u*2.+vec2(p*2.,0.));vec3 L=mix(vec3(1.,.42,.12),vec3(1.,.8,.45),n)*g*(.5+n)*b*1.1;return vec4(1.-(1.-c.rgb)*(1.-min(L,1.)),c.a);}`],
     ['leakPink', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.35,.65,p));float g=exp(-pow((length(u-vec2(1.,1.))-(p*1.8-.3))*2.,2.));
-  float n=fbm(u*2.5-vec2(0.,p*2.));vec3 L=mix(vec3(1.,.25,.55),vec3(.6,.3,1.),n)*g*(.6+n)*b*1.8;return vec4(1.-(1.-c.rgb)*(1.-min(L,1.)),c.a);}`],
+  float n=fbm(u*2.5-vec2(0.,p*2.));vec3 L=mix(vec3(1.,.25,.55),vec3(.6,.3,1.),n)*g*(.5+n)*b*1.2;return vec4(1.-(1.-c.rgb)*(1.-min(L,1.)),c.a);}`],
     ['flare', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.4,.6,p));float y=.5+.15*sin(p*3.);float s=exp(-abs(u.y-y)*60.)*(.4+.6*exp(-abs(u.x-p*1.4+.2)*3.));
   vec3 L=vec3(.55,.75,1.)*s*2.5*b+vec3(1.)*pow(b,4.)*.6;return vec4(c.rgb+L,c.a);}`],
-    ['strobe', 'light', `vec4 tr(vec2 u){float k=floor(p*5.);float w=mod(k,2.);if(p>.8)w=1.;float fl=pow(1.-fract(p*5.),3.)*.8;vec4 c=X(u,w);return vec4(c.rgb+fl,c.a);}`],
+    ['strobe', 'light', `vec4 tr(vec2 u){float k=floor(p*5.);float w=mod(k,2.);if(p>.8)w=1.;float fl=pow(1.-fract(p*5.),3.)*.35;vec4 c=X(u,w);return vec4(c.rgb+fl,c.a);}`],
     ['burn', 'light', `vec4 tr(vec2 u){float n=fbm(sq(u)*3.+vec2(0.,p));float e=p*1.3-.15;float d=e-n;vec4 c=d>0.?TB(u):TA(u);
   float rim=smoothstep(.12,0.,abs(d));vec3 hot=mix(vec3(1.,.35,.05),vec3(1.,.9,.6),smoothstep(.06,0.,abs(d)));c.rgb=mix(c.rgb,hot,rim*.95);if(d<0.&&d>-.2)c.rgb*=1.-(.2+d)*1.5;return c;}`],
     ['golden', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.4,.6,p));vec3 t=c.rgb*vec3(1.25,1.05,.75);return vec4(mix(c.rgb,1.-(1.-t)*(1.-t*b*1.5),b),c.a);}`],
-    ['prism', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 d=(u-.5)*.12*b;vec2 v=zm(u,vec2(.5),1.+.15*b);vec4 c=mix(rgbA(v,d),rgbB(v,d),smoothstep(.4,.6,p));
-  c.rgb+=vec3(sin(u.x*12.+p*9.),sin(u.x*12.+p*9.+2.),sin(u.x*12.+p*9.+4.))*.12*b;return c;}`],
+    ['prism', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 d=(u-.5)*.06*b;vec2 v=zm(u,vec2(.5),1.+.15*b);vec4 c=mix(rgbA(v,d),rgbB(v,d),smoothstep(.4,.6,p));
+  c.rgb+=vec3(sin(u.x*12.+p*9.),sin(u.x*12.+p*9.+2.),sin(u.x*12.+p*9.+4.))*.04*b;return c;}`],
     // 3D
     ['cubeL', '3d', cubeH(1)], ['cubeR', '3d', cubeH(-1)], ['cubeU', '3d', cubeV(1)], ['cubeD', '3d', cubeV(-1)],
     ['flipY', '3d', flip('y')], ['flipX', '3d', flip('x')],
@@ -146,10 +148,10 @@ vec4 bg(vec2 u){return mix(bA(u,.06),bB(u,.06),smoothstep(.3,.7,p))*vec4(.35,.35
   if(A.z>0.&&(B.z<0.||A.z<B.z))return TA(A.xy);if(B.z>0.)return TB(B.xy);return bg(u);}`],
     ['gallery', '3d', `vec4 tr(vec2 u){float s=1.-.28*smoothstep(0.,.3,p)*(1.-smoothstep(.7,1.,p));float x=io(clamp((p-.25)/.5,0.,1.))*1.12;
   vec2 la=(u-.5-vec2(-x*s,0.))/s+.5,lb=(u-.5-vec2((1.12-x)*s,0.))/s+.5;if(inb(la))return TA(la);if(inb(lb))return TB(lb);return bg(u);}`],
-    ['tiles', '3d', `vec4 tr(vec2 u){vec2 n=vec2(4.,7.);vec2 c=floor(u*n);vec2 l=fract(u*n);float q=clamp(p*1.8-(c.x+n.y-1.-c.y)/(n.x+n.y)*.8,0.,1.);
+    ['tiles', '3d', `vec4 tr(vec2 u){vec2 n=vec2(3.,5.);vec2 c=floor(u*n);vec2 l=fract(u*n);float q=clamp((p-(c.x+n.y-1.-c.y)/(n.x+n.y-2.)*.45)/.55,0.,1.);
   float k=abs(cos(PI*q));if(k<.02)return bg(u);float x=(l.x-.5)/k+.5;if(x<0.||x>1.)return bg(u);vec2 v=(c+vec2(x,l.y))/n;float sh=.6+.4*k;return (q<.5?TA(v):TB(v))*vec4(sh,sh,sh,1.);}`],
     ['panels', '3d', `vec4 tr(vec2 u){float i=floor(u.x*3.);float q=clamp((p-i*.12)/.64,0.,1.);float e=io(q);float sg=mod(i,2.)<.5?1.:-1.;float o=sg*(1.-e);
-  vec2 v=u-vec2(0.,o);if(v.y>=0.&&v.y<=1.)return TB(v);return TA(v+vec2(0.,sg));}`],
+  vec2 v=u-vec2(0.,o);if(v.y>=0.&&v.y<=1.)return TB(v);float sh=1.-.45*smoothstep(.12,0.,abs(v.y-clamp(v.y,0.,1.)));return TA(u)*vec4(sh,sh,sh,1.);}`],
     // shape masks
     ['heart', 'mask', `float sdf(vec2 q){q.y=q.y+.55;q.x=abs(q.x);if(q.y+q.x>1.)return sqrt(dot(q-vec2(.25,.75),q-vec2(.25,.75)))-.3536;
   return sqrt(min(dot(q-vec2(0.,1.),q-vec2(0.,1.)),dot(q-.5*max(q.x+q.y,0.),q-.5*max(q.x+q.y,0.))))*sign(q.x-q.y);}
@@ -182,10 +184,10 @@ vec4 tr(vec2 u){float e=io(p);vec2 q=sq(u)/max(.001,e*2.6);return mix(TB(u),TA(u
     ['wave', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=u+vec2(sin(u.y*18.+p*12.),cos(u.x*14.+p*9.))*.045*b;return mixAB(v,smoothstep(.35,.65,p));}`],
     ['liquid', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=u+(vec2(fbm(u*3.+p*2.),fbm(u*3.+5.2-p*2.))-.5)*.35*b;return mixAB(v,smoothstep(.35,.65,p));}`],
     ['swirl', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);float a=p<.5?7.*ei(p*2.):-7.*(1.-eo(p*2.-1.));vec2 v=twirl(u,a);return p<.5?zbA(v,.25*b):zbB(v,.25*b);}`],
-    ['fisheye', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=bulge(u,3.*b);v=zm(v,vec2(.5),1.+.3*b);return mixAB(v,smoothstep(.42,.58,p));}`],
+    ['fisheye', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=bulge(u,3.*b);v=zm(v,vec2(.5),1.+.9*b);return mixAB(v,smoothstep(.42,.58,p));}`],
     ['pinch', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=bulge(u,-1.8*b);return mixAB(v,smoothstep(.42,.58,p));}`],
     ['kaleido', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 q=sq(u);float n=6.;float a=atan(q.y,q.x)+p*2.;float s=2.*PI/n;a=abs(mod(a,s)-s*.5);vec2 k=length(q)*vec2(cos(a),sin(a));
-  vec2 v=mix(u,k/vec2(AS(),1.)+.5,smoothstep(0.,.35,b));return mixAB(v,smoothstep(.4,.6,p));}`],
+  vec2 v=mix(u,k/vec2(AS(),1.)+.5,smoothstep(.3,.95,b));return mixAB(v,smoothstep(.4,.6,p));}`],
     ['crack', 'warp', `vec2 cell(vec2 q,out float id){vec2 i=floor(q),f=fract(q);float md=9.;vec2 mc=vec2(0.);for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 g=vec2(float(x),float(y));
   vec2 o=vec2(h1(i+g),h1(i+g+9.));vec2 r=g+o-f;float d=dot(r,r);if(d<md){md=d;mc=i+g+o;}}id=h1(mc);return mc;}
 vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=clamp((p-.25-id*.25)/.5,0.,1.);if(p<.25){
