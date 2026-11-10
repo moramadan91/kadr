@@ -1,4 +1,5 @@
 mod mcp;
+mod rife;
 mod media_server;
 
 pub fn mcp_stdio() { mcp::serve_stdio() }
@@ -708,7 +709,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

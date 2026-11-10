@@ -185,10 +185,29 @@ function chainKey(it) {
 const pxOk = new Map(), pxPath = new Map();
 function pxKey(it) {
   const m = media(it);
-  return JSON.stringify([m.path, num(it.in, 0), it.dur, it.curve, !!it.pitch, P.fps, smoothSlow(it) && num(it.speed, 1)]);
+  return JSON.stringify([m.path, num(it.in, 0), it.dur, it.curve, !!it.pitch, P.fps, smoothSlow(it) && num(it.speed, 1), smoothSlow(it) && rifeFor(it)]);
 }
 // smooth slow-mo previews from the proxy too: the export's motion-interpolated frames, made once
 const smoothSlow = it => !!it.smooth && (S.hasCurve(it) ? it.curve.pts.some(p => p[1] < 1) : num(it.speed, 1) < 1);
+// AI in-between frames (RIFE): a high-frame-rate copy of the clip's source range, made once per range
+let rifeTool = false;
+inv('rife_ready').then(v => (rifeTool = v), () => {});
+const rifeOk = new Map(), rifePath = new Map();
+const rifeFactor = it => clamp(Math.ceil(1 / Math.max(0.125, S.hasCurve(it) ? Math.min(...it.curve.pts.map(p => p[1])) : num(it.speed, 1))), 2, 8);
+const rifeKey = it => JSON.stringify([media(it).path, +num(it.in, 0).toFixed(3), +S.srcLen(it).toFixed(3), rifeFactor(it)]);
+// path of the AI copy, '' while it is being made, null when not used (tool missing, not slow, failed)
+function rifeFor(it) {
+  if (!rifeTool || !smoothSlow(it)) return null;
+  const k = rifeKey(it);
+  if (rifePath.has(k)) return rifePath.get(k);
+  if (!rifeOk.has(k)) {
+    rifeOk.set(k, inv('rife_make', { path: media(it).path, start: num(it.in, 0), len: S.srcLen(it), factor: rifeFactor(it), job: it.id })
+      .then(p => { rifePath.set(k, p); needsDraw = true; pxPaint(it.id); return p; }, e => { rifePath.set(k, null); toast(cleanErr(e)); return null; }));
+  }
+  return '';
+}
+const rifeWait = it => (rifeFor(it), rifeOk.get(rifeKey(it)) || Promise.resolve(null));
+TA.event.listen('rifeprog', e => { const g = pxProg.get(e.payload.job); if (g) { g.p = e.payload.p * 0.85; pxPaint(e.payload.job); } });
 function proxyFor(it) {
   if (!(S.hasCurve(it) || smoothSlow(it)) || media(it).kind !== 'video') return null;
   const key = pxKey(it);
@@ -197,11 +216,13 @@ function proxyFor(it) {
     const w = pxWait.get(it.id), now = performance.now();
     if (!w || w.key !== key) { pxWait.set(it.id, { key, at: now }); pxProg.delete(it.id); setTimeout(() => (needsDraw = true), 450); pxPaint(it.id); return null; }
     if (now - w.at < 400) return null; // still being edited: start once the curve stops changing
+    const rf = smoothSlow(it) ? rifeFor(it) : null;
+    if (rf === '') { if (!pxProg.has(it.id) || pxProg.get(it.id).key !== key) { pxProg.set(it.id, { key, p: 0 }); pxPaint(it.id); } return null; } // AI frames first
     const m0 = media(it), m = { ...m0, path: mediaProxy(m0) || m0.path }, k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
     const q = { w: ev(m.w), h: ev(m.h), fps: P.fps, media: { m }, tracks: [{ id: 'v', kind: 'video' }],
       items: [{ id: 'x', track: 'v', media: 'm', start: 0, dur: it.dur, in: num(it.in, 0), curve: it.curve, speed: it.speed, smooth: it.smooth, pitch: it.pitch, fit: 'cover' }] };
     let args;
-    try { args = G.buildArgs(q, { out: '__OUT__', codec: 'proxy' }).args.filter(a => a !== '-progress' && a !== 'pipe:1'); } catch { args = null; }
+    try { args = G.buildArgs(q, { out: '__OUT__', codec: 'proxy', rife: rf ? { x: rf } : null }).args.filter(a => a !== '-progress' && a !== 'pipe:1'); } catch { args = null; }
     pxProg.set(it.id, { key, p: 0 }); pxPaint(it.id);
     pxOk.set(key, args ? inv('proxy_render', { args, job: it.id, total: it.dur }).then(path => { pxPath.set(key, path); needsDraw = true; pxPaint(it.id); return path; },
       e => { if (String(e).includes('cancelled')) pxOk.delete(key); return null; }) : Promise.resolve(null));
@@ -2087,7 +2108,7 @@ function inspector() {
       if (cv) h.push(durRow, pxBar(it, 'insp'), `<div class="cved"><svg id="cvEd" viewBox="0 0 300 160" preserveAspectRatio="none"></svg><div class="cvbtns"><button id="cvReset">${tr('reset')}</button><button id="cvAdd" title="${tr('cv_add')}">+</button><button id="cvDel" title="${tr('cv_del')}">−</button></div></div>`);
     }
     if (media(it).kind === 'video' || media(it).hasAudio || media(it).kind === 'audio') h.push(`<div class="inl">${fld.check('pitch', 'pitchShift', it)}</div>`);
-    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr('smoothHint')}</p>`, cv ? '' : pxBar(it, 'insp'));
+    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr(rifeTool ? 'smoothHintAi' : 'smoothHint')}</p>`, rifeTool ? '' : `<button class="ghost" data-rifeget>${icon('download')}<span>${tr('rifeGet')}</span></button>`, cv ? '' : pxBar(it, 'insp'));
   } else if (inspTab === 'tAdjust') {
     h.push(`<div class="seg csub">${['basic', 'hsl', 'curves', 'wheels', 'lut', 'mask'].map(x => `<button data-csub="${x}" class="${x === colSub ? 'on' : ''}">${tr('cs_' + x)}</button>`).join('')}</div>`);
     const C = it.color || {};
@@ -2185,6 +2206,13 @@ function inspector() {
   bind('#fillSwap',() => { snapshot(); const f = it.fill; [f.c1, f.c2, f.a1, f.a2] = [f.c2, f.c1, f.a2, f.a1]; dirty = true; refresh(); });
   bind('#colMatch', () => colorMatchPick(it));
 }
+// one-time download of the AI frame engine (RIFE, ~35 MB)
+$('#inspBody').addEventListener('click', async e => {
+  if (!e.target.closest('[data-rifeget]')) return;
+  if (!(await TA.dialog.ask(tr('rifeAsk'), { title: tr('smoothSlow') }))) return;
+  try { progress(tr('p_rife_dl'), 0); await inv('rife_download'); rifeTool = true; hideModal(); toast(tr('rifeOk')); refresh(); }
+  catch (err) { hideModal(); toast(cleanErr(err)); }
+});
 $('#inspBody').addEventListener('click', e => {
   const it = sel && item(sel);
   if (!it) return;
@@ -3834,7 +3862,9 @@ async function doExport(o) {
       const transLists = await renderGlTrans(Q, work, o.fps);
       const luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
       await writeFills(Q, work);
-      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks });
+      const rife = {};
+      for (const it of P.items.filter(i => pxNeeds(i) && smoothSlow(i) && rifeTool)) { progress(tr('p_rife'), 0); const r = await rifeWait(it); if (r) rife[it.id] = r; }
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks, rife });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: null, duration });
       work = null;

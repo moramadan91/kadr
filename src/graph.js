@@ -29,7 +29,7 @@
   };
 
   // Source time -> clip time. A curve becomes a piecewise-linear setpts over source seconds.
-  function timeChain(it, fps) {
+  function timeChain(it, fps, ai) {
     const ch = [];
     if (S.hasCurve(it)) {
       const n = 64, pts = [];
@@ -38,7 +38,7 @@
     } else ch.push(`setpts=(PTS-STARTPTS)/${num(it.speed, 1)}`);
     // smooth slow motion: motion-compensated in-between frames where the clip plays slower than real time
     const slow = S.hasCurve(it) ? it.curve.pts.some(p => p[1] < 1) : num(it.speed, 1) < 1;
-    if (it.smooth && slow) ch.push(`minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`);
+    if (it.smooth && slow && !ai) ch.push(`minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`);
     ch.push(`fps=${fps}`);
     return ch;
   }
@@ -72,6 +72,7 @@
       if (idx.has(it.id)) return idx.get(it.id);
       const m = p.media[it.media];
       if (m.kind === 'image') args.push('-loop', '1', '-framerate', String(fps), '-t', f3(it.dur), '-i', m.path);
+      else if (o.rife && o.rife[it.id]) args.push('-i', o.rife[it.id]); // AI copy already covers [in, in + srcLen]
       else args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', m.path);
       idx.set(it.id, n);
       return n++;
@@ -125,7 +126,7 @@
         // animated scale: lay out at the largest scale, then shrink per frame
         const smax = (kf && kf.scale ? Math.max(...kf.scale.map(q => q[1])) : num(it.scale, 1)) * (LP && LP.smax || 1);
         const L = S.layout({ ...it, scale: smax }, m, W, H);
-        const ch = timeChain(it, fps);
+        const ch = timeChain(it, fps, !!(o.rife && o.rife[it.id]));
         const TI = S.transIn(p, it0), TO = S.transOut(p, it0), d3 = v => (+v).toFixed(4);
         if (TO && !S.GLT.includes(TO.id)) ch.push(`tpad=stop_mode=clone:stop_duration=${f3(TO.d)}`); // hold the last frame under the next clip's transition
         if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
@@ -223,7 +224,8 @@
     const al = [];
     aud.forEach((it, j) => {
       const am = p.media[it.media], fk = S.fxKey(it), fx = fk && am.fx && am.fx[fk]; // processed copy of the same source
-      const k = fx ? (args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', fx), n++) : input(it), v = num(it.volume, 1);
+      const asrc = fx || (o.rife && o.rife[it.id] && p.media[it.media].path); // the AI copy has no sound
+      const k = asrc ? (args.push('-ss', f3(num(it.in, 0)), '-t', f3(S.srcLen(it)), '-i', asrc), n++) : input(it), v = num(it.volume, 1);
       const fi = Math.max(num(it.fadeIn, 0), num(it.afIn, 0)), fo = Math.max(num(it.fadeOut, 0), num(it.afOut, 0));
       const ch = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', 'asetpts=PTS-STARTPTS'];
       let src = `${k}:a`;
