@@ -183,7 +183,7 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
 .mshots figcaption bdi, .shots figcaption bdi { color: var(--ink); font-weight: 600; }
 
 /* faq */
-.faq { display: grid; gap: 10px; max-width: 860px; }
+.faq { display: grid; gap: 10px; max-width: 860px; margin-top: clamp(28px, 4vw, 44px); }
 .faq details { padding: 0; }
 .faq summary {
   list-style: none; cursor: pointer; padding: 20px 24px; min-height: 44px;
