@@ -23,7 +23,8 @@ const EN = {
   f5: 'Export up to 4K', f5p: 'H.264 and HEVC, hardware accelerated on Mac.',
   f6: 'Voiceover recording', f6p: 'Record narration in the app and it lands on the timeline.',
   f7: 'Automatic updates', f7p: 'Every new version reaches you on its own, signed and verified.',
-  nClaude: 'Claude Code', f9a: 'How to connect it →', copy: 'Copy', copied: 'Copied',
+  nClaude: 'Claude Code', ccBtn: 'Connect Claude Code', ccPrompt: 'Make a burger promo',
+  ccL1: '✓ Gradient background', ccL2: '✓ 3 texts with keyframes', ccL3: '✓ Transition', ccT1: 'BURGER', ccT2: 'flame grilled', ccT3: 'Order now', copy: 'Copy', copied: 'Copied',
   cEye: 'Maqto + Claude Code', cTitle: 'Write the idea, watch the video build itself.',
   cSub: 'Maqto ships an MCP server. Connect it to Claude Code once, then write a prompt and Claude works on your timeline live.',
   cSteps: 'Connect in 4 steps',
@@ -36,7 +37,7 @@ const EN = {
   cEx: 'In Maqto, make an 8-second 9:16 motion video for a burger place: gradient background, 3 lines coming in one after another with motion, then export it to the Desktop.',
   k1: 'Texts and styles', k2: 'Keyframes and motion', k3: 'Transitions', k4: 'Filters and effects', k5: 'Looks at the frame to check', k6: 'Export',
   cUndo: 'Maqto opens by itself if it is closed, and every step Claude takes can be undone with Cmd/Ctrl+Z.',
-  f9: 'Write the prompt in Claude Code, watch the video build itself', f9p: 'Maqto ships an MCP server. Connect it once and Claude adds texts, motion, keyframes and transitions to the timeline live, looks at the frame to check its work, and exports.',
+  f9: 'Write the prompt in Claude Code, watch the video build itself', f9p: 'Claude works on your timeline live: it adds texts, motion and transitions, looks at the frame to check its work, and exports.',
   tEye: 'A tour of the app', tTitle: 'Everything where you expect it.',
   s1: 'Timeline', s1p: 'Drag in video, images and audio. The main track is magnetic so there are no gaps, and S splits a clip.',
   s2: 'Library and captions', s2p: 'Import your files, pick a text style, or press Auto captions to transcribe Arabic speech.',
@@ -219,14 +220,30 @@ mm.add({ motion: '(prefers-reduced-motion: no-preference)', wide: '(min-width: 9
     if (r.top < innerHeight && r.bottom > 0 && +getComputedStyle(c).opacity < 0.05) gsap.to(c, { y: 0, autoAlpha: 1, duration: 0.5 });
   }));
 
-  // Caption card: the highlighted word walks along, like the real captions.
-  const words = $$('.words span');
-  gsap.timeline({ scrollTrigger: { trigger: '.c-cap', start: 'top 70%' } })
-    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 0)), null, 0)
-    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 1)), null, 0.4)
-    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 2)), null, 0.8)
-    .call(() => words.forEach((w, i) => w.classList.toggle('on', i === 3)), null, 1.2);
-
+  // Claude Code card: a prompt is typed, then the edit builds itself on the mini timeline. Loops while on screen.
+  const C = '.cc';
+  const cc = gsap.timeline({ repeat: -1, repeatDelay: 1, paused: true, defaults: { ease: 'power2.out' } })
+    .set(`${C} .cc-type`, { clipPath: 'inset(0 0 0 100%)' })
+    .set(`${C} .cc-log span, ${C} .lane b, ${C} .cc-frame span`, { autoAlpha: 0 })
+    .set(`${C} .cc-frame`, { '--g': 0 })
+    .set(`${C} .cc-ph`, { left: '0%' })
+    .to(`${C} .cc-type`, { clipPath: 'inset(0 0 0 0%)', duration: 1.1, ease: 'steps(18)' })
+    .to(`${C} .cc-spark`, { rotate: 180, scale: 1.25, duration: 0.5, ease: 'back.out(3)' }, '+=0.15')
+    .fromTo(`${C} .lane b.bg`, { scaleX: 0 }, { scaleX: 1, autoAlpha: 1, duration: 0.5 })
+    .to(`${C} .cc-frame`, { '--g': 1, duration: 0.5 }, '<')
+    .to(`${C} .cc-log span:nth-child(1)`, { autoAlpha: 1, duration: 0.2 }, '<')
+    .fromTo(`${C} .lane b[class^=tx]`, { y: -14 }, { y: 0, autoAlpha: 1, stagger: 0.22, duration: 0.35, ease: 'back.out(2)' })
+    .fromTo(`${C} .lane b[class^=k]`, { scale: 0 }, { scale: 1, autoAlpha: 1, stagger: 0.1, duration: 0.25 }, '-=0.3')
+    .to(`${C} .cc-log span:nth-child(2)`, { autoAlpha: 1, duration: 0.2 }, '<')
+    .to(`${C} .cc-log span:nth-child(3)`, { autoAlpha: 1, duration: 0.2 }, '+=0.15')
+    .to(`${C} .cc-spark`, { rotate: 360, scale: 1, duration: 0.5 }, '<')
+    .to(`${C} .cc-ph`, { left: '100%', duration: 3, ease: 'none' }, '+=0.1')
+    .fromTo(`${C} .cc-frame .t1`, { scale: 0.4, rotate: -10 }, { scale: 1, rotate: 0, autoAlpha: 1, duration: 0.45, ease: 'back.out(2.4)' }, '<')
+    .fromTo(`${C} .cc-frame .t2`, { x: 24 }, { x: 0, autoAlpha: 1, duration: 0.4 }, '<0.9')
+    .fromTo(`${C} .cc-frame .t3`, { y: 14 }, { y: 0, autoAlpha: 1, duration: 0.4 }, '<0.9')
+    .to(`${C} .cc-frame span`, { autoAlpha: 0, duration: 0.3 }, '+=0.9')
+    .to(`${C} .cc-log span, ${C} .lane b`, { autoAlpha: 0, duration: 0.3 }, '<');
+  ScrollTrigger.create({ trigger: '.c-cc', start: 'top 85%', end: 'bottom 10%', onToggle: s => (s.isActive ? cc.play() : cc.pause()) });
 });
 
 

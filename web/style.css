@@ -122,8 +122,6 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
 .card p { color: var(--mute); font-size: 15px; }
 .c-cap { grid-column: span 2; grid-row: span 2; display: flex; flex-direction: column; }
 .c-4k { grid-column: span 2; }
-.c-mcp { grid-column: 1 / -1; }
-.c-mcp .more { display: inline-block; margin-top: 12px; color: var(--accent); font-weight: 700; }
 .words { margin-top: auto; padding-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; font: 800 clamp(24px, 3vw, 38px)/1.3 var(--display); }
 .words span { padding: 2px 12px; border-radius: 10px; background: rgba(0,0,0,.35); border: 1px solid var(--line); }
 .words .on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
@@ -299,3 +297,36 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
 .cp:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .can { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin-top: 16px; }
 .can li { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--mute); }
+
+/* Claude Code card: a tiny terminal and a mini editor; main.js animates it (static when motion is reduced) */
+.cc { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; min-height: 230px; direction: ltr; }
+.cc-term, .cc-app { border: 1px solid var(--line); border-radius: 12px; background: rgba(0, 0, 0, .3); overflow: hidden; display: flex; flex-direction: column; }
+.cc-bar { display: flex; align-items: center; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.cc-bar i { width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
+.cc-bar b { margin-inline-start: 6px; font: 600 11px/1 ui-monospace, Menlo, monospace; color: var(--mute); }
+.cc-line { display: flex; align-items: flex-start; gap: 8px; padding: 12px 12px 6px; font-size: 13px; line-height: 1.6; color: var(--ink); }
+html[dir=rtl] .cc-line, html[dir=rtl] .cc-log { direction: rtl; }
+.cc-spark { flex: none; width: 16px; height: 16px; margin-top: 2px; fill: var(--accent); }
+.cc-caret { flex: none; width: 7px; height: 15px; margin-top: 3px; background: var(--accent); animation: ccBlink 1s steps(1) infinite; }
+@keyframes ccBlink { 50% { opacity: 0; } }
+.cc-log { display: grid; gap: 4px; padding: 4px 12px 12px 36px; font-size: 12px; color: var(--accent); }
+html[dir=rtl] .cc-log { padding: 4px 36px 12px 12px; }
+.cc-view { flex: 1; display: grid; place-items: center; padding: 10px; }
+.cc-frame { --g: 1; position: relative; height: 100%; max-height: 140px; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) calc(var(--g) * 70%), #22252a), #141518); }
+.cc-frame span { font: 800 13px/1.15 var(--display); color: #fff; text-align: center; }
+.cc-frame .t1 { font-size: 17px; }
+.cc-frame .t3 { font-size: 9px; padding: 3px 7px; border-radius: 99px; background: var(--accent-ink); color: var(--accent); }
+.cc-tl { position: relative; display: grid; gap: 4px; padding: 8px 10px 10px; border-top: 1px solid var(--line); }
+.cc-tl .lane { position: relative; height: 11px; border-radius: 4px; background: rgba(255, 255, 255, .04); }
+.cc-tl .lane b { position: absolute; top: 0; bottom: 0; border-radius: 4px; transform-origin: left center; }
+.lane .bg { left: 0; width: 100%; background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.lane [class^=tx] { background: #e8eaed; }
+.lane .tx1 { left: 2%; width: 30%; } .lane .tx2 { left: 35%; width: 30%; } .lane .tx3 { left: 68%; width: 30%; }
+.lane [class^=k] { top: 2px; width: 7px; height: 7px; background: var(--accent); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.lane .k1 { left: 4%; } .lane .k2 { left: 37%; } .lane .k3 { left: 70%; }
+.cc-ph { position: absolute; top: 4px; bottom: 4px; left: 100%; width: 2px; margin-left: 10px; background: #fff; border-radius: 2px; z-index: 1; }
+.cc-go { align-self: flex-start; margin-top: 16px; min-height: 48px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cc-go:hover { transform: translateY(-2px); }
+.cc-go { flex: none; }
+@media (max-width: 560px) { .cc { flex: none; grid-template-columns: 1fr; } .cc-app { min-height: 210px; } .cc-frame { max-height: 130px; } }
