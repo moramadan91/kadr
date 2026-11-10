@@ -1980,7 +1980,7 @@ dependencies = [
 
 [[package]]
 name = "kadr"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "fontdb",
  "serde",
