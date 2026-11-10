@@ -352,6 +352,53 @@ function syncMedia() {
     if (dn) { const d = dnEl(it); driven.add(d); driveEl(d, it, false); }
   }
   for (const [k, e] of els) if (k.endsWith('|dn') && !driven.has(e) && !e.paused) e.pause();
+  driveTails();
+}
+// Under a shader transition the outgoing clip keeps playing from its source past its out-point (both
+// clips move, as in CapCut), on an element of its own; with no source left it holds its last frame.
+const tailSrcAt = (it, x) => Math.min(Math.max(0, num(media(it).dur, 0) - 0.05), num(it.in, 0) + S.srcAt(it, it.dur) + x * (S.hasCurve(it) ? S.rateAt(it, it.dur) : num(it.speed, 1)));
+const liveTail = it => { const m = media(it), TO = S.transOut(P, it); return !!TO && S.GLT.includes(TO.id) && m && m.kind === 'video' && !m.fill && !m.adj ? TO : null; };
+const tailEls = new Map();
+function tailEl(it) {
+  const m = media(it), px = mediaProxy(m), url = px ? urlOf({ path: px }) : urlOf(m);
+  let el = tailEls.get(it.id);
+  if (el && el.dataset.src === url) return el;
+  if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
+  el = document.createElement('video');
+  Object.assign(el, { preload: 'auto', crossOrigin: 'anonymous', playsInline: true, muted: true });
+  el.dataset.src = url; el.src = url;
+  el.addEventListener('seeked', () => (needsDraw = true));
+  el.addEventListener('loadeddata', () => (needsDraw = true));
+  mediaHold.appendChild(el); // WebKit only feeds fresh frames from a <video> in the document
+  tailEls.set(it.id, el);
+  return el;
+}
+function driveTails() {
+  const live = new Set();
+  for (const it of P.items) {
+    const TO = !it.hidden && liveTail(it);
+    if (!TO) continue;
+    const x = t - it.start - it.dur;
+    if (x < -1.5 || x > TO.d + 0.1) continue;
+    const el = tailEl(it), want = tailSrcAt(it, Math.max(0, x)), sp = clamp(S.hasCurve(it) ? S.rateAt(it, it.dur) : num(it.speed, 1), 0.0625, 16);
+    live.add(it.id);
+    if (playing && x >= 0) {
+      if (Math.abs(el.playbackRate - sp) > 1e-3) el.playbackRate = sp;
+      if (el.paused) { if (Math.abs(el.currentTime - want) > 0.1) el.currentTime = want; el.play().catch(() => {}); }
+      else if (Math.abs(el.currentTime - want) > 0.25 * Math.max(1, sp)) el.currentTime = want;
+    } else if (playing && x > -0.8) { // warm the decoder up just before, crawling from the out-point
+      if (el.playbackRate !== 0.0625) el.playbackRate = 0.0625;
+      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - want) > 0.05) el.currentTime = want; el.play().catch(() => {}); }
+    } else {
+      if (!el.paused) el.pause();
+      if (!el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
+    }
+  }
+  for (const [k, el] of tailEls) if (!live.has(k)) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); tailEls.delete(k); }
+}
+function tailSrc(it) {
+  const el = liveTail(it) && tailEls.get(it.id);
+  return el && el.readyState >= 2 ? el : tailFrame(it);
 }
 function driveEl(el, it, silent) {
   {
@@ -633,7 +680,7 @@ function drawItem(ctx, it, time, ov, srcOv, flat) {
     if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
     if (!(pv || tail || active(it, time))) return;
     if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); return; }
-    let src = srcOv || (m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailFrame(it) : elFor(it));
+    let src = srcOv || (m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailSrc(it) : elFor(it));
     if (!src) return;
     if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
     else if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
@@ -1254,11 +1301,22 @@ function clipLabel(it) {
   const m = media(it);
   return off + icon(m.adj ? 'zap' : m.fill ? 'paint-bucket' : m.kind === 'audio' ? 'music' : m.kind === 'image' ? 'image' : 'film') + esc(m.name) + (S.hasCurve(it) ? `  ⟿ ${tr('cv_' + it.curve.id)}` : num(it.speed, 1) !== 1 ? `  ×${+num(it.speed, 1).toFixed(2)}` : '');
 }
+// Lanes on screen: only the ones holding a clip, plus the main lane (and a lane a drag just made).
+const laneKeep = new Set();
+const shownTracks = () => P.tracks.filter(x => x.id === 'v1' || laneKeep.has(x.id) || P.items.some(i => i.track === x.id));
+// Lane buttons: hide (every clip on it), lock (no moving or trimming), mute (sound of its clips).
+function laneBtns(x) {
+  const its = P.items.filter(i => i.track === x.id), off = its.length && its.every(i => i.hidden), mute = its.length && its.every(i => i.muted);
+  const snd = x.kind !== 'text' && its.some(i => media(i) && (media(i).kind === 'audio' || media(i).kind === 'video') && !media(i).adj);
+  return `<span class="lb">${snd ? `<b data-lk="mute" class="${mute ? 'on' : ''}" title="${tr('laneMute')}">${icon(mute ? 'volume-x' : 'volume-2')}</b>` : ''}` +
+    `<b data-lk="lock" class="${x.locked ? 'on' : ''}" title="${tr('laneLock')}">${icon(x.locked ? 'lock' : 'lock-open')}</b>` +
+    `<b data-lk="hide" class="${off ? 'on' : ''}" title="${tr('laneHide')}">${icon(off ? 'eye-off' : 'eye')}</b></span>`;
+}
 function renderTimeline() {
-  const width = (Math.max(total(), t) + 30) * pps;
+  const width = (Math.max(total(), t) + 30) * pps, TS = shownTracks();
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
-  $('#heads').innerHTML = P.tracks.map(x => `<div class="head" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i>${esc(trackLabel(x))}</div>`).join('');
-  $('#rows').innerHTML = P.tracks.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}" data-track="${x.id}">${
+  $('#heads').innerHTML = TS.map(x => `<div class="head${x.locked ? ' locked' : ''}" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i><em>${esc(trackLabel(x))}</em>${laneBtns(x)}</div>`).join('');
+  $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
     P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
@@ -1272,17 +1330,27 @@ function renderTimeline() {
 }
 
 // Drag a track header up/down to reorder tracks (layer order follows: higher = drawn on top).
+$('#heads').addEventListener('click', e => {
+  const b = e.target.closest('[data-lk]');
+  if (!b) return;
+  const x = P.tracks.find(q => q.id === b.closest('.head').dataset.track), its = P.items.filter(i => i.track === x.id), k = b.dataset.lk;
+  snapshot();
+  if (k === 'lock') x.locked = !x.locked || undefined;
+  else { const f = k === 'hide' ? 'hidden' : 'muted', v = !its.every(i => i[f]); for (const i of its) i[f] = v || undefined; }
+  dirty = true; refresh();
+});
 $('#heads').addEventListener('pointerdown', e => {
   const h = e.target.closest('.head');
-  if (!h || e.button !== 0) return;
+  if (!h || e.button !== 0 || e.target.closest('[data-lk]')) return;
   const id = h.dataset.track, y0 = e.clientY;
   let moved = false;
   const mv = ev => {
     if (!moved) { if (Math.abs(ev.clientY - y0) < 4) return; snapshot(); moved = true; }
-    const r = $('#heads').getBoundingClientRect(), to = clamp(Math.floor((ev.clientY - r.top) / ROW), 0, P.tracks.length - 1);
-    const from = P.tracks.findIndex(x => x.id === id);
+    const TS = shownTracks(), r = $('#heads').getBoundingClientRect(), to = clamp(Math.floor((ev.clientY - r.top) / ROW), 0, TS.length - 1);
+    const from = TS.findIndex(x => x.id === id);
     if (to === from) return;
-    P.tracks.splice(to, 0, ...P.tracks.splice(from, 1));
+    const tk = P.tracks.splice(P.tracks.indexOf(TS[from]), 1)[0], at = P.tracks.indexOf(TS[to]);
+    P.tracks.splice(to > from ? at + 1 : at, 0, tk);
     renderTimeline(); needsDraw = true;
     $(`#heads .head[data-track="${id}"]`).classList.add('drag');
   };
@@ -1295,10 +1363,6 @@ function compatible(it, trackId) {
   if (isText(it)) return x.kind === 'text';
   const k = media(it).kind;
   return k === 'audio' ? x.kind === 'audio' : k === 'image' ? x.kind === 'video' : x.kind !== 'text';
-}
-function trackAt(clientY) {
-  const r = $('#rows').getBoundingClientRect(), i = Math.floor((clientY - r.top) / ROW);
-  return P.tracks[i] && P.tracks[i].id;
 }
 const timeAt = clientX => { const sc = $('#scroll'); return (clientX - sc.getBoundingClientRect().left + sc.scrollLeft) / pps; };
 function snapPoints(exceptId) {
@@ -1333,6 +1397,7 @@ $('#rows').addEventListener('pointerdown', e => {
   if (e.metaKey || e.ctrlKey || e.shiftKey) { toggleSel(it.id); return; }
   if (msel.size > 1 && msel.has(it.id) && !e.target.classList.contains('h')) return groupMove(e, it);
   select(it.id);
+  if ((P.tracks.find(x => x.id === it.track) || {}).locked) return;
   const mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'move';
   const x0 = e.clientX, o = JSON.parse(JSON.stringify(it)), pts = snapPoints(it.id);
   const sp = num(o.speed, 1), m = sourceBound(it);
@@ -1383,15 +1448,16 @@ $('#rows').addEventListener('pointerdown', e => {
 const laneKind = it => isText(it) ? 'text' : media(it).kind === 'audio' ? 'audio' : 'video';
 function dropLane(it, clientY, lane) {
   if (it.track === 'c1' && !lane.nt) return;
-  const r = $('#rows').getBoundingClientRect(), i = Math.floor((clientY - r.top) / ROW), x = P.tracks[i], kind = laneKind(it);
+  const TS = shownTracks(), r = $('#rows').getBoundingClientRect(), i = Math.floor((clientY - r.top) / ROW), x = TS[i], kind = laneKind(it);
   if (x && x === lane.nt) return;
-  const free = x && x.id !== 'c1' && compatible(it, x.id) && (x.id === 'v1' || x.id === it.track ||
+  const free = x && x.id !== 'c1' && !x.locked && compatible(it, x.id) && (x.id === 'v1' || x.id === it.track ||
     !P.items.some(q => q !== it && q.track === x.id && q.start < it.start + it.dur - 1e-6 && it.start < q.start + q.dur - 1e-6));
   if (free) { it.track = x.id; return; }
-  if (i >= P.tracks.length && kind !== 'audio') return; // below the last lane: only sounds get a new lane there
-  if (lane.nt) P.tracks.splice(P.tracks.indexOf(lane.nt), 1);
-  else lane.nt = { id: kind[0] + uid(), kind };
-  P.tracks.splice(clamp(i, 0, P.tracks.length), 0, lane.nt);
+  if (i >= TS.length && kind !== 'audio') return; // below the last lane: only sounds get a new lane there
+  if (lane.nt) { P.tracks.splice(P.tracks.indexOf(lane.nt), 1); TS.splice(TS.indexOf(lane.nt), 1); }
+  else { lane.nt = { id: kind[0] + uid(), kind }; laneKeep.add(lane.nt.id); }
+  const before = TS[Math.max(0, i)];
+  P.tracks.splice(i >= TS.length || !before ? P.tracks.length : P.tracks.indexOf(before), 0, lane.nt);
   it.track = lane.nt.id;
   renderTimeline();
 }
@@ -1419,6 +1485,7 @@ function settle(it, lane) {
 }
 // After the drag: lanes left empty by it go away (the built-in ones stay).
 function dropLaneEnd(lane) {
+  if (lane.nt) laneKeep.delete(lane.nt.id);
   const keep = new Set(['c1', 't1', 'v1', 'v2', 'a1', 'a2']);
   P.tracks = P.tracks.filter(x => keep.has(x.id) || (x !== lane.nt && x.id !== lane.from) || P.items.some(i => i.track === x.id));
 }
@@ -3473,10 +3540,13 @@ async function rasterizeTexts(Q, work, tracks = null, pre = 'f') {
 
 // Frames of a video clip at the given local times, decoded by ffmpeg (exact, unlike seeking a <video>).
 async function clipFrames(it, lts) {
-  const m = media(it), at = lts.map(lt => num(it.in, 0) + S.srcAt(it, clamp(lt, 0, it.dur)));
+  return framesAt(media(it), lts.map(lt => num(it.in, 0) + S.srcAt(it, clamp(lt, 0, it.dur))));
+}
+// Source frames of a video at source times `at` (seconds), as canvases.
+async function framesAt(m, at) {
   const s0 = Math.min(...at), span = Math.max(...at) - s0, sc = Math.min(1, 1280 / Math.max(m.w, m.h));
   const w = Math.max(2, Math.round(m.w * sc / 2) * 2), h = Math.max(2, Math.round(m.h * sc / 2) * 2);
-  const rate = span > 1e-3 ? clamp(lts.length / span, 1, 120) : 30, st = Math.max(0, s0 - 0.2); // start early: a seek right at the end of a file returns nothing
+  const rate = span > 1e-3 ? clamp(at.length / span, 1, 120) : 30, st = Math.max(0, s0 - 0.2); // start early: a seek right at the end of a file returns nothing
   const buf = new Uint8Array(await inv('gray_frames', { args: ['-v', 'error', '-ss', st.toFixed(3), '-i', m.path, '-an', '-t', String(s0 - st + span + 2 / rate),
     '-vf', `fps=${rate.toFixed(3)},scale=${w}:${h}`, '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1'] }));
   const N = Math.floor(buf.length / (w * h * 4));
@@ -3507,12 +3577,12 @@ async function renderGlTrans(Q, work, fps) {
     const a = T.prev, N = Math.max(1, Math.round(T.d * fps)), times = Array.from({ length: N }, (_, f) => b.start + f / fps);
     progress(tr('p_trans'), gi / list.length);
     const isV = x => media(x).kind === 'video' && !media(x).fill;
-    const fa = isV(a) ? (await clipFrames(a, [a.dur - 0.5 / fps]))[0] : undefined, fb = isV(b) ? await clipFrames(b, times.map(t0 => t0 - b.start)) : [];
+    const fa = isV(a) ? await framesAt(media(a), times.map(t0 => tailSrcAt(a, t0 - a.start - a.dur))) : [], fb = isV(b) ? await clipFrames(b, times.map(t0 => t0 - b.start)) : [];
     const names = [];
     for (let f = 0; f < N; f++) {
       if (cancelled) throw new Error(tr('cancelled'));
       ctx.clearRect(0, 0, P.w, P.h);
-      drawGlTrans(ctx, { id: T.id, a, b, q: f / N }, times[f], fa, fb[f]);
+      drawGlTrans(ctx, { id: T.id, a, b, q: f / N }, times[f], fa[f], fb[f]);
       const name = `x${gi}_${String(f).padStart(4, '0')}.png`;
       await png(name); names.push({ name, frames: 1 });
     }
