@@ -104,6 +104,21 @@ vec2 cell(vec2 q){vec2 i=floor(q),f=fract(q);float md=9.;vec2 mc=vec2(0.);for(in
   float t=clamp((p-.3*fract(band*.618))/.7,0.,1.),e=io(t),sg=mod(band,2.)<.5?1.:-1.,S=AS()*abs(d.x)+abs(d.y);
   vec2 ua=(s+d*sg*e*S)/vec2(AS(),1.)+.5,ub=(s+d*sg*(e-1.)*S)/vec2(AS(),1.)+.5;vec2 m=d/vec2(AS(),1.)*.12*sin(PI*t);
   return inb(ua)?dbA(ua,m):dbB(ub,m);}`;
+  // colour-shape wipes: three flat coloured layers sweep over the cut one after another, then sweep off to show the next clip.
+  // x is how far along the sweep each pixel sits (about 0..1); the expression gives each family its edge shape
+  const shape = (xe, c0, c1, c2) => `float cv(float x,float a,float b){float w=1.5/R.y;return smoothstep(b-w,b+w,x)*(1.-smoothstep(a-w,a+w,x));}
+float fr(float t){return -.35+1.7*io(clamp(t/.36,0.,1.));}
+vec4 tr(vec2 u){vec2 s=sq(u);float x=${xe};
+  float i0=fr(p),i1=fr(p-.07),i2=fr(p-.14),o2=fr(p-.5),o1=fr(p-.57),o0=fr(p-.64);
+  vec4 c=x<i2?TB(u):TA(u);c.rgb=mix(c.rgb,${c0},cv(x,i0,o0));c.rgb=mix(c.rgb,${c1},cv(x,i1,o1));c.rgb=mix(c.rgb,${c2},cv(x,i2,o2));return c;}`;
+  // pixel-experts helpers: hue rotation
+  const PX = `vec3 hue(vec3 c,float a){vec3 k=vec3(.57735);float ca=cos(a);return c*ca+cross(k,c)*sin(a)+k*dot(k,c)*(1.-ca);}
+`;
+  const echo = (inv) => `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 s=vec4(0.);float W=0.;
+  for(int i=0;i<6;i++){float k=float(i),w=pow(.6,k);s+=w*mixAB(zm(u,vec2(.5),1.+k*.06*b),smoothstep(.35,.65,p-k*.03*b));W+=w;}s/=W;
+  ${inv ? 's.rgb=mix(s.rgb,1.-s.rgb,step(.3,p)*step(p,.75)*step(.5,h1(vec2(floor(p*12.),7.))));' : ''}return s;}`;
+  const poster = (red) => `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=X(zm(u,vec2(.5),1.+.35*b),p);float L=mix(32.,3.,smoothstep(.1,.8,b));c.rgb=floor(c.rgb*L+.5)/L;
+  ${red ? 'float on=step(.45,h1(vec2(floor(p*16.),3.)))*(1.-smoothstep(.05,.3,abs(p-.5)));c.rgb=mix(c.rgb,vec3(1.,.08,.06)*(.25+1.5*dot(c.rgb,vec3(.3,.59,.11))),on*.85);' : ''}return c;}`;
   const LIST = [
     // camera moves (lens zoom, whips, spins): the cut happens in the middle, hidden by the motion
     ['lensIn', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.+2.*t),.45*t);}
@@ -326,8 +341,54 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
     ['vExposure', 'light', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=p<.5?bA(u,.01*b):bB(u,.01*b);c.rgb=mix(c.rgb,1.-exp(-c.rgb*(1.+4.*pow(b,1.5))),smoothstep(0.,.3,b));
   c.rgb=mix(c.rgb,vec3(1.),pow(b,6.));return c;}`],
     ['vFadeBlur', 'blur', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=p<.5?bA(u,.05*b):bB(u,.05*b);c.rgb*=1.-b*b;return c;}`],
-  ];
-  const CATS = ['cam', 'blur', 'glitch', 'light', 'film', '3d', 'mask', 'slide', 'warp'];
+      // colour shapes (116 pack mogrts): flat layered wipes
+    ['shDiag', 'shape', shape('(u.x*AS()+(1.-u.y)*.6)/(AS()+.6)', 'vec3(1.,.36,.18)', 'vec3(.95,.95,.93)', 'vec3(0.,.62,.66)')],
+    ['shPill', 'shape', shape('(u.x+.12*(1.-sqrt(max(1.-4.*pow(fract(u.y*5.)-.5,2.),0.)))+h1(vec2(floor(u.y*5.),3.))*.25)/1.37', 'vec3(.12,.72,.5)', 'vec3(.6,.92,.76)', 'vec3(.97,.96,.88)')],
+    ['shZig', 'shape', shape('((1.-u.y)+.12*abs(fract(u.x*AS()*4.)-.5))/1.06', 'vec3(.24,.27,.31)', 'vec3(0.,.62,.66)', 'vec3(.6,.9,.82)')],
+    ['shSteps', 'shape', shape('(u.x+floor((1.-u.y)*5.)*.07)/1.3', 'vec3(.24,.27,.31)', 'vec3(.7,.86,.9)', 'vec3(.97,.95,.88)')],
+    ['shArc', 'shape', shape('length(s-vec2(-AS()*.5,-.5))/length(vec2(AS(),1.))', 'vec3(.97,.95,.88)', 'vec3(1.,.42,.25)', 'vec3(.85,.25,.04)')],
+    ['shCircle', 'shape', shape('length(s)/(.5*length(vec2(AS(),1.)))', 'vec3(.6,.9,.82)', 'vec3(.24,.27,.31)', 'vec3(0.,.62,.66)')],
+    ['shBars', 'shape', shape('(u.y+h1(vec2(floor(u.x*6.),7.))*.35)/1.35', 'vec3(.97,.95,.88)', 'vec3(0.,.62,.66)', 'vec3(1.,.36,.18)')],
+    ['shPyramid', 'shape', shape('(u.y+floor(abs(s.x)*7.)*.09)/(1.+floor(AS()*3.5)*.09)', 'vec3(.2,.3,.5)', 'vec3(.97,.95,.88)', 'vec3(.7,.86,.9)')],
+    ['shSquare', 'shape', shape('(abs(rot(s,p*PI*.5).x)+abs(rot(s,p*PI*.5).y))/(.5*(AS()+1.))', 'vec3(.24,.27,.31)', 'vec3(0.,.62,.66)', 'vec3(1.,.36,.18)')],
+    ['shChevron', 'shape', shape('(u.x+abs(u.y-.5)*.8)/1.4', 'vec3(.24,.27,.31)', 'vec3(.95,.95,.93)', 'vec3(.9,.1,.14)')],
+    ['shStripes', 'shape', shape('((1.-u.y)+mod(floor((u.x*AS()+u.y)*5.),2.)*.3)/1.3', 'vec3(0.,.62,.66)', 'vec3(.95,.95,.93)', 'vec3(1.,.36,.18)')],
+    // ink (116 pack): splash from a corner with drops, a drip from the top, and through black ink
+    ['inkSpread', 'mask', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 s=sq(u);float n=fbm(s*3.+3.);float d=length(s-vec2(.15*AS(),.2))*.9-.55*n+.25;
+  vec2 g=floor(s*14.);vec2 f=fract(s*14.)-.5-(vec2(h1(g),h1(g+4.))-.5)*.5;float dt=step(length(f),.08+.18*h1(g+9.))*step(.55,h1(g+2.));
+  float th=e*1.6-.4;float m=max(1.-smoothstep(th-.04,th,d),dt*step(d-.35*h1(g+6.),th));
+  float rim=(1.-smoothstep(0.,.12,abs(d-th)))*b;vec4 c=mix(TA(u),TB(u),m);c.rgb*=1.-.75*rim*(.5+.5*fbm(s*12.));return c;}`],
+    ['inkDrip', 'mask', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float n=fbm(vec2(u.x*5.,p*1.5))*.18+vn(vec2(u.x*60.,1.))*.04*step(.6,vn(vec2(u.x*14.,3.)));
+  float ed=(1.-u.y)-n,th=e*1.45-.25;float m=1.-smoothstep(th-.03,th,ed);float rim=(1.-smoothstep(0.,.1,abs(ed-th)))*b;
+  vec4 c=mix(TA(u),TB(u),m);c.rgb*=1.-.6*rim*fbm(u*vec2(30.,8.));return c;}`],
+    ['inkBlack', 'mask', `vec4 tr(vec2 u){vec2 s=sq(u);float q=p<.5?io(p*2.):1.-io(p*2.-1.);float n=fbm(s*2.5+(p<.5?1.:7.));float d=length(s)*.8-.6*n+.3,th=q*1.4-.35;
+  float m=1.-smoothstep(th-.05,th,d);float rim=(1.-smoothstep(0.,.08,abs(d-th)))*step(.01,q)*step(q,.99);vec4 c=X(u,p);c.rgb=mix(c.rgb,vec3(.02),max(m,rim*.6));return c;}`],
+    // pixel experts packs: echo trails, posterize, mirror bevels, turbulence, invert, hue shake, wave flashes
+    ['pxEcho', 'blur', echo(false)],
+    ['pxEchoInv', 'glitch', echo(true)],
+    ['pxPoster', 'glitch', poster(false)],
+    ['pxPosterRed', 'glitch', poster(true)],
+    ['pxBevel', 'warp', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=(u-.5)/(1.-.55*b)+.5;vec4 c=X(v,p);vec2 f=fract(v);
+  float ed=min(min(f.x,1.-f.x)*AS(),min(f.y,1.-f.y));float k=1.-(1.-smoothstep(.0,.05,ed))*smoothstep(0.,.15,b);c.rgb*=mix(.35,1.,k)+(1.-k)*.5*(f.x+f.y-1.);
+  c.rgb=mix(c.rgb,c.rgb*vec3(1.15,.95,1.1),b);return c;}`],
+    ['pxTurb', 'warp', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*18.);vec2 q=u*vec2(AS(),1.)*3.+f*.37;vec2 d=(vec2(fbm(q),fbm(q+5.2))-.5)*.35*b*b;
+  return p<.5?rgbA(u+d,d*.15):rgbB(u+d,d*.15);}`],
+    ['pxBlurInv', 'blur', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=p<.5?bA(u,.06*b):bB(u,.06*b);c.rgb=mix(c.rgb,1.-c.rgb,smoothstep(.35,.5,p)*(1.-smoothstep(.5,.65,p)));return c;}`],
+    ['pxHueShake', 'cam', PX + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*24.);vec2 o=(vec2(h1(vec2(f,1.)),h1(vec2(f,2.)))-.5)*.08*b;vec2 v=zm(u+o,vec2(.5),1.+.1*b);
+  vec4 c=p<.5?dbA(v,o*.6):dbB(v,o*.6);c.rgb=clamp(hue(c.rgb,b*PI*1.5*(h1(vec2(f,5.))>.5?1.:-1.)),0.,1.);return c;}`],
+    ['pxWaveFlash', 'light', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=X(u+vec2(sin(u.y*20.+p*30.)*.03*b,0.),p);c.rgb=mix(c.rgb,vec3(1.),step(.6,h1(vec2(floor(p*14.),2.)))*b*.7);return c;}`],
+    // glitch presets (116 pack): black stutter, emboss, rgb centre warp, colour ghosts, cyan blocks
+    ['gStutter', 'glitch', `vec4 tr(vec2 u){float blk=step(.3,p)*step(p,.5)*mod(floor(p*16.),2.);vec2 v=zm(u,vec2(.5),1.+(p>.5?.25*(1.-eo((p-.5)*2.)):0.));vec4 c=X(v,p);c.rgb*=1.-blk;return c;}`],
+    ['gEmboss', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 d=vec2(2./R.x,2./R.y)*(1.+6.*b);vec4 c=X(u,p);vec4 e=X(u+d,p)-X(u-d,p);
+  float on=step(.4,h1(vec2(floor(p*14.),4.)))*smoothstep(.1,.5,b);c.rgb=mix(c.rgb,(.5+e.rgb*2.)*vec3(.9,1.,1.1),on);return c;}`],
+    ['gRgbWarp', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=bulge(u,.8*b);float k=.25*b;
+  return p<.5?vec4(zbA(v,k*1.4).r,zbA(v,k).g,zbA(v,k*.6).b,1.):vec4(zbB(v,k*1.4).r,zbB(v,k).g,zbB(v,k*.6).b,1.);}`],
+    ['gGhost', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*12.);vec2 o=vec2(.04+.04*h1(vec2(f,1.)),.02*(h1(vec2(f,2.))-.5))*b;
+  vec4 c=X(u,p);vec3 g1=X(u+o,p).rgb,g2=X(u-o,p).rgb;c.rgb=c.rgb*(1.-.4*b)+(g1*vec3(0.,.4,.2)+g2*vec3(.4,0.,.2))*b;return c;}`],
+    ['gCyan', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*15.);vec2 bl=floor(u*vec2(6.,14.));float on=step(.55,h1(bl+f))*b;
+  vec4 c=X(u+vec2((h1(bl+f+3.)-.5)*.2*on,0.),p);c.rgb=mix(c.rgb,vec3(0.,.9,1.)*dot(c.rgb,vec3(.3,.59,.11))*1.5,on*.8);c.rgb*=1.-.08*b*step(.5,fract(u.y*R.y*.25));return c;}`],
+];
+  const CATS = ['cam', 'blur', 'glitch', 'light', 'film', 'shape', '3d', 'mask', 'slide', 'warp'];
   const api = { HEAD, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KadrGLT = api;
