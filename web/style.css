@@ -123,7 +123,7 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
 .c-cap { grid-column: span 2; grid-row: span 2; display: flex; flex-direction: column; }
 .c-4k { grid-column: span 2; }
 .c-mcp { grid-column: 1 / -1; }
-.c-mcp code { display: block; margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: rgba(0, 0, 0, .35); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; text-align: left; }
+.c-mcp .more { display: inline-block; margin-top: 12px; color: var(--accent); font-weight: 700; }
 .words { margin-top: auto; padding-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; font: 800 clamp(24px, 3vw, 38px)/1.3 var(--display); }
 .words span { padding: 2px 12px; border-radius: 10px; background: rgba(0,0,0,.35); border: 1px solid var(--line); }
 .words .on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
@@ -288,3 +288,14 @@ h2 { font: 900 clamp(32px, 5vw, 60px)/1.15 var(--display); max-width: 18ch; }
   .hero { grid-template-columns: minmax(0, 1fr); }
   .reel { max-width: 560px; }
 }
+
+.cmds .lbl { margin: 14px 0 6px; font-size: 13px; color: var(--mute); }
+.cmds h3 + .lbl { margin-top: 0; }
+.cmd { display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 10px; background: rgba(0, 0, 0, .35); border: 1px solid var(--line); }
+.cmd code { flex: 1; min-width: 0; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; text-align: left; color: var(--ink); }
+.cmd.ex code { font: 15px/1.7 inherit; font-family: inherit; text-align: start; }
+.cp { flex: none; min-height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink); font: 600 13px/1 inherit; font-family: inherit; cursor: pointer; }
+.cp:hover { background: rgba(255, 255, 255, .12); }
+.cp:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.can { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin-top: 16px; }
+.can li { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--mute); }

@@ -23,6 +23,19 @@ const EN = {
   f5: 'Export up to 4K', f5p: 'H.264 and HEVC, hardware accelerated on Mac.',
   f6: 'Voiceover recording', f6p: 'Record narration in the app and it lands on the timeline.',
   f7: 'Automatic updates', f7p: 'Every new version reaches you on its own, signed and verified.',
+  nClaude: 'Claude Code', f9a: 'How to connect it →', copy: 'Copy', copied: 'Copied',
+  cEye: 'Maqto + Claude Code', cTitle: 'Write the idea, watch the video build itself.',
+  cSub: 'Maqto ships an MCP server. Connect it to Claude Code once, then write a prompt and Claude works on your timeline live.',
+  cSteps: 'Connect in 4 steps',
+  c1: 'Get Maqto <b>1.0.6</b> or newer. On a Mac it must be in <b>Applications</b>.',
+  c2: 'Install <a href="https://claude.com/claude-code" target="_blank" rel="noopener"><b>Claude Code</b></a> and sign in with your account.',
+  c3: 'Open the terminal and run the connect command once.',
+  c4: 'Start a new Claude Code session and write your request, saying <b>in Maqto</b>. The first time it asks for permission, choose <b>Allow always</b>.',
+  cNote: 'No slash command and no need to say MCP. If the tools don\'t show up, type <b>/mcp</b> in the session and check that <b>maqto</b> is <b>connected</b>.',
+  cCmd: 'Connect command', cMac: 'Mac (Terminal)', cWin: 'Windows (PowerShell)', cTry: 'Try writing',
+  cEx: 'In Maqto, make an 8-second 9:16 motion video for a burger place: gradient background, 3 lines coming in one after another with motion, then export it to the Desktop.',
+  k1: 'Texts and styles', k2: 'Keyframes and motion', k3: 'Transitions', k4: 'Filters and effects', k5: 'Looks at the frame to check', k6: 'Export',
+  cUndo: 'Maqto opens by itself if it is closed, and every step Claude takes can be undone with Cmd/Ctrl+Z.',
   f9: 'Write the prompt in Claude Code, watch the video build itself', f9p: 'Maqto ships an MCP server. Connect it once and Claude adds texts, motion, keyframes and transitions to the timeline live, looks at the frame to check its work, and exports.',
   tEye: 'A tour of the app', tTitle: 'Everything where you expect it.',
   s1: 'Timeline', s1p: 'Drag in video, images and audio. The main track is magnetic so there are no gaps, and S splits a clip.',
@@ -90,6 +103,14 @@ function showVer() {
   $$('#download [data-v]').forEach(el => (el.textContent = version ? T[lang].ver.replace('{v}', version) : ''));
   $('#dl2').innerHTML = $('#download').innerHTML.replace(/ id="(mac|win)"/g, '');
 }
+// Copy buttons next to the commands and the sample prompt.
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.cp');
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.previousElementSibling.textContent.trim()); } catch (err) { return; }
+  b.textContent = T[lang].copied || 'تم النسخ';
+  setTimeout(() => (b.textContent = T[lang].copy), 1500);
+});
 $('#lang').onclick = () => {
   lang = lang === 'ar' ? 'en' : 'ar';
   try { localStorage.setItem('kadr.lang', lang); } catch (e) {}
