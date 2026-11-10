@@ -194,15 +194,41 @@ function proxyFor(it) {
   const key = pxKey(it);
   if (pxPath.has(key)) return pxPath.get(key);
   if (!pxOk.has(key)) {
-    const m = media(it), k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
+    const w = pxWait.get(it.id), now = performance.now();
+    if (!w || w.key !== key) { pxWait.set(it.id, { key, at: now }); pxProg.delete(it.id); setTimeout(() => (needsDraw = true), 450); pxPaint(it.id); return null; }
+    if (now - w.at < 400) return null; // still being edited: start once the curve stops changing
+    const m0 = media(it), m = { ...m0, path: mediaProxy(m0) || m0.path }, k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
     const q = { w: ev(m.w), h: ev(m.h), fps: P.fps, media: { m }, tracks: [{ id: 'v', kind: 'video' }],
       items: [{ id: 'x', track: 'v', media: 'm', start: 0, dur: it.dur, in: num(it.in, 0), curve: it.curve, speed: it.speed, smooth: it.smooth, pitch: it.pitch, fit: 'cover' }] };
     let args;
     try { args = G.buildArgs(q, { out: '__OUT__', codec: 'proxy' }).args.filter(a => a !== '-progress' && a !== 'pipe:1'); } catch { args = null; }
-    pxOk.set(key, args ? inv('proxy_render', { args }).then(path => { pxPath.set(key, path); needsDraw = true; return path; }, () => null) : Promise.resolve(null));
+    pxProg.set(it.id, { key, p: 0 }); pxPaint(it.id);
+    pxOk.set(key, args ? inv('proxy_render', { args, job: it.id, total: it.dur }).then(path => { pxPath.set(key, path); needsDraw = true; pxPaint(it.id); return path; },
+      e => { if (String(e).includes('cancelled')) pxOk.delete(key); return null; }) : Promise.resolve(null));
   }
   return null;
 }
+// Preparing a curve / slow-mo clip: shown on the clip in the timeline and in the Speed panel.
+const pxWait = new Map(), pxProg = new Map(); // clip id -> {key, at} / {key, p}
+const pxNeeds = it => it && !isText(it) && media(it) && media(it).kind === 'video' && (S.hasCurve(it) || smoothSlow(it));
+function pxStatus(it) {
+  if (!pxNeeds(it)) return null;
+  const key = pxKey(it);
+  if (pxPath.has(key)) return { ready: true, p: 1 };
+  const g = pxProg.get(it.id);
+  return { ready: false, p: g && g.key === key ? g.p : 0 };
+}
+const pxLabel = s => s.ready ? tr('pxReady') : tr('pxPrep').replace('{p}', Math.round(s.p * 100));
+const pxBar = (it, cls) => { const s = pxStatus(it); return s ? `<div class="pxb ${cls}${s.ready ? ' done' : ''}" data-pxbar="${it.id}" style="--p:${s.p}"><i></i><em>${pxLabel(s)}</em></div>` : ''; };
+function pxPaint(id) {
+  const s = pxStatus(item(id));
+  for (const el of document.querySelectorAll(`[data-pxbar="${id}"]`)) {
+    if (!s) { el.hidden = true; continue; }
+    el.hidden = false; el.classList.toggle('done', s.ready); el.style.setProperty('--p', s.p);
+    el.querySelector('em').textContent = pxLabel(s);
+  }
+}
+TA.event.listen('pxprog', e => { const g = pxProg.get(e.payload.job); if (g) { g.p = e.payload.p; pxPaint(e.payload.job); } });
 const mpx = new Map(); // media path -> proxy path, '' while it is being made, null if it failed
 function mediaProxy(m) {
   if (m.kind !== 'video' || !(Math.max(m.w, m.h) > 1280) || lsGet('kadr.proxy', true) === false) return null;
@@ -814,6 +840,7 @@ const GLX = { main: mkGlx(), thumb: mkGlx(), A: document.createElement('canvas')
 // Shader transitions coming up in the next 2 s get compiled (and the outgoing clip's last frame
 // fetched) ahead of time, so the first frame of the transition doesn't stall playback.
 function warmTrans() {
+  for (const it of P.items) if (pxNeeds(it)) proxyFor(it);
   for (const b of P.items) {
     if (!b.trans || !S.GLT.includes(b.trans.id) || b.start < t - 1 || b.start > t + 2.5) continue;
     const T = S.transIn(P, b);
@@ -1353,7 +1380,7 @@ function renderTimeline() {
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = TS.map(x => `<div class="head${x.locked ? ' locked' : ''}" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i><em>${esc(trackLabel(x))}</em>${laneBtns(x)}</div>`).join('');
   $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -2050,10 +2077,10 @@ function inspector() {
         `<div class="ticks"><span>0.1x</span><span>0.5x</span><span>1x</span><span>2x</span><span>5x</span><span>10x</span></div></div>`, durRow);
     } else {
       h.push(`<div class="cvgrid">${['none', ...Object.keys(S.CURVES)].map(c => `<button data-curve="${c}" class="${(cv ? cv.id : 'none') === c ? 'on' : ''}">${c === 'none' ? icon('x') : curveSvg(S.CURVES[c], c === 'custom')}<span>${tr('cv_' + c)}</span></button>`).join('')}</div>`);
-      if (cv) h.push(durRow, `<div class="cved"><svg id="cvEd" viewBox="0 0 300 160" preserveAspectRatio="none"></svg><div class="cvbtns"><button id="cvReset">${tr('reset')}</button><button id="cvAdd" title="${tr('cv_add')}">+</button><button id="cvDel" title="${tr('cv_del')}">−</button></div></div>`);
+      if (cv) h.push(durRow, pxBar(it, 'insp'), `<div class="cved"><svg id="cvEd" viewBox="0 0 300 160" preserveAspectRatio="none"></svg><div class="cvbtns"><button id="cvReset">${tr('reset')}</button><button id="cvAdd" title="${tr('cv_add')}">+</button><button id="cvDel" title="${tr('cv_del')}">−</button></div></div>`);
     }
     if (media(it).kind === 'video' || media(it).hasAudio || media(it).kind === 'audio') h.push(`<div class="inl">${fld.check('pitch', 'pitchShift', it)}</div>`);
-    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr('smoothHint')}</p>`);
+    if (media(it).kind === 'video') h.push(`<div class="inl">${fld.check('smooth', 'smoothSlow', it)}</div><p class="hint">${tr('smoothHint')}</p>`, cv ? '' : pxBar(it, 'insp'));
   } else if (inspTab === 'tAdjust') {
     h.push(`<div class="seg csub">${['basic', 'hsl', 'curves', 'wheels', 'lut', 'mask'].map(x => `<button data-csub="${x}" class="${x === colSub ? 'on' : ''}">${tr('cs_' + x)}</button>`).join('')}</div>`);
     const C = it.color || {};

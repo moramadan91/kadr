@@ -363,8 +363,11 @@ fn model_path(app: &AppHandle) -> R<PathBuf> {
 /// Preview proxy for a speed-curve clip: the export's own retime graph rendered once at a small size,
 /// cached by its arguments, so the preview plays it at normal speed instead of changing the rate
 /// every frame. The output path in `args` is the "__OUT__" placeholder.
+// Running proxy renders by job id (a clip id), so a newer edit of the same clip can stop the old one.
+static PX_JOBS: std::sync::LazyLock<Mutex<HashMap<String, Arc<Mutex<Option<Child>>>>>> = std::sync::LazyLock::new(Default::default);
+
 #[tauri::command]
-async fn proxy_render(app: AppHandle, srv: State<'_, Arc<MediaServer>>, args: Vec<String>) -> R<String> {
+async fn proxy_render(app: AppHandle, srv: State<'_, Arc<MediaServer>>, args: Vec<String>, job: Option<String>, total: Option<f64>) -> R<String> {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     args.hash(&mut h);
@@ -373,18 +376,48 @@ async fn proxy_render(app: AppHandle, srv: State<'_, Arc<MediaServer>>, args: Ve
     let out = dir.join(format!("{:016x}.mp4", h.finish()));
     if !out.exists() {
         let o = out.clone();
+        let a2 = app.clone();
         tauri::async_runtime::spawn_blocking(move || -> R<()> {
             let tmp = o.with_extension("part.mp4");
             let t = tmp.to_string_lossy().into_owned();
-            let a: Vec<String> = args.into_iter().map(|x| if x == "__OUT__" { t.clone() } else { x }).collect();
-            let r = command(&sidecar("ffmpeg")).args(&a).stdin(Stdio::null()).output().map_err(err)?;
-            if !r.status.success() { return Err(tail(&String::from_utf8_lossy(&r.stderr))); }
+            let mut a: Vec<String> = args.into_iter().map(|x| if x == "__OUT__" { t.clone() } else { x }).collect();
+            a.splice(0..0, ["-progress".to_string(), "pipe:1".to_string(), "-nostats".to_string()]);
+            let mut child = command(&sidecar("ffmpeg")).args(&a).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(err)?;
+            let (so, mut se) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+            let slot = Arc::new(Mutex::new(Some(child)));
+            if let Some(j) = &job {
+                if let Some(old) = PX_JOBS.lock().unwrap().insert(j.clone(), slot.clone()) {
+                    if let Some(mut c) = old.lock().unwrap().take() { let _ = c.kill(); }
+                }
+            }
+            let errs = std::thread::spawn(move || { let mut s = String::new(); let _ = se.read_to_string(&mut s); s });
+            let tot = total.unwrap_or(0.0);
+            for l in BufReader::new(so).lines().map_while(Result::ok) {
+                if let (Some(j), Some(us)) = (&job, l.strip_prefix("out_time_us=").and_then(|s| s.trim().parse::<f64>().ok())) {
+                    if tot > 0.0 { let _ = a2.emit("pxprog", json!({ "job": j, "p": (us / 1e6 / tot).clamp(0.0, 0.99) })); }
+                }
+            }
+            let child = slot.lock().unwrap().take();
+            if let Some(j) = &job {
+                let mut jobs = PX_JOBS.lock().unwrap();
+                if jobs.get(j).is_some_and(|s| Arc::ptr_eq(s, &slot)) { jobs.remove(j); }
+            }
+            let Some(mut child) = child else { let _ = std::fs::remove_file(&tmp); return Err("cancelled".into()) };
+            let st = child.wait().map_err(err)?;
+            let e = errs.join().unwrap_or_default();
+            if !st.success() { let _ = std::fs::remove_file(&tmp); return Err(tail(&e)); }
             std::fs::rename(&tmp, &o).map_err(err)
         }).await.map_err(err)??;
     }
     let s = out.to_string_lossy().into_owned();
     srv.allow(&s);
     Ok(s)
+}
+
+/// Stop the proxy render running for a clip (its curve changed again).
+#[tauri::command]
+fn proxy_cancel(job: String) {
+    if let Some(s) = PX_JOBS.lock().unwrap().remove(&job) { if let Some(mut c) = s.lock().unwrap().take() { let _ = c.kill(); } }
 }
 
 /// Raw frames for motion tracking: ffmpeg's stdout handed to JS as bytes.
@@ -675,7 +708,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply
+            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
