@@ -1637,18 +1637,14 @@ function addMedia(mid, trackId, start) {
   return it;
 }
 
-// Where a new text goes: after the selected text on its lane, else at the playhead on the Text lane,
-// moved along past any text it would cover.
+// Where a new text goes: at the playhead on the lowest text lane that is free there; if every text lane
+// is busy, on a new lane above them (CapCut-style stacking). Drag texts side by side to share a lane.
 function textSlot(dur) {
-  const s = sel && item(sel);
-  let track = 't1', start = t;
-  if (s && isText(s) && s.track !== 'c1') { track = s.track; start = s.start + s.dur; }
-  for (let k = 0; k < 50; k++) {
-    const q = P.items.find(i => i.track === track && i.start < start + dur - 1e-6 && start < i.start + i.dur - 1e-6);
-    if (!q) break;
-    start = q.start + q.dur;
-  }
-  return { track, start };
+  const lanes = P.tracks.filter(x => x.kind === 'text' && x.id !== 'c1');
+  const free = x => !P.items.some(i => i.track === x.id && i.start < t + dur - 1e-6 && t < i.start + i.dur - 1e-6);
+  let x = [...lanes].reverse().find(free);
+  if (!x) { x = { id: 't' + uid(), kind: 'text' }; P.tracks.splice(lanes.length ? P.tracks.indexOf(lanes[0]) : 0, 0, x); }
+  return { track: x.id, start: t };
 }
 function addText(styleId) {
   snapshot();
