@@ -119,6 +119,12 @@ vec4 tr(vec2 u){vec2 s=sq(u);float x=${xe};
   ${inv ? 's.rgb=mix(s.rgb,1.-s.rgb,step(.3,p)*step(p,.75)*step(.5,h1(vec2(floor(p*12.),7.))));' : ''}return s;}`;
   const poster = (red) => `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=X(zm(u,vec2(.5),1.+.35*b),p);float L=mix(32.,3.,smoothstep(.1,.8,b));c.rgb=floor(c.rgb*L+.5)/L;
   ${red ? 'float on=step(.45,h1(vec2(floor(p*16.),3.)))*(1.-smoothstep(.05,.3,abs(p-.5)));c.rgb=mix(c.rgb,vec3(1.,.08,.06)*(.25+1.5*dot(c.rgb,vec3(.3,.59,.11))),on*.85);' : ''}return c;}`;
+  // tech-nestology pack: zoom blur around any centre point
+  const N = `vec4 zc(vec2 u,vec2 c,float k,bool b){vec4 s=vec4(0.);float j=jit();for(int i=0;i<16;i++){vec2 v=c+(u-c)*(1.-k*(float(i)+j)/16.);s+=b?TB(v):TA(v);}return s/16.;}
+`;
+  // the next clip moves in inside a growing shape while horizontal bands of both clips slide apart
+  const dshape = (inside, k) => `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 s=sq(u);float sc=max(e*${k},.001);vec2 q=s/sc;
+  float off=(h1(vec2(floor(u.y*9.),4.))-.5)*.25*b;vec2 v=u+vec2(off,0.);return (${inside})?TB(v-vec2(off*1.5,0.)):TA(v);}`;
   const LIST = [
     // camera moves (lens zoom, whips, spins): the cut happens in the middle, hidden by the motion
     ['lensIn', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.+2.*t),.45*t);}
@@ -387,6 +393,44 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
   vec4 c=X(u,p);vec3 g1=X(u+o,p).rgb,g2=X(u-o,p).rgb;c.rgb=c.rgb*(1.-.4*b)+(g1*vec3(0.,.4,.2)+g2*vec3(.4,0.,.2))*b;return c;}`],
     ['gCyan', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*15.);vec2 bl=floor(u*vec2(6.,14.));float on=step(.55,h1(bl+f))*b;
   vec4 c=X(u+vec2((h1(bl+f+3.)-.5)*.2*on,0.),p);c.rgb=mix(c.rgb,vec3(0.,.9,1.)*dot(c.rgb,vec3(.3,.59,.11))*1.5,on*.8);c.rgb*=1.-.08*b*step(.5,fract(u.y*R.y*.25));return c;}`],
+    // tech nestology 1000+ pack
+    ['nBoxBounce', '3d', G + cubeV(1).replace('io(p)', 'bo(p)')],
+    ['nBoxSwing', '3d', G + cubeV(1).replace('io(p)', 'bk(p)')],
+    ['nHeart', 'mask', dshape('pow(dot(q*2.,q*2.)-1.,3.)-q.x*q.x*4.*q.y*q.y*q.y*8.<0.', '3.5')],
+    ['nArrow', 'mask', dshape('(abs(q.y+0.)<.25&&q.x+(1.-e)*.3>-.8&&q.x<.1)||(q.x>=-.1&&abs(q.y)<(.9-q.x)*.9)', '6.')],
+    ['nBlocks', 'warp', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 g=floor(u*vec2(5.,8.));float off=(h1(g+2.)-.5)*.4*b*step(.3,h1(g+5.));vec2 v=u+vec2(off,0.);
+  return p>h1(g)*.6+.2?TB(v):TA(v);}`],
+    ['nBevel', 'warp', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 s=sq(u);float y=dot(s,vec2(-.6,.8))*7.,bd=floor(y);float off=(h1(vec2(bd,2.))-.5)*.5*b;
+  vec2 v=u+vec2(.8,.6)*off/vec2(AS(),1.);vec4 c=p>.2+.6*h1(vec2(bd,1.))?TB(v):TA(v);c.rgb*=1.-.35*b*smoothstep(.8,1.,fract(y));return c;}`],
+    ['nMonitor', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float f=floor(p*14.),row=floor(u.y*30.);float r=h1(vec2(row,f));
+  vec4 c=X(u+vec2((h1(vec2(row,f+7.))-.5)*.3*b*step(.5,r),0.),p);vec3 col=r>.92?vec3(1.,.1,.1):r>.84?vec3(.1,1.,.2):vec3(.15,.2,1.);
+  c.rgb=mix(c.rgb,col*(.4+c.rgb),step(.75,r)*b*.85);c.rgb*=1.-.15*b*step(.5,fract(u.y*R.y*.5));return c;}`],
+    ['nSatellite', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);float s=smoothstep(.2,.6,b),f=floor(p*24.),ry=floor(u.y*16.);
+  float n=h1(floor(u*vec2(80.,45.)*vec2(1.,.4+.6*h1(vec2(floor(u.y*12.),f))))+f*3.1);vec3 sn=mix(vec3(n)*vec3(.9,.8,1.)*.7,vec3(.9,.2,.8)*n,step(.93,h1(vec2(floor(u.y*40.),f))));
+  vec4 c=X(u+vec2((h1(vec2(floor(u.y*20.),f))-.5)*.1*s,0.),p);c.rgb=mix(c.rgb*(1.-.7*s),sn,s*step(.3,h1(vec2(ry,f+1.))));return c;}`],
+    ['n3dPan', '3d', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float h=AS();vec3 e1=rx(ry(vec3(1.,0.,0.),.35*b),.5*b),e2=rx(vec3(0.,1.,0.),.5*b);
+  vec3 A=card(u,vec3(-e*2.2*h,.3*b,.6*b),e1,e2),B=card(u,vec3((1.-e)*2.2*h,.3*b,.6*b),e1,e2);
+  if(A.z>0.)return dbA(A.xy,vec2(.1*b,0.));if(B.z>0.)return dbB(B.xy,vec2(.1*b,0.));return bg(u);}`],
+    ['nFlight', 'blur', N + `vec4 tr(vec2 u){vec2 c=vec2(1.1,1.05);float t=p<.5?ei(p*2.):1.-eo(p*2.-1.);vec2 v=zm(u,c,1.+2.5*t)+vec2(-.25,-.2)*(p<.5?t:-t);return zc(v,c,.6*t,p>=.5);}`],
+    ['shRings', 'shape', shape('length(s)/(.5*length(vec2(AS(),1.)))*.85+.15*step(.5,fract(atan(s.y,s.x)/6.2832*2.+p*1.5))', 'vec3(.45,.75,.65)', 'vec3(1.,.6,.3)', 'vec3(0.,.85,1.)')],
+    ['shRhomb', 'shape', shape('((1.-u.y)-.4*(1.-2.*abs(u.x-.5))+.4)/1.4', 'vec3(.97,.95,.88)', 'vec3(.15,.15,.17)', 'vec3(.96,.33,.3)')],
+    ['nFrost', 'mask', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 s=sq(u);float n=fbm(s*6.+fbm(s*3.)*2.);float cr=pow(fbm(s*24.+n*4.),3.),b3=b*b*b;
+  vec4 c=mixAB(u+(n-.5)*.03*b,smoothstep(.45,.6,p));float m=smoothstep(0.,.25,b3*1.3-(1.-n)*.8);c.rgb=mix(c.rgb,vec3(.75,.88,.95)*(.4+.6*n)+cr*.4,m);return c;}`],
+    ['nTarget', 'cam', N + `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);vec2 c=vec2(.68,.62);return zc(zm(u,c,1.+5.*t),c,.4*t,false);}
+  float t=1.-eo(p*2.-1.);vec2 c=vec2(.4,.45);return zc(zm(u,c,1.+5.*t),c,.4*t,true);}`],
+    ['nTunnel', 'warp', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);float k=.98*b+.001;float xs=asin(clamp((u.x-.5)*2.*k,-1.,1.))/asin(k)*.5;
+  vec2 v=vec2(.5+xs+e*2.,u.y),d=vec2(.35*b,0.);vec4 c=e<.5?dbA(v,d):dbB(v-vec2(2.,0.),d);c.rgb*=1.-.5*b*pow(abs(u.x-.5)*2.,2.);return c;}`],
+    ['nTilt', 'cam', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 c=u-.5;c.x*=1.+.5*b*c.y;vec2 v=c+.5+vec2(0.,e),d=vec2(0.,.3*b);return e<.5?dbA(v,d):dbB(v-vec2(0.,1.),d);}`],
+    ['nVrRotate', 'warp', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 s=sq(u);vec2 pl=vec2(fract(atan(s.y,s.x)/6.2832+.5+e),clamp(length(s)*1.2,0.,1.));
+  return X(mix(u,pl,smoothstep(0.,.6,b)),p);}`],
+    ['nVrStretch', 'warp', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=u+vec2(sin(u.y*7.+p*9.)*.12,sin(u.x*5.+p*4.)*.06)*b,d=vec2(.5*b,.1*b),o=vec2(.04*b,0.);
+  vec4 c=p<.5?vec4(dbA(v+o,d).r,dbA(v,d).g,dbA(v-o,d).b,1.):vec4(dbB(v+o,d).r,dbB(v,d).g,dbB(v-o,d).b,1.);c.rgb=mix(c.rgb,1.-(1.-c.rgb)*.7,b*.5);return c;}`],
+    ['nVrBend', 'warp', `vec4 tr(vec2 u){float e=io(p),b=max(sin(PI*p),0.);vec2 v=vec2(u.x+e*2.,u.y+sin(u.x*PI*2.+e*6.)*.12*b),d=vec2(.3*b,.05*b),o=vec2(.03*b,0.);
+  if(e<.5)return vec4(dbA(v+o,d).r,dbA(v,d).g,dbA(v-o,d).b,1.);v.x-=2.;return vec4(dbB(v+o,d).r,dbB(v,d).g,dbB(v-o,d).b,1.);}`],
+    ['nVrRay', 'light', N + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 s=sq(u);vec4 c=zc(u,vec2(.5,.45),.5*b,p>=.5);c.rgb+=b*b*vec3(1.,.95,.7)*.6;
+  c.rgb*=mix(vec3(1.),.7+.3*cos(vec3(0.,2.,4.)+atan(s.y,s.x)*3.),b*.6);return c;}`],
+    ['nVrZoom', 'light', N + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=zc(bulge(u,3.*b),vec2(.5),.3*b,p>=.5);c.rgb+=exp(-length(sq(u))*4./(b+.01))*b*1.5;
+  c.rgb=mix(c.rgb,vec3(1.),pow(b,4.)*.8);return c;}`],
 ];
   const CATS = ['cam', 'blur', 'glitch', 'light', 'film', 'shape', '3d', 'mask', 'slide', 'warp'];
   const api = { HEAD, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
