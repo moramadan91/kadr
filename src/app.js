@@ -1375,6 +1375,12 @@ $('#rows').addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (moved) { dirty = true; refresh(); if (libTab === 'trans') renderTrans(); } }, { once: true });
 }, true);
+// Lanes sit at the bottom of the timeline (CapCut-style), about two lanes above its lower edge; new lanes grow upward.
+function laneGap() {
+  const sc = $('#scroll'), n = shownTracks().length, g = Math.max(0, sc.clientHeight - $('#ruler').offsetHeight - (n + 2) * ROW);
+  $('#rows').style.marginTop = $('#heads').style.marginTop = g + 'px';
+}
+new ResizeObserver(() => laneGap()).observe($('#scroll'));
 function renderTimeline() {
   const width = (Math.max(total(), t) + 30) * pps, TS = shownTracks();
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
@@ -1382,6 +1388,7 @@ function renderTimeline() {
   $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
     P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
+  laneGap();
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
   for (let s = 0; s * pps < width; s += step) ticks += `<div class="tick" style="left:${s * pps}px">${fmt(s).replace(/:00$/, '')}</div>`;
