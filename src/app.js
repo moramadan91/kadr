@@ -203,8 +203,20 @@ function proxyFor(it) {
   }
   return null;
 }
+const mpx = new Map(); // media path -> proxy path, '' while it is being made, null if it failed
+function mediaProxy(m) {
+  if (m.kind !== 'video' || !(Math.max(m.w, m.h) > 1280) || lsGet('kadr.proxy', true) === false) return null;
+  if (!mpx.has(m.path)) {
+    mpx.set(m.path, '');
+    const k = 960 / Math.max(m.w, m.h), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
+    inv('proxy_render', { args: ['-y', '-v', 'error', '-i', m.path, '-map', '0:v:0', '-map', '0:a:0?', '-vf', `scale=${ev(m.w)}:${ev(m.h)}`,
+      ...G.ENCODERS.proxy(), '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '__OUT__'] })
+      .then(p => { mpx.set(m.path, p); needsDraw = true; }, () => mpx.set(m.path, null));
+  }
+  return mpx.get(m.path) || null;
+}
 function elFor(it) {
-  const m = media(it), px = proxyFor(it), url = px ? urlOf({ path: px }) : urlOf(m), key = chainKey(it);
+  const m = media(it), px = proxyFor(it) || mediaProxy(m), url = px ? urlOf({ path: px }) : urlOf(m), key = chainKey(it);
   let el = els.get(key);
   if (el && el.dataset.src === url) return el;
   if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
@@ -603,9 +615,20 @@ function drawVisual(ctx, time, ov, textHook) {
   }
 }
 // One clip of the stack at project time `time` (src: a frame to use instead of the clip's own video).
-function drawItem(ctx, it, time, ov, srcOv) {
+// WebKit ignores the blend mode when it draws a <video> straight onto a canvas, so a blended clip is
+// drawn into its own layer first and that layer is blended onto the frame.
+const blendLayer = document.createElement('canvas');
+function drawItem(ctx, it, time, ov, srcOv, flat) {
     const pv = ov && ov.id === it.id, m = media(it);
     if (!m || m.kind === 'audio' || it.hidden) return;
+    if (!flat && it.blend && it.blend !== 'normal' && BLENDS[it.blend]) {
+      const c = ctx.canvas, g = blendLayer.getContext('2d');
+      if (blendLayer.width !== c.width || blendLayer.height !== c.height) { blendLayer.width = c.width; blendLayer.height = c.height; }
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(ctx.getTransform());
+      drawItem(g, it, time, ov, srcOv, true);
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = BLENDS[it.blend]; ctx.drawImage(blendLayer, 0, 0); ctx.restore();
+      return;
+    }
     const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
     if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
     if (!(pv || tail || active(it, time))) return;
@@ -627,7 +650,6 @@ function drawItem(ctx, it, time, ov, srcOv) {
     const k = (src.videoWidth || src.naturalWidth || src._w || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
     ctx.save();
     ctx.globalAlpha = S.fadeAlpha(it, lt) * clamp(num(a.opacity, 1), 0, 1);
-    if (it.blend && it.blend !== 'normal') ctx.globalCompositeOperation = BLENDS[it.blend] || 'source-over';
     // transitions: TI = this clip coming in, TO = this clip's held tail going out
     const TI = !tail && !pv ? S.transIn(P, it) : null, trIn = TI && lt < TI.d ? TI : null;
     const qi = trIn ? clamp(lt / trIn.d, 0, 1) : 1, qo = tail ? clamp((time - end) / TO.d, 0, 1) : 0;
@@ -741,11 +763,15 @@ function glTransAt(tid, time, ov) {
   return null;
 }
 function drawGlTrans(ctx, gt, time, srcA, srcB) {
-  for (const c of [GLX.A, GLX.B]) { if (c.width !== P.w || c.height !== P.h) { c.width = P.w; c.height = P.h; } c.getContext('2d').clearRect(0, 0, P.w, P.h); }
+  const k = ctx === vctx ? Math.min(1, 640 / Math.max(P.w, P.h)) : 1, w = Math.round(P.w * k), h = Math.round(P.h * k);
+  for (const c of [GLX.A, GLX.B]) {
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(k, 0, 0, k, 0, 0);
+  }
   drawItem(GLX.A.getContext('2d'), gt.a, time, null, srcA);
   drawItem(GLX.B.getContext('2d'), gt.b, time, null, srcB);
   try { ctx.drawImage(GLX.main.frame(gt.id, GLX.A, GLX.B, gt.q), 0, 0, P.w, P.h); }
-  catch (e) { console.error(e); ctx.drawImage(gt.q < 0.5 ? GLX.A : GLX.B, 0, 0); }
+  catch (e) { console.error(e); ctx.drawImage(gt.q < 0.5 ? GLX.A : GLX.B, 0, 0, P.w, P.h); }
 }
 
 // Text presets ("Aa" styles). Each only sets the fields it cares about; the rest reset to defaults.
@@ -1307,12 +1333,9 @@ $('#rows').addEventListener('pointerdown', e => {
       const a = snap1(s, pts), b = snap1(s + o.dur, pts) - o.dur;
       s = Math.abs(a - s) <= Math.abs(b - s) ? a : b;
       it.start = Math.max(0, s);
-      const x = trackAt(ev.clientY);
-      if (x && compatible(it, x)) it.track = x;
-      else if (x && x !== it.track) {
-        const from = P.tracks.findIndex(q => q.id === it.track), to = P.tracks.findIndex(q => q.id === x);
-        P.tracks.splice(to, 0, ...P.tracks.splice(from, 1));
-      }
+      const tk = it.track;
+      dropLane(it, ev.clientY, lane);
+      if (it.track === tk) { const el = $(`.clip[data-id="${it.id}"]`); if (el) { el.style.left = it.start * pps + 'px'; needsDraw = true; return; } }
     } else if (mode === 'l') {
       // a curved clip can only be shortened (its curve covers the source range it has)
       const min = S.hasCurve(o) ? o.start : m ? Math.max(0, o.start - num(o.in, 0) / sp) : 0;
@@ -1327,17 +1350,43 @@ $('#rows').addEventListener('pointerdown', e => {
       const max = S.hasCurve(o) ? o.start + o.dur : m ? o.start + (m.dur - num(o.in, 0)) / sp : Infinity;
       it.dur = clamp(snap1(o.start + o.dur + d, pts), o.start + 1 / P.fps, max) - o.start;
       if (S.hasCurve(o)) it.curve = S.subCurve(o, 0, it.dur);
+      const el = !S.hasCurve(o) && $(`.clip[data-id="${it.id}"]`);
+      if (el) { el.style.width = Math.max(4, it.dur * pps) + 'px'; needsDraw = true; return; }
     }
     renderTimeline();
     needsDraw = true;
   };
+  const lane = { nt: null, from: it.track };
   const onUp = () => {
     window.removeEventListener('pointermove', onMove);
-    if (changed) refresh();
+    if (changed) { dropLaneEnd(lane); refresh(); }
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp, { once: true });
 });
+// Dragging a clip up/down: onto a free lane of its kind it goes there; over another kind, a busy
+// spot, or above the top lane it gets a new lane of its own (made once per drag, follows the pointer).
+// Captions stay on their lane, and nothing else goes onto it.
+const laneKind = it => isText(it) ? 'text' : media(it).kind === 'audio' ? 'audio' : 'video';
+function dropLane(it, clientY, lane) {
+  if (it.track === 'c1' && !lane.nt) return;
+  const r = $('#rows').getBoundingClientRect(), i = Math.floor((clientY - r.top) / ROW), x = P.tracks[i], kind = laneKind(it);
+  if (x && x === lane.nt) return;
+  const free = x && x.id !== 'c1' && compatible(it, x.id) && (x.id === 'v1' || x.id === it.track ||
+    !P.items.some(q => q !== it && q.track === x.id && q.start < it.start + it.dur - 1e-6 && it.start < q.start + q.dur - 1e-6));
+  if (free) { it.track = x.id; return; }
+  if (i >= P.tracks.length && kind !== 'audio') return; // below the last lane: only sounds get a new lane there
+  if (lane.nt) P.tracks.splice(P.tracks.indexOf(lane.nt), 1);
+  else lane.nt = { id: kind[0] + uid(), kind };
+  P.tracks.splice(clamp(i, 0, P.tracks.length), 0, lane.nt);
+  it.track = lane.nt.id;
+  renderTimeline();
+}
+// After the drag: lanes left empty by it go away (the built-in ones stay).
+function dropLaneEnd(lane) {
+  const keep = new Set(['c1', 't1', 'v1', 'v2', 'a1', 'a2']);
+  P.tracks = P.tracks.filter(x => keep.has(x.id) || (x !== lane.nt && x.id !== lane.from) || P.items.some(i => i.track === x.id));
+}
 // Several clips selected: drag one and they all shift in time together (tracks stay).
 function groupMove(e, lead) {
   if (sel !== lead.id) { sel = lead.id; inspTab = null; inspector(); paintSel(); }
@@ -1352,8 +1401,7 @@ function groupMove(e, lead) {
     const s = o.get(lead.id) + d, a = snap1(s, spts), b = snap1(s + lead.dur, spts) - lead.dur;
     d += (Math.abs(a - s) <= Math.abs(b - s) ? a : b) - s;
     d = Math.max(d, -minStart);
-    for (const i of group) i.start = o.get(i.id) + d;
-    renderTimeline();
+    for (const i of group) { i.start = o.get(i.id) + d; const el = $(`.clip[data-id="${i.id}"]`); if (el) el.style.left = i.start * pps + 'px'; }
     needsDraw = true;
   };
   window.addEventListener('pointermove', mv);
@@ -1417,7 +1465,7 @@ $('#rows').addEventListener('pointerdown', e => {
     if (!moved) { if (Math.abs(ev.clientX - x0) < 3) return; snapshot(); moved = true; }
     const nt = +clamp(Math.round((kt + (ev.clientX - x0) / pps) * P.fps) / P.fps, 0, it.dur).toFixed(4);
     for (const k of Object.keys(it.kf || {})) { for (const q of it.kf[k]) if (same(q)) q[0] = nt; it.kf[k].sort((a, b) => a[0] - b[0]); }
-    cur = nt; seek(it.start + nt); renderTimeline(); needsDraw = true;
+    cur = nt; d.style.left = nt * pps + 'px'; needsDraw = true;
   };
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (moved) { dirty = true; refresh(); } else seek(it.start + kt); }, { once: true });
@@ -1626,8 +1674,9 @@ const grp = (title, body) => `<div class="grp"><div class="gh">${tr(title)}</div
 function trackLabel(x) {
   const k = 'tr_' + x.id;
   if (tr(k) !== k) return tr(k);
-  const vs = P.tracks.filter(y => y.kind === x.kind).reverse();
-  return tr('videoN', { n: vs.indexOf(x) + 1 });
+  const vs = P.tracks.filter(y => y.kind === x.kind && y.id !== 'c1');
+  if (x.kind === 'audio') return tr('audioN', { n: vs.indexOf(x) + 1 }); // sounds count down from the top
+  return tr(x.kind === 'text' ? 'textN' : 'videoN', { n: vs.reverse().indexOf(x) + 1 });
 }
 function inspTabsFor(it) {
   if (!it) return [];
@@ -2864,10 +2913,10 @@ function renderTrans() {
       `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` : '');
   if (!TR_CATS.includes(trCat)) trCat = 'hot';
   $('#trCats').innerHTML = TR_CATS.map(c => `<button class="chip${c === trCat ? ' on' : ''}" data-cat="${c}">${tr('trc_' + c)}</button>`).join('');
-  const ids = trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : KadrGLT.ids.filter(x => KadrGLT.cat[x] === trCat);
-  $('#transCards').innerHTML = ['none', ...ids].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
+  const ids = trCat === 'fav' ? favs.tr || [] : trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : KadrGLT.ids.filter(x => KadrGLT.cat[x] === trCat);
+  $('#transCards').innerHTML = favFirst('tr', ['none', ...ids]).map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
     (S.GLT.includes(id) ? `<i class="tv"><canvas data-gl="${id}" width="160" height="100"></canvas></i>` : `<i class="tv tv-${id}"><b></b></i>`) +
-    `<span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>`}</button>`).join('');
+    `<span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>` + favStar('tr', id)}</button>`).join('');
   transThumbs(performance.now() / 1000);
   const d = $('#trDur');
   if (d) {
@@ -2877,7 +2926,7 @@ function renderTrans() {
   }
 }
 // Transition cards: the shader ones play on two sample pictures, each card at its own point in the loop.
-const TR_CATS = ['hot', 'basic', ...KadrGLT.CATS];
+const TR_CATS = ['fav', 'hot', 'basic', ...KadrGLT.CATS];
 const TR_HOT = ['lensIn', 'whipL', 'spinZoom', 'glitchBlock', 'flash', 'cubeL', 'swirl', 'leakWarm', 'gallery', 'tiles', 'snap', 'burn', 'shakeCam', 'heart', 'torn', 'rgbSplit', 'fade', 'slideL'];
 let trCat = 'hot', trPics = null;
 $('#trCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { trCat = c.dataset.cat; renderTrans(); $('#transCards').scrollTop = 0; } });
@@ -3146,18 +3195,32 @@ function renderLookCards() {
   const scene = clipThumb() || cardCanvas(sampleScene), it = sel && item(sel);
   const fill = (box, list, attr, paint, cap, on) => {
     box.innerHTML = '';
-    for (const x of list) {
+    for (const x of favFirst(attr, list)) {
       const b = document.createElement('button');
-      b.className = 'card' + (on === x ? ' on' : '');
+      b.className = 'card' + (on === x || (x === 'none' && !on) ? ' on' : '');
       b.dataset[attr] = x;
       b.appendChild(cardCanvas(paint(x)));
-      b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>${x === 'none' ? '' : `<i class="plus" data-plus title="${tr('addLayer')}">${icon('plus')}</i>`}`);
+      b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>${x === 'none' ? '' : `<i class="plus" data-plus title="${tr('addLayer')}">${icon('plus')}</i>` + favStar(attr, x)}`);
       box.appendChild(b);
     }
   };
   fill($('#filterCards'), Object.keys(S.PRESETS), 'preset', p => ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180), 'p_', it && it.preset);
-  fill($('#fxCards'), S.FX, 'fx', f => ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
+  fill($('#fxCards'), ['none', ...S.FX], 'fx', f => f === 'none' ? ctx => ctx.drawImage(scene, 0, 0, 240, 180) : ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
 }
+// Favourites (star on a card): kept per list in this computer's settings, shown first.
+let favs = lsGet('kadr.favs', {});
+const isFav = (k, id) => (favs[k] || []).includes(id);
+const favFirst = (k, list) => [...list.filter(x => x === 'none'), ...list.filter(x => x !== 'none' && isFav(k, x)), ...list.filter(x => x !== 'none' && !isFav(k, x))];
+const favStar = (k, id) => `<i class="fav${isFav(k, id) ? ' on' : ''}" data-favk="${k}" title="${tr('favTip')}">${icon('star')}</i>`;
+document.addEventListener('click', e => {
+  const st = e.target.closest('[data-favk]');
+  if (!st) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  const k = st.dataset.favk, id = st.parentElement.dataset[k], l = favs[k] || [];
+  favs = { ...favs, [k]: l.includes(id) ? l.filter(x => x !== id) : [...l, id] };
+  lsSet('kadr.favs', favs);
+  if (k === 'tr') renderTrans(); else renderLookCards();
+}, true);
 function addAdj(kind, id) {
   const mid = 'adj_' + uid();
   P.media[mid] = { kind: 'image', adj: true, name: tr((kind === 'fx' ? 'fx_' : 'p_') + id), w: P.w, h: P.h, path: '' };
@@ -3178,7 +3241,7 @@ $('#fxCards').addEventListener('click', e => {
   if (!c) return;
   if (!it || isText(it) || media(it).kind === 'audio') return toast(tr('fxPick'));
   snapshot();
-  if (it.fx && it.fx.id === c.dataset.fx) delete it.fx; // second click removes it
+  if (c.dataset.fx === 'none' || (it.fx && it.fx.id === c.dataset.fx)) delete it.fx; // None or a second click removes it
   else it.fx = { id: c.dataset.fx, a: num(it.fx && it.fx.a, 0.5) };
   inspTab = 'tVideo'; dirty = true;
   refresh(); renderLookCards();

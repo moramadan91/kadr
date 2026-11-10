@@ -145,11 +145,16 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 .mk { position: absolute; top: 2px; width: 10px; height: 14px; margin-left: -5px; background: var(--accent); clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%); cursor: pointer; }
 .rows { position: relative; padding-bottom: 6px; }
 .row { height: var(--row); position: relative; }
-.row.main { background: rgba(255, 255, 255, .035); }
-.row.over { background: rgba(92, 211, 198, .08); }
+/* glass lanes, a small gap between them */
+.row::before, .head::before { content: ''; position: absolute; inset: 3px 0; border-radius: 10px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .025)); border: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.head { position: relative; } .head::before { inset: 3px 6px; } .head > * { position: relative; }
+.row.main::before { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .045)); border-color: rgba(255, 255, 255, .11); }
+.row.over::before { background: rgba(92, 211, 198, .12); }
 .clip {
   --c: var(--video);
-  position: absolute; top: 4px; bottom: 4px; border-radius: 9px; overflow: hidden; cursor: grab; display: flex; align-items: center; color: #fff; font-size: 11px;
+  position: absolute; top: 6px; bottom: 6px; border-radius: 8px; z-index: 1; overflow: hidden; cursor: grab; display: flex; align-items: center; color: #fff; font-size: 11px;
   background: linear-gradient(180deg, rgba(var(--c), .62), rgba(var(--c), .38));
   border: 1px solid rgba(255, 255, 255, .22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25);
 }
@@ -499,6 +504,10 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .card .plus, .trc .plus { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); opacity: 0; transition: opacity .12s; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .card .plus svg, .trc .plus svg { width: 15px; height: 15px; stroke-width: 3; }
 .card:hover .plus, .trc:hover .plus { opacity: 1; }
+.card .fav, .trc .fav { position: absolute; top: 6px; inset-inline-start: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, .45); color: #fff; opacity: 0; cursor: pointer; z-index: 2; }
+.card .fav svg, .trc .fav svg { width: 14px; height: 14px; }
+.card:hover .fav, .trc:hover .fav, .card .fav.on, .trc .fav.on { opacity: 1; }
+.card .fav.on, .trc .fav.on { color: #ffd43b; } .card .fav.on svg, .trc .fav.on svg { fill: #ffd43b; }
 .card .plus:hover, .trc .plus:hover { transform: scale(1.12); }
 .trc { position: relative; }
 .trc[data-off] { opacity: .55; }
