@@ -594,76 +594,158 @@ function drawVisual(ctx, time, ov, textHook) {
     const tid = tr0.id;
     if (tr0.kind === 'text') { if (textHook) textHook(tid); continue; }
     // by start time: a clip's frozen tail is drawn under the next clip's transition
+    // a shader transition draws its two clips into their own layers and mixes them
+    const gt = glTransAt(tid, time, ov);
     for (const it of P.items.filter(i => i.track === tid && !isText(i)).sort((a, b) => a.start - b.start)) {
-      const pv = ov && ov.id === it.id, m = media(it);
-      if (!m || m.kind === 'audio' || it.hidden) continue;
-      const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
-      if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
-      if (!(pv || tail || active(it, time))) continue;
-      if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); continue; }
-      let src = m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailFrame(it) : elFor(it);
-      if (!src) continue;
-      if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
-      else if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
-        if (!src._snap) continue;
-        src = src._snap; // frame-skipping playback: keep the last frame while the next jump lands
-      } else if (src._hold && ctx === vctx) {
-        const c = src._snap || (src._snap = document.createElement('canvas'));
-        if (c.width !== m.w || c.height !== m.h) { c.width = m.w; c.height = m.h; }
-        c.getContext('2d').drawImage(src, 0, 0, m.w, m.h);
-      }
-      const lt = pv ? ov.lt : tail ? it.dur : time - it.start;
-      if (m.fill) { m.w = P.w; m.h = P.h; }
-      const a = S.withVa(S.animAt(it, lt), lt, P.w, P.h), L = S.layout(a, m, P.w, P.h), C = S.srcCrop(it, m);
-      const k = (src.videoWidth || src.naturalWidth || src._w || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
-      ctx.save();
-      ctx.globalAlpha = S.fadeAlpha(it, lt) * clamp(num(a.opacity, 1), 0, 1);
-      if (it.blend && it.blend !== 'normal') ctx.globalCompositeOperation = BLENDS[it.blend] || 'source-over';
-      // transitions: TI = this clip coming in, TO = this clip's held tail going out
-      const TI = !tail && !pv ? S.transIn(P, it) : null, trIn = TI && lt < TI.d ? TI : null;
-      const qi = trIn ? clamp(lt / trIn.d, 0, 1) : 1, qo = tail ? clamp((time - end) / TO.d, 0, 1) : 0;
-      if (trIn && (S.TR_DIP[trIn.id] || S.TR_MOVE[trIn.id]) && qi < 0.5) { ctx.restore(); continue; }
-      // zoom / spin / shake / glitch: [formulas, progress through this side's half]
-      const mv = [trIn && S.TR_MOVE[trIn.id] && [S.TR_MOVE[trIn.id].b, (qi - 0.5) * 2], tail && S.TR_MOVE[TO.id] && [S.TR_MOVE[TO.id].a, Math.min(1, qo * 2)]].filter(Boolean);
-      const mz = mv.reduce((z, [M, u]) => z * (M.z != null ? S.trVal(M.z, u) : 1), 1), mr = mv.reduce((r, [M, u]) => r + (M.r != null ? S.trVal(M.r, u) : 0), 0);
-      const mx = mv.reduce((x, [M, u]) => x + (M.x != null ? S.trVal(M.x, u) : 0), 0);
-      if (mx) ctx.translate(mx * P.w, 0);
-      if (trIn && trIn.id === 'fade') ctx.globalAlpha *= qi;
-      const sl = trIn && S.TR_SLIDE[trIn.id] ? [S.TR_SLIDE[trIn.id], 1 - S.ease3(qi)] : tail && S.TR_SLIDE[TO.id] ? [S.TR_SLIDE[TO.id], -S.ease3(qo)] : null;
-      if (sl) ctx.translate(sl[0][0] * P.w * sl[1], sl[0][1] * P.h * sl[1]);
-      const [tx, ty] = S.trkAt(it, lt);
-      if (tx || ty) ctx.translate(tx * P.w, ty * P.h);
-      if (it.flipH || it.flipV || num(a.rotate, 0)) {
-        ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2);
-        ctx.rotate(num(a.rotate, 0) * Math.PI / 180);
-        ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
-        ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
-      }
-      if (trIn && S.TR_GEQ[trIn.id]) S.transClip(ctx, trIn.id, S.ease3(qi), L.ox, L.oy, L.cw, L.ch);
-      if (mz !== 1 || mr) { // inside the clip's own box, as the export crops it
-        ctx.beginPath(); ctx.rect(L.ox, L.oy, L.cw, L.ch); ctx.clip();
-        ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2); ctx.rotate(mr * Math.PI / 180); ctx.scale(mz, mz); ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
-      }
-      const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
-      const dc = mk ? maskBox(L) : ctx;
-      if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
-      drawGraded(dc, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch, lt);
-      if (it.logo && it.logo.on) drawDelogo(dc, it, src, m, k, C, L, u, v);
-      if (mk) {
-        dc.restore();
-        dc.globalCompositeOperation = 'destination-in';
-        dc.drawImage(maskCanvas(it.mask, Math.round(L.cw), Math.round(L.ch)), 0, 0);
-        dc.globalCompositeOperation = 'source-over';
-        ctx.drawImage(dc.canvas, 0, 0, Math.round(L.cw), Math.round(L.ch), L.ox, L.oy, Math.round(L.cw), Math.round(L.ch));
-        if (ctx === vctx && sel === it.id && inspTab === 'tAdjust' && colSub === 'mask' && !playing) drawMaskGuide(ctx, it.mask, L);
-      }
-      // dip to black/white: the clip's box fades to the colour (going out) or from it (coming in)
-      const dip = trIn && S.TR_DIP[trIn.id] ? [trIn.id, 1 - (qi - 0.5) * 2] : tail && S.TR_DIP[TO.id] ? [TO.id, Math.min(1, qo * 2)] : null;
-      if (dip && dip[1] > 0) { ctx.globalAlpha *= dip[1]; ctx.fillStyle = S.TR_DIP[dip[0]]; ctx.fillRect(L.ox, L.oy, L.cw, L.ch); }
-      if (ctx === vctx && sel === it.id && m.fill && it.fill && it.fill.type !== 'solid' && !playing) drawFillGuide(ctx, it.fill, L);
-      ctx.restore();
+      if (gt && (it === gt.a || it === gt.b)) { if (it === gt.b) drawGlTrans(ctx, gt, time); continue; }
+      drawItem(ctx, it, time, ov);
     }
   }
+}
+// One clip of the stack at project time `time` (src: a frame to use instead of the clip's own video).
+function drawItem(ctx, it, time, ov, srcOv) {
+    const pv = ov && ov.id === it.id, m = media(it);
+    if (!m || m.kind === 'audio' || it.hidden) return;
+    const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
+    if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
+    if (!(pv || tail || active(it, time))) return;
+    if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); return; }
+    let src = srcOv || (m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailFrame(it) : elFor(it));
+    if (!src) return;
+    if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
+    else if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
+      if (!src._snap) return;
+      src = src._snap; // frame-skipping playback: keep the last frame while the next jump lands
+    } else if (src._hold && ctx === vctx) {
+      const c = src._snap || (src._snap = document.createElement('canvas'));
+      if (c.width !== m.w || c.height !== m.h) { c.width = m.w; c.height = m.h; }
+      c.getContext('2d').drawImage(src, 0, 0, m.w, m.h);
+    }
+    const lt = pv ? ov.lt : tail ? it.dur : time - it.start;
+    if (m.fill) { m.w = P.w; m.h = P.h; }
+    const a = S.withVa(S.animAt(it, lt), lt, P.w, P.h), L = S.layout(a, m, P.w, P.h), C = S.srcCrop(it, m);
+    const k = (src.videoWidth || src.naturalWidth || src._w || m.w) / m.w, u = C.w / L.sw, v = C.h / L.sh;
+    ctx.save();
+    ctx.globalAlpha = S.fadeAlpha(it, lt) * clamp(num(a.opacity, 1), 0, 1);
+    if (it.blend && it.blend !== 'normal') ctx.globalCompositeOperation = BLENDS[it.blend] || 'source-over';
+    // transitions: TI = this clip coming in, TO = this clip's held tail going out
+    const TI = !tail && !pv ? S.transIn(P, it) : null, trIn = TI && lt < TI.d ? TI : null;
+    const qi = trIn ? clamp(lt / trIn.d, 0, 1) : 1, qo = tail ? clamp((time - end) / TO.d, 0, 1) : 0;
+    if (trIn && (S.TR_DIP[trIn.id] || S.TR_MOVE[trIn.id]) && qi < 0.5) { ctx.restore(); return; }
+    // zoom / spin / shake / glitch: [formulas, progress through this side's half]
+    const mv = [trIn && S.TR_MOVE[trIn.id] && [S.TR_MOVE[trIn.id].b, (qi - 0.5) * 2], tail && S.TR_MOVE[TO.id] && [S.TR_MOVE[TO.id].a, Math.min(1, qo * 2)]].filter(Boolean);
+    const mz = mv.reduce((z, [M, u]) => z * (M.z != null ? S.trVal(M.z, u) : 1), 1), mr = mv.reduce((r, [M, u]) => r + (M.r != null ? S.trVal(M.r, u) : 0), 0);
+    const mx = mv.reduce((x, [M, u]) => x + (M.x != null ? S.trVal(M.x, u) : 0), 0);
+    if (mx) ctx.translate(mx * P.w, 0);
+    if (trIn && trIn.id === 'fade') ctx.globalAlpha *= qi;
+    const sl = trIn && S.TR_SLIDE[trIn.id] ? [S.TR_SLIDE[trIn.id], 1 - S.ease3(qi)] : tail && S.TR_SLIDE[TO.id] ? [S.TR_SLIDE[TO.id], -S.ease3(qo)] : null;
+    if (sl) ctx.translate(sl[0][0] * P.w * sl[1], sl[0][1] * P.h * sl[1]);
+    const [tx, ty] = S.trkAt(it, lt);
+    if (tx || ty) ctx.translate(tx * P.w, ty * P.h);
+    if (it.flipH || it.flipV || num(a.rotate, 0)) {
+      ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2);
+      ctx.rotate(num(a.rotate, 0) * Math.PI / 180);
+      ctx.scale(it.flipH ? -1 : 1, it.flipV ? -1 : 1);
+      ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
+    }
+    if (trIn && S.TR_GEQ[trIn.id]) S.transClip(ctx, trIn.id, S.ease3(qi), L.ox, L.oy, L.cw, L.ch);
+    if (mz !== 1 || mr) { // inside the clip's own box, as the export crops it
+      ctx.beginPath(); ctx.rect(L.ox, L.oy, L.cw, L.ch); ctx.clip();
+      ctx.translate(L.ox + L.cw / 2, L.oy + L.ch / 2); ctx.rotate(mr * Math.PI / 180); ctx.scale(mz, mz); ctx.translate(-(L.ox + L.cw / 2), -(L.oy + L.ch / 2));
+    }
+    const mk = S.hasMask(it) && L.cw >= 1 && L.ch >= 1;
+    const dc = mk ? maskBox(L) : ctx;
+    if (mk) { dc.save(); dc.translate(-L.ox, -L.oy); }
+    drawGraded(dc, it, src, (C.x + L.cx * u) * k, (C.y + L.cy * v) * k, L.cw * u * k, L.ch * v * k, L.ox, L.oy, L.cw, L.ch, lt);
+    if (it.logo && it.logo.on) drawDelogo(dc, it, src, m, k, C, L, u, v);
+    if (mk) {
+      dc.restore();
+      dc.globalCompositeOperation = 'destination-in';
+      dc.drawImage(maskCanvas(it.mask, Math.round(L.cw), Math.round(L.ch)), 0, 0);
+      dc.globalCompositeOperation = 'source-over';
+      ctx.drawImage(dc.canvas, 0, 0, Math.round(L.cw), Math.round(L.ch), L.ox, L.oy, Math.round(L.cw), Math.round(L.ch));
+      if (ctx === vctx && sel === it.id && inspTab === 'tAdjust' && colSub === 'mask' && !playing) drawMaskGuide(ctx, it.mask, L);
+    }
+    // dip to black/white: the clip's box fades to the colour (going out) or from it (coming in)
+    const dip = trIn && S.TR_DIP[trIn.id] ? [trIn.id, 1 - (qi - 0.5) * 2] : tail && S.TR_DIP[TO.id] ? [TO.id, Math.min(1, qo * 2)] : null;
+    if (dip && dip[1] > 0) { ctx.globalAlpha *= dip[1]; ctx.fillStyle = S.TR_DIP[dip[0]]; ctx.fillRect(L.ox, L.oy, L.cw, L.ch); }
+    if (ctx === vctx && sel === it.id && m.fill && it.fill && it.fill.type !== 'solid' && !playing) drawFillGuide(ctx, it.fill, L);
+    ctx.restore();
+}
+
+// ---------- shader transitions (src/gltrans.js) ----------
+// The incoming clip b and the held outgoing clip a are drawn into their own full-frame layers, then
+// mixed by the transition's fragment shader. The export renders the same frames (renderGlTrans).
+const GLX_VS = 'attribute vec2 a;varying vec2 uv0;void main(){uv0=a*.5+.5;gl_Position=vec4(a,0.,1.);}';
+// one GL context: frame(id, A, B, q) -> its canvas holding the mixed frame (A, B: same-size canvases)
+// WebKit drops a context that holds too many programs, so only the last few stay compiled, and a lost
+// context is replaced by a new canvas.
+function mkGlx() {
+  const progs = new Map();
+  let c = null, gl = null, buf = null, tex = [];
+  const init = () => {
+    if (gl && !gl.isContextLost()) return gl;
+    c = document.createElement('canvas'); progs.clear(); tex = [];
+    gl = c.getContext('webgl', { premultipliedAlpha: true, preserveDrawingBuffer: true });
+    buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    for (let i = 0; i < 2; i++) {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      for (const k of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE);
+      for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.LINEAR);
+      tex.push(t);
+    }
+    return gl;
+  };
+  const prog = id => {
+    let pr = progs.get(id);
+    if (pr) { progs.delete(id); progs.set(id, pr); return pr; } // most recently used last
+    while (progs.size >= 12) { const [k, old] = progs.entries().next().value; gl.deleteProgram(old.q); progs.delete(k); }
+    const def = KadrGLT.LIST.find(x => x[0] === id);
+    const sh = (type, src) => {
+      const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o);
+      if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(id + ': ' + gl.getShaderInfoLog(o));
+      return o;
+    };
+    const q = gl.createProgram(), vs = sh(gl.VERTEX_SHADER, GLX_VS), fs = sh(gl.FRAGMENT_SHADER, KadrGLT.HEAD + def[2] + '\nvoid main(){gl_FragColor=tr(uv0);}');
+    gl.attachShader(q, vs); gl.attachShader(q, fs);
+    gl.linkProgram(q);
+    gl.deleteShader(vs); gl.deleteShader(fs); // freed with the program
+    if (!gl.getProgramParameter(q, gl.LINK_STATUS)) throw new Error(id + ': ' + gl.getProgramInfoLog(q));
+    pr = { q, a: gl.getAttribLocation(q, 'a'), tA: gl.getUniformLocation(q, 'tA'), tB: gl.getUniformLocation(q, 'tB'), p: gl.getUniformLocation(q, 'p'), R: gl.getUniformLocation(q, 'R') };
+    progs.set(id, pr);
+    return pr;
+  };
+  const frame = (id, A, B, q) => {
+    init();
+    const pr = prog(id), w = A.width, h = A.height;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    gl.viewport(0, 0, w, h); gl.useProgram(pr.q);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    [A, B].forEach((s, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, tex[i]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, s); });
+    gl.uniform1i(pr.tA, 0); gl.uniform1i(pr.tB, 1); gl.uniform1f(pr.p, clamp(q, 0, 1)); gl.uniform2f(pr.R, w, h);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.enableVertexAttribArray(pr.a); gl.vertexAttribPointer(pr.a, 2, gl.FLOAT, false, 0, 0);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return c;
+  };
+  return { frame, check: id => { init(); prog(id); } };
+}
+const GLX = { main: mkGlx(), thumb: mkGlx(), A: document.createElement('canvas'), B: document.createElement('canvas') };
+function glTransAt(tid, time, ov) {
+  if (ov) return null;
+  for (const b of P.items) {
+    if (b.track !== tid || !b.trans || !S.GLT.includes(b.trans.id) || time < b.start || time >= b.start + 2.01) continue;
+    const T = S.transIn(P, b);
+    if (T && time < b.start + T.d) return { id: T.id, a: T.prev, b, q: (time - b.start) / T.d };
+  }
+  return null;
+}
+function drawGlTrans(ctx, gt, time, srcA, srcB) {
+  for (const c of [GLX.A, GLX.B]) { if (c.width !== P.w || c.height !== P.h) { c.width = P.w; c.height = P.h; } c.getContext('2d').clearRect(0, 0, P.w, P.h); }
+  drawItem(GLX.A.getContext('2d'), gt.a, time, null, srcA);
+  drawItem(GLX.B.getContext('2d'), gt.b, time, null, srcB);
+  try { ctx.drawImage(GLX.main.frame(gt.id, GLX.A, GLX.B, gt.q), 0, 0, P.w, P.h); }
+  catch (e) { console.error(e); ctx.drawImage(gt.q < 0.5 ? GLX.A : GLX.B, 0, 0); }
 }
 
 // Text presets ("Aa" styles). Each only sets the fields it cares about; the rest reset to defaults.
@@ -1084,6 +1166,7 @@ function loop(now) {
   syncMedia();
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
   if (inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
+  if (libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
   requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
@@ -2779,14 +2862,44 @@ function renderTrans() {
   $('#transHead').innerHTML = !tg ? `<p class="hint">${tr('trNone')}</p>` :
     `<p class="hint">${tr('trAt', { t: fmt(tg.start) })}</p>` + (T ? `<div class="f"><div class="lb"><span>${tr('dur')}</span><b>${T.d.toFixed(1)}s</b></div>` +
       `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` : '');
-  $('#transCards').innerHTML = ['none', ...S.TRANS].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
-    `<i class="tv tv-${id}"><b></b></i><span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>`}</button>`).join('');
+  if (!TR_CATS.includes(trCat)) trCat = 'hot';
+  $('#trCats').innerHTML = TR_CATS.map(c => `<button class="chip${c === trCat ? ' on' : ''}" data-cat="${c}">${tr('trc_' + c)}</button>`).join('');
+  const ids = trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : KadrGLT.ids.filter(x => KadrGLT.cat[x] === trCat);
+  $('#transCards').innerHTML = ['none', ...ids].map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
+    (S.GLT.includes(id) ? `<i class="tv"><canvas data-gl="${id}" width="160" height="100"></canvas></i>` : `<i class="tv tv-${id}"><b></b></i>`) +
+    `<span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>`}</button>`).join('');
+  transThumbs(performance.now() / 1000);
   const d = $('#trDur');
   if (d) {
     d.onpointerdown = () => snapshot();
     d.oninput = () => { tg.trans.dur = +d.value; d.previousElementSibling.lastElementChild.textContent = (+d.value).toFixed(1) + 's'; dirty = true; needsDraw = true; };
     d.onchange = () => { renderTimeline(); previewTrans(tg); };
   }
+}
+// Transition cards: the shader ones play on two sample pictures, each card at its own point in the loop.
+const TR_CATS = ['hot', 'basic', ...KadrGLT.CATS];
+const TR_HOT = ['lensIn', 'whipL', 'spinZoom', 'glitchBlock', 'flash', 'cubeL', 'swirl', 'leakWarm', 'gallery', 'tiles', 'snap', 'burn', 'shakeCam', 'heart', 'torn', 'rgbSplit', 'fade', 'slideL'];
+let trCat = 'hot', trPics = null;
+$('#trCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { trCat = c.dataset.cat; renderTrans(); $('#transCards').scrollTop = 0; } });
+function sampleScene2(ctx) {
+  const g = ctx.createLinearGradient(0, 0, 0, 180);
+  g.addColorStop(0, '#3fd0c9'); g.addColorStop(1, '#173a63');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 180);
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+  for (let x = 0; x <= 240; x += 30) { ctx.beginPath(); ctx.moveTo(x, 100); ctx.lineTo(120 + (x - 120) * 2.2, 180); ctx.stroke(); }
+  for (const y of [112, 128, 150, 178]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(240, y); ctx.stroke(); }
+  ctx.fillStyle = '#ffd84d'; ctx.beginPath(); ctx.arc(70, 52, 22, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(150, 40, 46, 60); ctx.fillStyle = '#173a63'; ctx.fillRect(160, 52, 10, 14); ctx.fillRect(178, 52, 10, 14);
+}
+function transThumbs(now) {
+  const cs = $$('#transCards canvas[data-gl]');
+  if (!cs.length) return;
+  if (!trPics) trPics = [cardCanvas(sampleScene, 160, 100), cardCanvas(sampleScene2, 160, 100)];
+  cs.forEach((c, i) => {
+    const per = 2.2, q = clamp(((now + i * 0.37) % per) / per * 1.5 - 0.25, 0, 1);
+    try { const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.drawImage(GLX.thumb.frame(c.dataset.gl, trPics[0], trPics[1], q), 0, 0); }
+    catch (e) { if (!c._err) { c._err = 1; console.error(e); } }
+  });
 }
 function previewTrans(tg) {
   const T = S.transIn(P, tg);
@@ -3262,6 +3375,58 @@ async function rasterizeTexts(Q, work, tracks = null, pre = 'f') {
   return list;
 }
 
+// Frames of a video clip at the given local times, decoded by ffmpeg (exact, unlike seeking a <video>).
+async function clipFrames(it, lts) {
+  const m = media(it), at = lts.map(lt => num(it.in, 0) + S.srcAt(it, clamp(lt, 0, it.dur)));
+  const s0 = Math.min(...at), span = Math.max(...at) - s0, sc = Math.min(1, 1280 / Math.max(m.w, m.h));
+  const w = Math.max(2, Math.round(m.w * sc / 2) * 2), h = Math.max(2, Math.round(m.h * sc / 2) * 2);
+  const rate = span > 1e-3 ? clamp(lts.length / span, 1, 120) : 30, st = Math.max(0, s0 - 0.2); // start early: a seek right at the end of a file returns nothing
+  const buf = new Uint8Array(await inv('gray_frames', { args: ['-v', 'error', '-ss', st.toFixed(3), '-i', m.path, '-an', '-t', String(s0 - st + span + 2 / rate),
+    '-vf', `fps=${rate.toFixed(3)},scale=${w}:${h}`, '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1'] }));
+  const N = Math.floor(buf.length / (w * h * 4));
+  if (!N) throw new Error(tr('trk_noVideo'));
+  const cache = new Map();
+  return at.map(a => {
+    const i = clamp(Math.round((a - st) * rate), 0, N - 1);
+    if (!cache.has(i)) {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; c._w = w;
+      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(buf.buffer, i * w * h * 4, w * h * 4), w, h), 0, 0);
+      cache.set(i, c);
+    }
+    return cache.get(i);
+  });
+}
+// Shader transitions for the export: each one's frames as PNGs, overlaid just above its track.
+async function renderGlTrans(Q, work, fps) {
+  const out = [], c = document.createElement('canvas');
+  c.width = P.w; c.height = P.h;
+  const ctx = c.getContext('2d'), png = async name => {
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await inv('write_frame', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-id': String(work.id), 'x-name': name } });
+  };
+  const list = Q.items.filter(b => b.trans && S.GLT.includes(b.trans.id) && S.transIn(Q, b));
+  for (const [gi, q] of list.entries()) {
+    const b = item(q.id), T = b && S.transIn(P, b);
+    if (!T) continue;
+    const a = T.prev, N = Math.max(1, Math.round(T.d * fps)), times = Array.from({ length: N }, (_, f) => b.start + f / fps);
+    progress(tr('p_trans'), gi / list.length);
+    const isV = x => media(x).kind === 'video' && !media(x).fill;
+    const fa = isV(a) ? (await clipFrames(a, [a.dur - 0.5 / fps]))[0] : undefined, fb = isV(b) ? await clipFrames(b, times.map(t0 => t0 - b.start)) : [];
+    const names = [];
+    for (let f = 0; f < N; f++) {
+      if (cancelled) throw new Error(tr('cancelled'));
+      ctx.clearRect(0, 0, P.w, P.h);
+      drawGlTrans(ctx, { id: T.id, a, b, q: f / N }, times[f], fa, fb[f]);
+      const name = `x${gi}_${String(f).padStart(4, '0')}.png`;
+      await png(name); names.push({ name, frames: 1 });
+    }
+    ctx.clearRect(0, 0, P.w, P.h);
+    await png(`x${gi}_end.png`); names.push({ name: `x${gi}_end.png`, frames: 1 }); // clear frame: nothing stays on top after it
+    out.push({ track: b.track, start: b.start, path: await inv('write_work', new TextEncoder().encode(G.concatText(names, fps)), { headers: { 'x-id': String(work.id), 'x-name': 'trans' + gi + '.ffconcat' } }) });
+  }
+  return out;
+}
+
 const RES = [['720p', 720], ['1080p', 1080], ['2K', 1440], ['4K', 2160]];
 /* ---------- new project / welcome ---------- */
 const FORMATS = [ // [ratio, label key, platforms]
@@ -3431,9 +3596,10 @@ async function doExport(o) {
         const list = await rasterizeTexts(Q, work, g, 'g' + gi + '_');
         if (list) textLists.push({ track: g[0], path: await inv('write_work', new TextEncoder().encode(G.concatText(list, o.fps)), { headers: { 'x-id': String(work.id), 'x-name': 'text' + gi + '.ffconcat' } }) });
       }
+      const transLists = await renderGlTrans(Q, work, o.fps);
       const luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
       await writeFills(Q, work);
-      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, codec: o.codec, quality: o.quality, luts, masks });
+      const { args, duration } = G.buildArgs(Q, { out: o.video, textLists, transLists, codec: o.codec, quality: o.quality, luts, masks });
       progress(tr('p_export'), 0);
       await inv('export_run', { id: work.id, args, concat: null, duration });
       work = null;

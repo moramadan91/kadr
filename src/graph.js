@@ -82,13 +82,14 @@
       fc.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(T)},format=yuv420p[b0]`);
       // text layers (rasterized per group of adjacent text tracks) go in at their track's place in the stack
       const stack = p.tracks.filter(x => x.kind !== 'audio').map(x => x.id).reverse(), pos = id => id == null ? Infinity : stack.indexOf(id);
-      const tls = (o.textLists || (o.textList ? [{ path: o.textList, track: null }] : [])).map(x => ({ ...x, at: pos(x.track) })).sort((a, b) => a.at - b.at);
+      const tls = [...(o.textLists || (o.textList ? [{ path: o.textList, track: null }] : [])).map(x => ({ ...x, at: pos(x.track) })),
+        ...(o.transLists || []).map(x => ({ ...x, at: pos(x.track) + 0.5 }))].sort((a, b) => a.at - b.at); // a shader transition sits just above its own track
       let tn = 0;
       const flush = before => {
         while (tls.length && tls[0].at < before) {
           const x = tls.shift(), k = n++;
-          args.push('-f', 'concat', '-safe', '0', '-i', x.path);
-          fc.push(`[${k}:v]format=rgba[tx${tn}]`, `[${base}][tx${tn}]overlay=0:0:eof_action=pass[bt${tn}]`);
+          args.push('-reinit_filter', '0', '-f', 'concat', '-safe', '0', '-i', x.path); // opaque and clear PNGs differ in format: keep one graph
+          fc.push(`[${k}:v]format=rgba${x.start != null ? `,scale=${W}:${H},setpts=PTS+${f3(x.start)}/TB` : ''}[tx${tn}]`, `[${base}][tx${tn}]overlay=0:0:eof_action=pass[bt${tn}]`);
           base = `bt${tn++}`;
         }
       };
@@ -126,7 +127,7 @@
         const L = S.layout({ ...it, scale: smax }, m, W, H);
         const ch = timeChain(it, fps);
         const TI = S.transIn(p, it0), TO = S.transOut(p, it0), d3 = v => (+v).toFixed(4);
-        if (TO) ch.push(`tpad=stop_mode=clone:stop_duration=${f3(TO.d)}`); // hold the last frame under the next clip's transition
+        if (TO && !S.GLT.includes(TO.id)) ch.push(`tpad=stop_mode=clone:stop_duration=${f3(TO.d)}`); // hold the last frame under the next clip's transition
         if (it.logo && it.logo.on) { const b = S.logoBox(it.logo, m); ch.push(`delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}`); }
         if (S.hasKey(it)) { const K = it.chroma; ch.push('format=yuva444p', `chromakey=color=${String(K.color || '#00ff00').replace('#', '0x')}:similarity=${num(K.sim, 0.3).toFixed(3)}:blend=${num(K.blend, 0.1).toFixed(3)}`); }
         if (C.any) ch.push(`scale=${m.w}:${m.h}`, `crop=${C.w}:${C.h}:${C.x}:${C.y}`);
@@ -147,6 +148,7 @@
           if (TI.id === 'fade') ch.push(`fade=t=in:st=0:d=${d3(d)}:alpha=1`);
           else if (S.TR_MOVE[TI.id]) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`); // new clip takes over at the middle
           else if (c) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`, `fade=t=in:st=${d3(d / 2)}:d=${d3(d / 2)}:color=${c.replace('#', '0x')}`);
+          else if (S.GLT.includes(TI.id)) ch.push(`fade=t=in:st=${d3(Math.max(0, d - 1 / fps))}:d=${d3(0.999 / fps)}:alpha=1`); // the rendered frames cover it until then
           else if (S.TR_GEQ[TI.id]) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${S.TR_GEQ[TI.id].replace(/P/g, S.easeExpr(`clip(T/${d3(d)},0,1)`))})':enable='lt(t,${d3(d)})'`);
         }
         { // zoom / spin / colour split on either side of a cut-in-the-middle transition

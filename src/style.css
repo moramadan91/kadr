@@ -519,3 +519,9 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .ib.pick svg { width: 15px; height: 15px; }
 label:has(> input[type=color]) { display: inline-flex; align-items: center; gap: 6px; }
 #view.picking { cursor: crosshair; }
+/* transition categories: chips wrap, never scroll sideways */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.chip { padding: 5px 11px; border-radius: 999px; font-size: 12px; background: rgba(255,255,255,.06); color: var(--muted, #aab); border: 1px solid transparent; }
+.chip:hover { color: var(--text, #fff); }
+.chip.on { background: var(--accent); color: var(--accent-ink); }
+.tv canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

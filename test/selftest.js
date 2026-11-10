@@ -185,6 +185,20 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
     assert.ok(red(at(1.5, 100, 100)) && blu(at(3.5, 100, 100)), 'before/after ' + id);
     if (want[id]) assert.ok(want[id](), 'mid ' + id + ' ' + at(2.5, 100, 100));
   }
+  // shader transition: the app's rendered frames (here plain green) sit over the cut, B stays hidden under them
+  {
+    const green = path.join(dir, 'green.png'), clear = path.join(dir, 'clear.png');
+    run(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=green:s=200x200', '-frames:v', '1', green]);
+    run(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=black@0:s=200x200,format=rgba', '-frames:v', '1', clear]);
+    const list = path.join(dir, 'gl.ffconcat');
+    fs.writeFileSync(list, concatText([{ name: 'green.png', frames: 30 }, { name: 'clear.png', frames: 1 }], 30));
+    tp.items[1].trans = { id: S.GLT[0], dur: 1 };
+    assert.ok(S.transIn(tp, tp.items[1]), 'shader transition pairs');
+    run(ffmpeg, buildArgs(tp, { out, transLists: [{ track: 'v1', start: 2, path: list }] }).args);
+    const g = at(2.5, 100, 100);
+    assert.ok(g[1] > 90 && g[0] < 60 && g[2] < 60, 'shader transition frames on top ' + g);
+    assert.ok(red(at(1.5, 100, 100)) && blu(at(3.5, 100, 100)), 'shader transition before/after');
+  }
   // clip effects: every one renders; a few checked by colour on the red clip
   delete tp.items[1].trans;
   for (const id of S.FX) {
