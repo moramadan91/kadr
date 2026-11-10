@@ -71,7 +71,7 @@ const AR = { ver: 'نسخة {v}' };
 $$('[data-t]').forEach(el => (AR[el.dataset.t] = el.hasAttribute('data-html') ? el.innerHTML : el.textContent));
 const T = { ar: AR, en: EN };
 let lang = 'ar', version = '';
-try { lang = localStorage.getItem('kadr.lang') || (navigator.language.startsWith('ar') ? 'ar' : 'en'); } catch (e) {}
+try { lang = localStorage.getItem('maqto.lang') || 'ar'; } catch (e) {} // Arabic first; English only when the visitor picks it
 
 // Word-level split: Arabic letters must stay joined, so never split by character.
 // Words after the first comma get the accent color.
@@ -114,7 +114,7 @@ document.addEventListener('click', async e => {
 });
 $('#lang').onclick = () => {
   lang = lang === 'ar' ? 'en' : 'ar';
-  try { localStorage.setItem('kadr.lang', lang); } catch (e) {}
+  try { localStorage.setItem('maqto.lang', lang); } catch (e) {}
   applyLang();
   ScrollTrigger.refresh();
 };
