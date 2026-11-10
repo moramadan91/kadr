@@ -546,3 +546,10 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .head .lb b.on { color: var(--accent); }
 .head .lb svg { width: 12px; height: 12px; }
 .row.locked .clip { cursor: not-allowed; opacity: .8; }
+
+.trbox { position: absolute; top: 5px; bottom: 5px; z-index: 3; display: grid; place-items: center; border-radius: 7px; cursor: pointer;
+  background: rgba(255, 255, 255, .2); border: 1.5px solid rgba(255, 255, 255, .85); box-shadow: 0 2px 10px rgba(0, 0, 0, .35); color: #fff; }
+.trbox svg { width: 13px; height: 13px; }
+.trbox .e { position: absolute; top: -2px; bottom: -2px; width: 10px; cursor: ew-resize; }
+.trbox .e.l { left: -5px; } .trbox .e.r { right: -5px; }
+.trbox:hover { background: rgba(92, 211, 198, .28); border-color: var(--accent); }

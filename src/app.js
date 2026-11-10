@@ -359,9 +359,9 @@ function syncMedia() {
 const tailSrcAt = (it, x) => Math.min(Math.max(0, num(media(it).dur, 0) - 0.05), num(it.in, 0) + S.srcAt(it, it.dur) + x * (S.hasCurve(it) ? S.rateAt(it, it.dur) : num(it.speed, 1)));
 const liveTail = it => { const m = media(it), TO = S.transOut(P, it); return !!TO && S.GLT.includes(TO.id) && m && m.kind === 'video' && !m.fill && !m.adj ? TO : null; };
 const tailEls = new Map();
-function tailEl(it) {
+function tailEl(key, it) {
   const m = media(it), px = mediaProxy(m), url = px ? urlOf({ path: px }) : urlOf(m);
-  let el = tailEls.get(it.id);
+  let el = tailEls.get(key);
   if (el && el.dataset.src === url) return el;
   if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
   el = document.createElement('video');
@@ -370,34 +370,45 @@ function tailEl(it) {
   el.addEventListener('seeked', () => (needsDraw = true));
   el.addEventListener('loadeddata', () => (needsDraw = true));
   mediaHold.appendChild(el); // WebKit only feeds fresh frames from a <video> in the document
-  tailEls.set(it.id, el);
+  tailEls.set(key, el);
   return el;
 }
+const rateOf = it => clamp(S.hasCurve(it) ? S.rateAt(it, it.dur) : num(it.speed, 1), 0.0625, 16);
+const headSrcAt = (it, x) => Math.max(0, num(it.in, 0) + x * rateOf(it)); // x <= 0: before the clip starts
+// One player per edge, running over timeline [s0, s1] with source time src(t).
+function driveEdge(key, it, s0, s1, src, live) {
+  live.add(key);
+  const el = tailEl(key, it), sp = rateOf(it), want = src(clamp(t, s0, s1));
+  if (playing && t >= s0 && t < s1) {
+    if (Math.abs(el.playbackRate - sp) > 1e-3) el.playbackRate = sp;
+    if (el.paused) { if (Math.abs(el.currentTime - want) > 0.1) el.currentTime = want; el.play().catch(() => {}); }
+    else if (Math.abs(el.currentTime - want) > 0.25 * Math.max(1, sp)) el.currentTime = want;
+  } else if (playing && t < s0 && t > s0 - 0.8) { // warm the decoder up just before, crawling from the start
+    if (el.playbackRate !== 0.0625) el.playbackRate = 0.0625;
+    if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - want) > 0.05) el.currentTime = want; el.play().catch(() => {}); }
+  } else {
+    if (!el.paused) el.pause();
+    if (!el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
+  }
+}
 function driveTails() {
-  const live = new Set();
-  for (const it of P.items) {
-    const TO = !it.hidden && liveTail(it);
-    if (!TO) continue;
-    const x = t - it.start - it.dur;
-    if (x < -1.5 || x > TO.d + 0.1) continue;
-    const el = tailEl(it), want = tailSrcAt(it, Math.max(0, x)), sp = clamp(S.hasCurve(it) ? S.rateAt(it, it.dur) : num(it.speed, 1), 0.0625, 16);
-    live.add(it.id);
-    if (playing && x >= 0) {
-      if (Math.abs(el.playbackRate - sp) > 1e-3) el.playbackRate = sp;
-      if (el.paused) { if (Math.abs(el.currentTime - want) > 0.1) el.currentTime = want; el.play().catch(() => {}); }
-      else if (Math.abs(el.currentTime - want) > 0.25 * Math.max(1, sp)) el.currentTime = want;
-    } else if (playing && x > -0.8) { // warm the decoder up just before, crawling from the out-point
-      if (el.playbackRate !== 0.0625) el.playbackRate = 0.0625;
-      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - want) > 0.05) el.currentTime = want; el.play().catch(() => {}); }
-    } else {
-      if (!el.paused) el.pause();
-      if (!el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
-    }
+  const live = new Set(), isV = x => { const m = media(x); return m && m.kind === 'video' && !m.fill && !m.adj && !x.hidden; };
+  for (const b of P.items) {
+    if (!b.trans || !S.GLT.includes(b.trans.id)) continue;
+    const T = S.transIn(P, b), h = T && T.d / 2;
+    if (!T || t < b.start - h - 1.5 || t > b.start + h + 0.1) continue;
+    const a = T.prev, aEnd = a.start + a.dur;
+    if (isV(a)) driveEdge(a.id + '|t', a, aEnd, aEnd + h, x => tailSrcAt(a, x - aEnd), live);
+    if (isV(b)) driveEdge(b.id + '|h', b, b.start - h, b.start, x => headSrcAt(b, x - b.start), live);
   }
   for (const [k, el] of tailEls) if (!live.has(k)) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); tailEls.delete(k); }
 }
+function headSrc(it) {
+  const el = tailEls.get(it.id + '|h');
+  return el && el.readyState >= 2 ? el : undefined;
+}
 function tailSrc(it) {
-  const el = liveTail(it) && tailEls.get(it.id);
+  const el = liveTail(it) && tailEls.get(it.id + '|t');
   return el && el.readyState >= 2 ? el : tailFrame(it);
 }
 function driveEl(el, it, silent) {
@@ -676,7 +687,7 @@ function drawItem(ctx, it, time, ov, srcOv, flat) {
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = BLENDS[it.blend]; ctx.drawImage(blendLayer, 0, 0); ctx.restore();
       return;
     }
-    const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + TO.d;
+    const end = it.start + it.dur, TO = !pv && time >= end && S.transOut(P, it), tail = !!TO && time < end + (S.GLT.includes(TO.id) ? TO.d / 2 : TO.d);
     if (TO === false && m.kind === 'video' && active(it, time) && end - time < 2 && S.transOut(P, it)) tailFrame(it); // fetch ahead
     if (!(pv || tail || active(it, time))) return;
     if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); return; }
@@ -804,7 +815,7 @@ const GLX = { main: mkGlx(), thumb: mkGlx(), A: document.createElement('canvas')
 // fetched) ahead of time, so the first frame of the transition doesn't stall playback.
 function warmTrans() {
   for (const b of P.items) {
-    if (!b.trans || !S.GLT.includes(b.trans.id) || b.start < t - 0.05 || b.start > t + 2) continue;
+    if (!b.trans || !S.GLT.includes(b.trans.id) || b.start < t - 1 || b.start > t + 2.5) continue;
     const T = S.transIn(P, b);
     if (!T) continue;
     try { GLX.main.check(T.id); } catch {}
@@ -814,9 +825,9 @@ function warmTrans() {
 function glTransAt(tid, time, ov) {
   if (ov) return null;
   for (const b of P.items) {
-    if (b.track !== tid || !b.trans || !S.GLT.includes(b.trans.id) || time < b.start || time >= b.start + 2.01) continue;
+    if (b.track !== tid || !b.trans || !S.GLT.includes(b.trans.id) || time < b.start - 1.01 || time >= b.start + 1.01) continue;
     const T = S.transIn(P, b);
-    if (T && time < b.start + T.d) return { id: T.id, a: T.prev, b, q: (time - b.start) / T.d };
+    if (T && time >= b.start - T.d / 2 && time < b.start + T.d / 2) return { id: T.id, a: T.prev, b, q: (time - b.start + T.d / 2) / T.d };
   }
   return null;
 }
@@ -827,7 +838,8 @@ function drawGlTrans(ctx, gt, time, srcA, srcB) {
     const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(k, 0, 0, k, 0, 0);
   }
   drawItem(GLX.A.getContext('2d'), gt.a, time, null, srcA);
-  drawItem(GLX.B.getContext('2d'), gt.b, time, null, srcB);
+  // before the cut B shows its source from before its in-point (or its first frame)
+  drawItem(GLX.B.getContext('2d'), gt.b, Math.max(time, gt.b.start), null, srcB || (time < gt.b.start ? headSrc(gt.b) : undefined));
   try { ctx.drawImage(GLX.main.frame(gt.id, GLX.A, GLX.B, gt.q), 0, 0, P.w, P.h); }
   catch (e) { console.error(e); ctx.drawImage(gt.q < 0.5 ? GLX.A : GLX.B, 0, 0, P.w, P.h); }
 }
@@ -1312,12 +1324,36 @@ function laneBtns(x) {
     `<b data-lk="lock" class="${x.locked ? 'on' : ''}" title="${tr('laneLock')}">${icon(x.locked ? 'lock' : 'lock-open')}</b>` +
     `<b data-lk="hide" class="${off ? 'on' : ''}" title="${tr('laneHide')}">${icon(off ? 'eye-off' : 'eye')}</b></span>`;
 }
+// Shader transitions sit centred on the cut as a see-through box; drag its edges to change the length.
+function trBoxes(tid) {
+  return P.items.filter(b => b.track === tid && b.trans && S.GLT.includes(b.trans.id)).map(b => {
+    const T = S.transIn(P, b);
+    return T ? `<b class="trn trbox" data-trn="${b.id}" title="${tr('tr_' + T.id)}" style="left:${(b.start - T.d / 2) * pps}px;width:${T.d * pps}px"><i class="e l"></i>${icon('arrow-right-left')}<i class="e r"></i></b>` : '';
+  }).join('');
+}
+$('#rows').addEventListener('pointerdown', e => {
+  const bx = e.target.closest('.trbox');
+  if (!bx || e.button !== 0) return;
+  e.stopImmediatePropagation();
+  if (!e.target.classList.contains('e')) return; // a plain click opens it (click handler below)
+  e.preventDefault();
+  const b = item(bx.dataset.trn), T = S.transIn(P, b), max = Math.min(2, b.dur, T.prev.dur);
+  let moved = false;
+  const mv = ev => {
+    if (!moved) { snapshot(); moved = true; }
+    b.trans.dur = +clamp(Math.abs(timeAt(ev.clientX) - b.start) * 2, 0.1, max).toFixed(2);
+    bx.style.left = (b.start - b.trans.dur / 2) * pps + 'px'; bx.style.width = b.trans.dur * pps + 'px';
+    needsDraw = true;
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (moved) { dirty = true; refresh(); if (libTab === 'trans') renderTrans(); } }, { once: true });
+}, true);
 function renderTimeline() {
   const width = (Math.max(total(), t) + 30) * pps, TS = shownTracks();
   $('#rows').style.width = $('#ruler').style.width = width + 'px';
   $('#heads').innerHTML = TS.map(x => `<div class="head${x.locked ? ' locked' : ''}" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i><em>${esc(trackLabel(x))}</em>${laneBtns(x)}</div>`).join('');
   $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('')
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${curveMarks(it)}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
   const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
   let ticks = '';
@@ -3570,10 +3606,12 @@ async function renderGlTrans(Q, work, fps) {
   for (const [gi, q] of list.entries()) {
     const b = item(q.id), T = b && S.transIn(P, b);
     if (!T) continue;
-    const a = T.prev, N = Math.max(1, Math.round(T.d * fps)), times = Array.from({ length: N }, (_, f) => b.start + f / fps);
+    const a = T.prev, N = Math.max(1, Math.round(T.d * fps)), t0 = b.start - T.d / 2, times = Array.from({ length: N }, (_, f) => t0 + f / fps);
     progress(tr('p_trans'), gi / list.length);
     const isV = x => media(x).kind === 'video' && !media(x).fill;
-    const fa = isV(a) ? await framesAt(media(a), times.map(t0 => tailSrcAt(a, t0 - a.start - a.dur))) : [], fb = isV(b) ? await clipFrames(b, times.map(t0 => t0 - b.start)) : [];
+    const aEnd = a.start + a.dur;
+    const fa = isV(a) ? await framesAt(media(a), times.map(x => x < aEnd ? num(a.in, 0) + S.srcAt(a, x - a.start) : tailSrcAt(a, x - aEnd))) : [];
+    const fb = isV(b) ? await framesAt(media(b), times.map(x => x >= b.start ? num(b.in, 0) + S.srcAt(b, x - b.start) : headSrcAt(b, x - b.start))) : [];
     const names = [];
     for (let f = 0; f < N; f++) {
       if (cancelled) throw new Error(tr('cancelled'));
@@ -3584,7 +3622,7 @@ async function renderGlTrans(Q, work, fps) {
     }
     ctx.clearRect(0, 0, P.w, P.h);
     await png(`x${gi}_end.png`); names.push({ name: `x${gi}_end.png`, frames: 1 }); // clear frame: nothing stays on top after it
-    out.push({ track: b.track, start: b.start, path: await inv('write_work', new TextEncoder().encode(G.concatText(names, fps)), { headers: { 'x-id': String(work.id), 'x-name': 'trans' + gi + '.ffconcat' } }) });
+    out.push({ track: b.track, start: t0, path: await inv('write_work', new TextEncoder().encode(G.concatText(names, fps)), { headers: { 'x-id': String(work.id), 'x-name': 'trans' + gi + '.ffconcat' } }) });
   }
   return out;
 }

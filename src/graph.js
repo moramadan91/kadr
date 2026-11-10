@@ -148,7 +148,7 @@
           if (TI.id === 'fade') ch.push(`fade=t=in:st=0:d=${d3(d)}:alpha=1`);
           else if (S.TR_MOVE[TI.id]) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`); // new clip takes over at the middle
           else if (c) ch.push(`fade=t=in:st=${d3(d / 2)}:d=${d3(1 / fps)}:alpha=1`, `fade=t=in:st=${d3(d / 2)}:d=${d3(d / 2)}:color=${c.replace('#', '0x')}`);
-          else if (S.GLT.includes(TI.id)) ch.push(`fade=t=in:st=${d3(Math.max(0, d - 1 / fps))}:d=${d3(0.999 / fps)}:alpha=1`); // the rendered frames cover it until then
+          else if (S.GLT.includes(TI.id)) ch.push(`fade=t=in:st=${d3(Math.max(0, d / 2 - 1 / fps))}:d=${d3(0.999 / fps)}:alpha=1`); // the rendered frames (centred on the cut) cover it until then
           else if (S.TR_GEQ[TI.id]) ch.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${S.TR_GEQ[TI.id].replace(/P/g, S.easeExpr(`clip(T/${d3(d)},0,1)`))})':enable='lt(t,${d3(d)})'`);
         }
         { // zoom / spin / colour split on either side of a cut-in-the-middle transition

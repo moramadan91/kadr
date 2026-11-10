@@ -194,10 +194,10 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
     fs.writeFileSync(list, concatText([{ name: 'green.png', frames: 30 }, { name: 'clear.png', frames: 1 }], 30));
     tp.items[1].trans = { id: S.GLT[0], dur: 1 };
     assert.ok(S.transIn(tp, tp.items[1]), 'shader transition pairs');
-    run(ffmpeg, buildArgs(tp, { out, transLists: [{ track: 'v1', start: 2, path: list }] }).args);
-    const g = at(2.5, 100, 100);
+    run(ffmpeg, buildArgs(tp, { out, transLists: [{ track: 'v1', start: 1.5, path: list }] }).args); // centred on the cut at 2
+    const g = at(2.2, 100, 100);
     assert.ok(g[1] > 90 && g[0] < 60 && g[2] < 60, 'shader transition frames on top ' + g);
-    assert.ok(red(at(1.5, 100, 100)) && blu(at(3.5, 100, 100)), 'shader transition before/after');
+    assert.ok(red(at(1.2, 100, 100)) && blu(at(2.8, 100, 100)), 'shader transition before/after');
   }
   // clip effects: every one renders; a few checked by colour on the red clip
   delete tp.items[1].trans;
