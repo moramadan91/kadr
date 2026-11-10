@@ -3584,8 +3584,19 @@ async function autoUpdate() {
     await u.download();
     updReady = u;
     $('#bUpd').classList.add('dot');
-    toast(tr('updReady', { v: u.version }), { label: tr('updRestart'), run: installNow });
-  } catch (e) { updLog(e); } // offline or no release yet
+    updPrompt(u);
+  } catch (e) { updLog(e); } // offline or no release yet (no update: say nothing)
+}
+// Auto mode: once the new version is downloaded, ask in a small centred window (after any open dialog closes)
+function updPrompt(u) {
+  if (!$('#modal').hidden) return setTimeout(() => updPrompt(u), 2000);
+  $('#modal').hidden = false;
+  $('#mBox').innerHTML = `<div class="upd unew"><div class="uic">${icon('sparkles')}</div><h3>${tr('updPromptT')}</h3>
+    <p>${tr('updPromptB', { v: `<bdi>v${esc(u.version)}</bdi>` })}</p>${u.body ? `<p class="hint unotes">${esc(u.body)}</p>` : ''}
+    <div class="acts"><button id="uLater">${tr('updLater')}</button><span class="flex"></span><button class="primary" id="uNow">${icon('refresh-cw')}${tr('updNow')}</button></div></div>`;
+  paintIcons($('#mBox'));
+  $('#uLater').onclick = hideModal; // still installs when the app quits
+  $('#uNow').onclick = () => { hideModal(); installNow(); };
 }
 async function installNow() {
   if (!updReady) return;

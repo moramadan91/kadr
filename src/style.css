@@ -309,6 +309,8 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .upd .ustate .ok { display: flex; gap: 6px; align-items: center; color: var(--accent); }
 .upd .ustate .ok svg { width: 16px; height: 16px; }
 .upd .unotes { white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.upd.unew { text-align: center; justify-items: center; } .upd.unew .acts { width: 100%; } .upd.unew .unotes { text-align: start; width: 100%; }
+.upd .uic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); } .upd .uic svg { width: 24px; height: 24px; }
 .upd .umode { display: grid; gap: 6px; }
 .uopt { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 10px; border: 1px solid var(--stroke); background: var(--well); cursor: pointer; }
 .uopt:has(input:checked) { border-color: var(--accent); }
