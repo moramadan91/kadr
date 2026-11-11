@@ -613,3 +613,7 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .stk.stanim { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
 .stk.stanim button { padding: 2px; }
 .stk.stanim canvas { width: 100%; aspect-ratio: 1; display: block; }
+
+/* media bin: a square frame, the whole picture fitted inside (portrait or landscape) */
+#binList.grid .mi .th { overflow: hidden; }
+#binList.grid .mi .th video, #binList.grid .mi .th img { position: absolute; inset: 0; object-fit: contain; }

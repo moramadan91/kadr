@@ -1481,9 +1481,10 @@ $('#rows').addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (moved) { dirty = true; refresh(); if (libTab === 'trans') renderTrans(); } }, { once: true });
 }, true);
-// Lanes sit at the bottom of the timeline (CapCut-style), about two lanes above its lower edge; new lanes grow upward.
+// The main lane sits in the middle of the timeline; new lanes stack above it until they reach the top, then it scrolls.
 function laneGap() {
-  const sc = $('#scroll'), n = shownTracks().length, g = Math.max(0, sc.clientHeight - $('#ruler').offsetHeight - (n + 0.5) * ROW);
+  const sc = $('#scroll'), above = Math.max(0, shownTracks().findIndex(x => x.id === 'v1')), mid = (sc.clientHeight - $('#ruler').offsetHeight) / 2;
+  const g = Math.max(0, Math.round(mid - ROW / 2 - above * ROW));
   $('#rows').style.marginTop = $('#heads').style.marginTop = g + 'px';
 }
 new ResizeObserver(() => laneGap()).observe($('#scroll'));
