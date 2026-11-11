@@ -4,5 +4,7 @@ src-tauri/gen/
 src-tauri/binaries/
 .DS_Store
 *.kadr
-Kadr_*.dmg
+*.maqto
+Maqto_*.dmg
 .vercel/
+Kadr_*.dmg

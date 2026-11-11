@@ -1,6 +1,6 @@
 // Project JSON -> ffmpeg arguments. Pure; runs in the app and in test/selftest.js.
 (function (root) {
-  const S = typeof module !== 'undefined' && module.exports ? require('./shared') : root.KadrShared;
+  const S = typeof module !== 'undefined' && module.exports ? require('./shared') : root.MaqtoShared;
   const num = S.num;
   const f3 = v => (+v).toFixed(3);
   const signed = v => (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(3);
@@ -282,5 +282,5 @@
 
   const api = { buildArgs, concatText, atempo, ENCODERS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.KadrGraph = api;
+  else root.MaqtoGraph = api;
 })(this);

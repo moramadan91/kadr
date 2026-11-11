@@ -1,7 +1,7 @@
 'use strict';
 window.addEventListener('error', e => window.__TAURI__?.core.invoke('dev_log', { msg: `${e.message} @${e.lineno}` }));
 window.addEventListener('unhandledrejection', e => window.__TAURI__?.core.invoke('dev_log', { msg: 'rejection: ' + (e.reason && (e.reason.stack || e.reason)) }));
-const S = window.KadrShared, G = window.KadrGraph, I18N = window.KadrI18n, ICONS = window.KadrIcons;
+const S = window.MaqtoShared, G = window.MaqtoGraph, I18N = window.MaqtoI18n, ICONS = window.MaqtoIcons;
 const TA = window.__TAURI__;
 const inv = TA.core.invoke;
 const { clamp, num } = S;
@@ -872,13 +872,13 @@ function mkGlx() {
     let pr = progs.get(id);
     if (pr) { progs.delete(id); progs.set(id, pr); return pr; } // most recently used last
     while (progs.size >= 12) { const [k, old] = progs.entries().next().value; gl.deleteProgram(old.q); progs.delete(k); }
-    const def = KadrGLT.LIST.find(x => x[0] === id);
+    const def = MaqtoGLT.LIST.find(x => x[0] === id);
     const sh = (type, src) => {
       const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o);
       if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(id + ': ' + gl.getShaderInfoLog(o));
       return o;
     };
-    const q = gl.createProgram(), vs = sh(gl.VERTEX_SHADER, GLX_VS), fs = sh(gl.FRAGMENT_SHADER, KadrGLT.HEAD + def[2] + KadrGLT.MAIN);
+    const q = gl.createProgram(), vs = sh(gl.VERTEX_SHADER, GLX_VS), fs = sh(gl.FRAGMENT_SHADER, MaqtoGLT.HEAD + def[2] + MaqtoGLT.MAIN);
     gl.attachShader(q, vs); gl.attachShader(q, fs);
     gl.linkProgram(q);
     gl.deleteShader(vs); gl.deleteShader(fs); // freed with the program
@@ -894,7 +894,7 @@ function mkGlx() {
     gl.viewport(0, 0, w, h); gl.useProgram(pr.q);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     [A, B].forEach((s, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, tex[i]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, s); });
-    gl.uniform1i(pr.tA, 0); gl.uniform1i(pr.tB, 1); gl.uniform1f(pr.p, KadrGLT.ease(ease, q)); gl.uniform2f(pr.R, w, h); gl.uniform1f(pr.D, dir);
+    gl.uniform1i(pr.tA, 0); gl.uniform1i(pr.tB, 1); gl.uniform1f(pr.p, MaqtoGLT.ease(ease, q)); gl.uniform2f(pr.R, w, h); gl.uniform1f(pr.D, dir);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.enableVertexAttribArray(pr.a); gl.vertexAttribPointer(pr.a, 2, gl.FLOAT, false, 0, 0);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return c;
@@ -1878,7 +1878,7 @@ function refresh() {
   inspector();
   gcEls();
   needsDraw = true;
-  const name = projectPath ? projectPath.split(/[\\/]/).pop().replace(/\.kadr$/, '') : tr('untitled');
+  const name = projectPath ? projectPath.split(/[\\/]/).pop().replace(/\.(maqto|kadr)$/, '') : tr('untitled');
   $('#pname').textContent = name + (dirty ? ' •' : '');
   $('#bUndo').disabled = !undoStack.length;
   $('#bRedo').disabled = !redoStack.length;
@@ -3110,12 +3110,12 @@ function renderTrans() {
     `<p class="hint">${tr('trAt', { t: fmt(tg.start) })}</p>` + (T ? `<div class="f"><div class="lb"><span>${tr('dur')}</span><b>${T.d.toFixed(1)}s</b></div>` +
       `<input type="range" id="trDur" min="0.1" max="${Math.min(2, tg.dur).toFixed(2)}" step="0.05" value="${T.d}"></div>` +
       (S.GLT.includes(T.id) ? `<div class="f"><div class="lb"><span>${tr('trDir')}</span></div><div class="seg trseg" style="grid-template-columns:repeat(4,1fr)">${[0, 1, 2, 3].map(d => `<button data-trdir="${d}" class="${d === T.dir ? 'on' : ''}">${d ? d * 90 + '°' : tr('trDir0')}</button>`).join('')}</div></div>` +
-        `<div class="f"><div class="lb"><span>${tr('trEase')}</span></div><div class="seg trseg">${KadrGLT.EASES.map(k => `<button data-trease="${k}" class="${k === T.ease ? 'on' : ''}">${tr('tre_' + k)}</button>`).join('')}</div></div>` : '') : '');
+        `<div class="f"><div class="lb"><span>${tr('trEase')}</span></div><div class="seg trseg">${MaqtoGLT.EASES.map(k => `<button data-trease="${k}" class="${k === T.ease ? 'on' : ''}">${tr('tre_' + k)}</button>`).join('')}</div></div>` : '') : '');
   if (!TR_CATS.includes(trCat)) trCat = 'hot';
   $('#trCats').innerHTML = TR_CATS.map(c => `<button class="chip${c === trCat ? ' on' : ''}" data-cat="${c}">${tr('trc_' + c)}</button>`).join('');
-  const ids = trCat === 'fav' ? favs.tr || [] : trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : KadrGLT.ids.filter(x => KadrGLT.cat[x] === trCat);
+  const ids = trCat === 'fav' ? favs.tr || [] : trCat === 'hot' ? TR_HOT : trCat === 'basic' ? S.TRANS : MaqtoGLT.ids.filter(x => MaqtoGLT.cat[x] === trCat);
   $('#transCards').innerHTML = favFirst('tr', ['none', ...ids]).map(id => `<button class="trc${id === cur ? ' on' : ''}" data-tr="${id}"${tg ? '' : ' data-off'}>` +
-    (S.GLT.includes(id) ? `<i class="tv"><canvas data-gl="${id}" width="160" height="100"></canvas></i>` : `<i class="tv tv-${id}"><b></b></i>`) +
+    (S.GLT.includes(id) ? `<i class="tv" style="background-image:url(trstill/${id}.jpg),url(trpics/a.jpg)"><canvas data-gl="${id}" width="320" height="200"></canvas></i>` : `<i class="tv tv-${id}"><b></b></i>`) +
     `<span>${tr('tr_' + id)}</span>${id === 'none' ? '' : `<i class="plus" title="${tr('trApply')}">${icon('plus')}</i>` + favStar('tr', id)}</button>`).join('');
   transThumbs(performance.now() / 1000);
   const d = $('#trDur');
@@ -3132,30 +3132,37 @@ function renderTrans() {
   });
 }
 // Transition cards: the shader ones play on two sample pictures, each card at its own point in the loop.
-const TR_CATS = ['fav', 'hot', 'basic', ...KadrGLT.CATS];
+const TR_CATS = ['fav', 'hot', 'basic', ...MaqtoGLT.CATS];
 const TR_HOT = ['lensIn', 'whipL', 'spinZoom', 'glitchBlock', 'flash', 'cubeL', 'swirl', 'leakWarm', 'gallery', 'tiles', 'snap', 'burn', 'shakeCam', 'heart', 'torn', 'rgbSplit', 'fade', 'slideL'];
-let trCat = 'hot', trPics = null;
+let trCat = 'hot', trPics = null, trHover = null;
 $('#trCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { trCat = c.dataset.cat; renderTrans(); $('#transCards').scrollTop = 0; } });
-function sampleScene2(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 0, 180);
-  g.addColorStop(0, '#3fd0c9'); g.addColorStop(1, '#173a63');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 180);
-  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
-  for (let x = 0; x <= 240; x += 30) { ctx.beginPath(); ctx.moveTo(x, 100); ctx.lineTo(120 + (x - 120) * 2.2, 180); ctx.stroke(); }
-  for (const y of [112, 128, 150, 178]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(240, y); ctx.stroke(); }
-  ctx.fillStyle = '#ffd84d'; ctx.beginPath(); ctx.arc(70, 52, 22, 0, 7); ctx.fill();
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(150, 40, 46, 60); ctx.fillStyle = '#173a63'; ctx.fillRect(160, 52, 10, 14); ctx.fillRect(178, 52, 10, 14);
+// Cards show a ready-made still of each shader transition (trstill/<id>.jpg, made from the two photos in
+// trpics/ by stillsDump below), so switching categories compiles nothing. Only the card under the pointer
+// plays live. After changing or adding a shader, run stillsDump() in a dev build and save its output there.
+const trImgs = ['a', 'b'].map(n => Object.assign(new Image(), { src: 'trpics/' + n + '.jpg' }));
+function trPair() {
+  if (!trPics && trImgs.every(i => i.complete && i.naturalWidth)) trPics = trImgs.map(i => cardCanvas(ctx => ctx.drawImage(i, 0, 0, 240, 180), 320, 200));
+  return trPics;
+}
+// the moment each still shows: earlier for colour wipes and dips to black, which are solid at mid-way
+const stillQ = id => ({ blink: 0.15, inkBlack: 0.22, vFadeBlur: 0.2 })[id] || (MaqtoGLT.cat[id] === 'shape' ? 0.2 : 0.4);
+function stillsDump() { // -> { id: jpeg data URL }
+  const pics = trPair(), out = {};
+  for (const id of MaqtoGLT.ids) out[id] = cardCanvas(ctx => ctx.drawImage(GLX.thumb.frame(id, pics[0], pics[1], stillQ(id)), 0, 0, 240, 180), 320, 200).toDataURL('image/jpeg', 0.82);
+  return out;
 }
 function transThumbs(now) {
-  const cs = $$('#transCards canvas[data-gl]');
-  if (!cs.length) return;
-  if (!trPics) trPics = [cardCanvas(sampleScene, 160, 100), cardCanvas(sampleScene2, 160, 100)];
-  cs.forEach((c, i) => {
-    const per = 2.2, q = clamp(((now + i * 0.37) % per) / per * 1.5 - 0.25, 0, 1);
-    try { const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.drawImage(GLX.thumb.frame(c.dataset.gl, trPics[0], trPics[1], q), 0, 0); }
-    catch (e) { if (!c._err) { c._err = 1; console.error(e); } }
-  });
+  const c = trHover, pics = c && trPair();
+  if (!pics) return;
+  const per = 2.2, q = clamp((now % per) / per * 1.5 - 0.25, 0, 1);
+  try { c.getContext('2d').drawImage(GLX.thumb.frame(c.dataset.gl, pics[0], pics[1], q), 0, 0); } catch (e) { console.error(e); }
 }
+const trUnhover = () => { if (trHover) trHover.getContext('2d').clearRect(0, 0, trHover.width, trHover.height); trHover = null; };
+$('#transCards').addEventListener('pointerover', e => {
+  const b = e.target.closest('.trc'), c = b && b.querySelector('canvas[data-gl]');
+  if (c !== trHover) { trUnhover(); trHover = c; }
+});
+$('#transCards').addEventListener('pointerleave', trUnhover);
 function previewTrans(tg) {
   const T = S.transIn(P, tg);
   if (!T) return;
@@ -3743,7 +3750,7 @@ async function newProj(welcome) {
       <label class="f"><span>${tr('fps')}</span><select id="npFps">${[24, 25, 30, 50, 60].map(f => `<option${f === fps ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
     </div>
     ${rec.length || hasRec ? `<div class="np-recent"><h4>${tr('recent')}</h4><div class="rgrid">${hasRec ? (m => `<button data-recover class="unsaved"><i class="rdel" data-del title="${tr('removeRecent')}">${icon('x')}</i><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${tr('unsavedWork')}</b><small>${m.t ? ago(m.t) : ''}</small></button>`)(recent.meta('recovery') || {}) : ''}${rec.map((f, i) => { const m = recent.meta(f) || {};
-      return `<button data-rec="${i}" title="${esc(f)}"><i class="rdel" data-del title="${tr('removeRecent')}">${icon('x')}</i><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${esc(f.split(/[\\/]/).pop().replace(/\.kadr$/, ''))}</b><small>${m.t ? ago(m.t) : ''}</small></button>`; }).join('')}</div></div>` : ''}
+      return `<button data-rec="${i}" title="${esc(f)}"><i class="rdel" data-del title="${tr('removeRecent')}">${icon('x')}</i><span class="rth" style="aspect-ratio:${m.w || 9}/${m.h || 16}">${m.img ? `<img src="${m.img}" alt="">` : icon('film')}${m.dur ? `<em>${mmss(m.dur)}</em>` : ''}</span><b>${esc(f.split(/[\\/]/).pop().replace(/\.(maqto|kadr)$/, ''))}</b><small>${m.t ? ago(m.t) : ''}</small></button>`; }).join('')}</div></div>` : ''}
     <div class="acts">${welcome ? `<button id="npOpen">${tr('open')}…</button>` : ''}<span class="flex"></span><button id="npNo">${tr(welcome ? 'skip' : 'cancel')}</button><button class="primary" id="npGo">${tr('create')}</button></div></div>`;
   $('#mBox').onclick = e => {
     const b = e.target.closest('.fmt');
@@ -3791,7 +3798,7 @@ async function exportDialog() {
   const cover = document.createElement('canvas');
   cover.width = 360; cover.height = Math.round(360 * P.h / P.w);
   cover.getContext('2d').drawImage(view, 0, 0, cover.width, cover.height);
-  const res0 = +pref('res', P.res || short), base = projectPath ? projectPath.split(/[\\/]/).pop().replace(/\.kadr$/, '') : (P.name || 'kadr-export');
+  const res0 = +pref('res', P.res || short), base = projectPath ? projectPath.split(/[\\/]/).pop().replace(/\.(maqto|kadr)$/, '') : (P.name || 'maqto-export');
   const opt = (id, list, v) => `<select id="${id}">${list.map(([val, n]) => `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   $('#modal').hidden = false;
   $('#mBox').innerHTML = `<div class="xp">
@@ -3834,7 +3841,7 @@ async function exportDialog() {
   $('#xPick').onclick = async () => { const d = await TA.dialog.open({ directory: true, defaultPath: $('#xDir').value || undefined }); if (d) $('#xDir').value = d; };
   $('#xNo').onclick = hideModal;
   $('#xGo').onclick = async () => {
-    const name = $('#xName').value.trim().replace(/[\\/:*?"<>|]/g, '-') || 'kadr-export', d = $('#xDir').value;
+    const name = $('#xName').value.trim().replace(/[\\/:*?"<>|]/g, '-') || 'maqto-export', d = $('#xDir').value;
     if (!d) return toast(tr('pickFolder'));
     const sep = d.includes('\\') ? '\\' : '/', at = ext => d.replace(/[\\/]$/, '') + sep + name + '.' + ext;
     const vid = $('#xVid').checked, aud = $('#xAud').checked, codecSel = $('#xCodec').value;
@@ -3990,9 +3997,9 @@ function syncSettings() {
 }
 async function save(as) {
   let f = as ? null : projectPath;
-  if (!f) f = await TA.dialog.save({ defaultPath: (P.name || (LANG === 'ar' ? 'مشروع' : 'project')) + '.kadr', filters: [{ name: 'Kadr', extensions: ['kadr'] }] });
+  if (!f) f = await TA.dialog.save({ defaultPath: (P.name || (LANG === 'ar' ? 'مشروع' : 'project')) + '.maqto', filters: [{ name: 'Maqto', extensions: ['maqto'] }] });
   if (!f) return;
-  if (!f.endsWith('.kadr')) f += '.kadr';
+  if (!/\.(maqto|kadr)$/.test(f)) f += '.maqto';
   try { await inv('save_project', { path: f, json: JSON.stringify(P) }); } catch (e) { return toast(tr('error') + ': ' + cleanErr(e)); }
   projectPath = f;
   recent.add(f); recent.snap(f);
@@ -4085,7 +4092,7 @@ async function restoreRecovery() {
 }
 async function open() {
   if (dirty && !(await TA.dialog.ask(tr('unsaved'), { kind: 'warning' }))) return;
-  const f = await TA.dialog.open({ filters: [{ name: 'Kadr', extensions: ['kadr'] }] });
+  const f = await TA.dialog.open({ filters: [{ name: 'Maqto', extensions: ['maqto', 'kadr'] }] });
   if (f) openPath(f, true);
 }
 async function openPath(f, asked) {
@@ -4270,7 +4277,7 @@ refresh();
 requestAnimationFrame(loop);
 setTimeout(autoUpdate, 3000);
 
-/* ---------- MCP: Claude Code drives the open project live (`kadr --mcp`, see src-tauri/src/mcp.rs) ---------- */
+/* ---------- MCP: Claude Code drives the open project live (`maqto --mcp`, see src-tauri/src/mcp.rs) ---------- */
 const MCP_TOOLS = [
   ['get_project', 'The open project: size, fps, duration, playhead, lanes, media bin and every item as stored (learn item fields from it).', {}],
   ['catalog', 'Names you can use: text style presets and text style fields, text/clip animations (in/out/loop), transitions, effects (fx), filters (preset), layer types, easings, keyframe props, aspect ratios.', {}],

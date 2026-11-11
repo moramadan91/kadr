@@ -446,5 +446,5 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
     return k === 'smooth' ? q * q * (3 - 2 * q) : k === 'hit' ? 1 - (1 - q) ** 3 : k === 'soft' ? q * q : k === 'bounce' ? bounce(q) : k === 'short' ? Math.min(1, Math.max(0, (q - .25) * 2)) : q; };
   const api = { HEAD, MAIN, EASES, ease, LIST, CATS, ids: LIST.map(x => x[0]), cat: Object.fromEntries(LIST.map(x => [x[0], x[1]])) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.KadrGLT = api;
+  else root.MaqtoGLT = api;
 })(this);

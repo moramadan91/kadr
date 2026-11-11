@@ -2016,23 +2016,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kadr"
-version = "1.0.14"
-dependencies = [
- "fontdb",
- "ort",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "ureq 2.12.1",
-]
-
-[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2138,6 +2121,23 @@ name = "lzma-rust2"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e20f57f9918e5bd7bc58c22cdd70a6afc7375d4dd9683af5f2b34bd3d2bba619"
+
+[[package]]
+name = "maqto"
+version = "1.0.14"
+dependencies = [
+ "fontdb",
+ "ort",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "ureq 2.12.1",
+]
 
 [[package]]
 name = "markup5ever"

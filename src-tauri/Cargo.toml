@@ -1,11 +1,11 @@
 [package]
-name = "kadr"
+name = "maqto"
 version = "1.0.14"
-description = "Kadr video editor"
+description = "Maqto video editor"
 edition = "2021"
 
 [lib]
-name = "kadr_lib"
+name = "maqto_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

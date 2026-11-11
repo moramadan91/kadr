@@ -1,4 +1,4 @@
-# Kadr (كادر)
+# Maqto (ماكتو)
 
 Free desktop video editor for Mac and Windows. Tauri 2 (Rust) + plain HTML/JS. Arabic and English UI.
 

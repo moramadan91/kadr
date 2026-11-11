@@ -158,13 +158,13 @@ async fn probe(srv: State<'_, Arc<MediaServer>>, paths: Vec<String>) -> Result<V
 
 #[tauri::command]
 fn save_project(path: String, json: String) -> R<()> {
-    if !path.ends_with(".kadr") { return Err("project files end with .kadr".into()); }
+    if !(path.ends_with(".maqto") || path.ends_with(".kadr")) { return Err("project files end with .maqto".into()); }
     std::fs::write(path, json).map_err(err)
 }
 
 #[tauri::command]
 fn open_project(srv: State<Arc<MediaServer>>, path: String) -> R<Value> {
-    if !path.ends_with(".kadr") { return Err("project files end with .kadr".into()); }
+    if !(path.ends_with(".maqto") || path.ends_with(".kadr")) { return Err("project files end with .maqto".into()); }
     let mut p: Value = serde_json::from_str(&std::fs::read_to_string(&path).map_err(err)?).map_err(err)?;
     let mut missing = vec![];
     if let Some(m) = p["media"].as_object_mut() {
@@ -182,7 +182,7 @@ fn open_project(srv: State<Arc<MediaServer>>, path: String) -> R<Value> {
 fn work_begin(state: State<AppState>) -> R<Value> {
     let mut n = state.next.lock().unwrap();
     *n += 1;
-    let dir = std::env::temp_dir().join(format!("kadr-{}-{}", std::process::id(), *n));
+    let dir = std::env::temp_dir().join(format!("maqto-{}-{}", std::process::id(), *n));
     std::fs::create_dir_all(&dir).map_err(err)?;
     state.dirs.lock().unwrap().insert(*n, dir.clone());
     Ok(json!({ "id": *n, "path": dir.to_string_lossy().replace('\\', "/") }))
@@ -568,7 +568,7 @@ async fn system_fonts(srv: State<'_, Arc<MediaServer>>) -> Result<Value, ()> {
 fn recovery_path(app: AppHandle) -> R<String> {
     let dir = app.path().app_data_dir().map_err(err)?.join("recovery");
     std::fs::create_dir_all(&dir).map_err(err)?;
-    Ok(dir.join("autosave.kadr").to_string_lossy().into_owned())
+    Ok(dir.join("autosave.maqto").to_string_lossy().into_owned())
 }
 
 fn fonts_dir(app: &AppHandle) -> R<PathBuf> { Ok(app.path().app_data_dir().map_err(err)?.join("fonts")) }
@@ -665,12 +665,12 @@ async fn transcribe(app: AppHandle, id: u32, audio_args: Vec<String>, lang: Stri
     }).await.map_err(err)?
 }
 
-// Dev builds only: KADR_DEMO="a.mp4;b.wav" preloads media, KADR_DEMO_EXPORT=out.mp4 exports it. Lets tests drive the app.
+// Dev builds only: MAQTO_DEMO="a.mp4;b.wav" preloads media, MAQTO_DEMO_EXPORT=out.mp4 exports it. Lets tests drive the app.
 #[tauri::command]
 fn dev_demo() -> Value {
     if !cfg!(debug_assertions) { return json!({}); }
-    let paths: Vec<String> = std::env::var("KADR_DEMO").unwrap_or_default().split(';').filter(|s| !s.is_empty()).map(String::from).collect();
-    json!({ "paths": paths, "export": std::env::var("KADR_DEMO_EXPORT").ok() })
+    let paths: Vec<String> = std::env::var("MAQTO_DEMO").unwrap_or_default().split(';').filter(|s| !s.is_empty()).map(String::from).collect();
+    json!({ "paths": paths, "export": std::env::var("MAQTO_DEMO_EXPORT").ok() })
 }
 
 #[tauri::command]
@@ -710,7 +710,7 @@ fn quit_app(app: AppHandle, state: State<AppState>) {
 fn app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem as P, Submenu};
     let quit = MenuItem::with_id(app, "quit", "Quit Maqto", true, Some("CmdOrCtrl+Q"))?;
-    let kadr = Submenu::with_items(app, "Maqto", true, &[
+    let maqto = Submenu::with_items(app, "Maqto", true, &[
         &P::about(app, None, None)?, &P::separator(app)?, &P::services(app, None)?, &P::separator(app)?,
         &P::hide(app, None)?, &P::hide_others(app, None)?, &P::show_all(app, None)?, &P::separator(app)?, &quit,
     ])?;
@@ -719,7 +719,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?,
     ])?;
     let window = Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?, &P::fullscreen(app, None)?])?;
-    Menu::with_items(app, &[&kadr, &edit, &window])
+    Menu::with_items(app, &[&maqto, &edit, &window])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -753,7 +753,7 @@ pub fn run() {
             _ => {}
         } })
         .build(tauri::generate_context!())
-        .expect("error while building Kadr")
+        .expect("error while building Maqto")
         .run(|app, e| {
             // Cmd+Q / app menu Quit: same question first. quit_app exits with a code, so it passes.
             if let tauri::RunEvent::ExitRequested { code: None, api, .. } = e {
@@ -761,4 +761,64 @@ pub fn run() {
                 let _ = app.emit("quit-requested", ());
             }
         });
+}
+
+/* ---------- rename: data saved under the old identifier (app.kadr.editor) moves to app.maqto.editor ---------- */
+pub fn migrate_old_id() {
+    // dev builds run next to the installed app, which still uses the old folders: leave them alone
+    if cfg!(debug_assertions) && std::env::var_os("MAQTO_MIGRATE").is_none() { return; }
+    for base in id_bases() {
+        let new = base.join("app.maqto.editor");
+        migrate_dir(&base.join("app.kadr.editor"), &new);
+        let (o, n) = (new.join("autosave.kadr"), new.join("autosave.maqto"));
+        if o.exists() && !n.exists() { let _ = std::fs::rename(o, n); }
+    }
+    // Windows: the update installs maqto.exe and leaves the old kadr.exe beside it
+    #[cfg(target_os = "windows")]
+    if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) { let _ = std::fs::remove_file(d.join("kadr.exe")); }
+}
+/// Folders that hold one sub-folder per app identifier (app data, web storage, caches).
+fn id_bases() -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    #[cfg(target_os = "macos")]
+    {
+        let Some(h) = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from) else { return vec![] };
+        vec![h.join("Library/Application Support"), h.join("Library/WebKit"), h.join("Library/Caches")]
+    }
+    #[cfg(target_os = "windows")]
+    { ["APPDATA", "LOCALAPPDATA"].iter().filter_map(|k| std::env::var_os(k)).filter(|v| !v.is_empty()).map(PathBuf::from).collect() }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { vec![] }
+}
+/// Moves `old` to `new`. When `new` already exists, moves only the entries it lacks; never overwrites.
+fn migrate_dir(old: &std::path::Path, new: &std::path::Path) {
+    if !old.is_dir() { return; }
+    if !new.exists() && std::fs::rename(old, new).is_ok() { return; }
+    if std::fs::create_dir_all(new).is_err() { return; }
+    let Ok(rd) = std::fs::read_dir(old) else { return };
+    for e in rd.flatten() {
+        let to = new.join(e.file_name());
+        if !to.exists() { let _ = std::fs::rename(e.path(), to); }
+    }
+}
+#[cfg(test)]
+mod migrate_tests {
+    use super::migrate_dir;
+    #[test]
+    fn moves_whole_folder_or_missing_entries() {
+        let root = std::env::temp_dir().join(format!("maqto-mig-{}", std::process::id()));
+        let (old, new) = (root.join("old"), root.join("new"));
+        std::fs::create_dir_all(old.join("luts")).unwrap();
+        std::fs::write(old.join("a.txt"), "old").unwrap();
+        migrate_dir(&old, &new);
+        assert!(!old.exists() && new.join("luts").is_dir() && std::fs::read_to_string(new.join("a.txt")).unwrap() == "old");
+        // both exist: only what new lacks moves over, nothing is overwritten
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("a.txt"), "older").unwrap();
+        std::fs::write(old.join("b.txt"), "b").unwrap();
+        migrate_dir(&old, &new);
+        assert_eq!(std::fs::read_to_string(new.join("a.txt")).unwrap(), "old");
+        assert_eq!(std::fs::read_to_string(new.join("b.txt")).unwrap(), "b");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

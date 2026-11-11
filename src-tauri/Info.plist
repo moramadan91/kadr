@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Kadr records voiceovers from your microphone.</string>
+  <string>Maqto records voiceovers from your microphone.</string>
 </dict>
 </plist>

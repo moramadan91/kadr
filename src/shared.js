@@ -526,7 +526,7 @@
   // track holds its last frame underneath until the transition ends, so total length never changes.
   const TRANS = ['fade', 'black', 'white', 'slideL', 'slideR', 'slideU', 'slideD', 'wipeL', 'wipeR', 'wipeU', 'wipeD', 'circle', 'split', 'zoomIn', 'spin', 'shake', 'glitch'];
   // shader transitions (src/gltrans.js): drawn by the app, the export overlays their rendered frames
-  const GLT = typeof module !== 'undefined' && module.exports ? require('./gltrans').ids : root.KadrGLT ? root.KadrGLT.ids : [];
+  const GLT = typeof module !== 'undefined' && module.exports ? require('./gltrans').ids : root.MaqtoGLT ? root.MaqtoGLT.ids : [];
   const TR_SLIDE = { slideL: [1, 0], slideR: [-1, 0], slideU: [0, 1], slideD: [0, -1] }; // where the new clip comes in from
   const TR_DIP = { black: '#000000', white: '#ffffff' };
   // revealed part of the new clip at progress P, over its own box (X, Y in a W x H box): ffmpeg geq form
@@ -656,5 +656,5 @@
 
   const api = { FX, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, GLT, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.KadrShared = api;
+  else root.MaqtoShared = api;
 })(this);

@@ -1,6 +1,6 @@
 // Publish an update: bump the version everywhere, commit, tag and push.
 // GitHub Actions then builds Mac + Windows, signs the update and publishes the release;
-// installed copies of Kadr pick it up on their next launch.
+// installed copies of Maqto pick it up on their next launch.
 //   npm run release            -> 0.3.0 -> 0.3.1
 //   npm run release -- minor   -> 0.3.0 -> 0.4.0
 //   npm run release -- 1.0.0
@@ -21,7 +21,7 @@ const bump = (file, re) => writeFileSync(file, readFileSync(file, 'utf8').replac
 bump(conf, /"version": "[^"]+"/);
 bump('package.json', /"version": "[^"]+"/);
 bump('src-tauri/Cargo.toml', /^version = "[^"]+"/m);
-bump('src-tauri/Cargo.lock', new RegExp(`name = "kadr"\\nversion = "${cur.replace(/\./g, '\\.')}"`));
+bump('src-tauri/Cargo.lock', new RegExp(`name = "maqto"\\nversion = "${cur.replace(/\./g, '\\.')}"`));
 
 sh(`git commit -qam "Maqto ${next}"`);
 sh(`git tag v${next}`);

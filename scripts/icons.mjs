@@ -10,5 +10,5 @@ for (const n of NAMES) {
   const svg = readFileSync(`node_modules/lucide-static/icons/${n}.svg`, 'utf8');
   out[n] = svg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/\s+/g, ' ').trim();
 }
-writeFileSync('src/icons.js', '// Generated from lucide-static (ISC license). node scripts/icons.mjs\nwindow.KadrIcons = ' + JSON.stringify(out) + ';\n');
+writeFileSync('src/icons.js', '// Generated from lucide-static (ISC license). node scripts/icons.mjs\nwindow.MaqtoIcons = ' + JSON.stringify(out) + ';\n');
 console.log(Object.keys(out).length, 'icons');

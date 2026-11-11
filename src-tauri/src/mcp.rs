@@ -1,7 +1,7 @@
 //! Claude Code (or any MCP client) drives the open editor live.
 //!
 //! The app listens on loopback behind a random token and writes {port, token} to
-//! <app data>/mcp.json. `kadr --mcp` is a stdio MCP server: it answers `initialize` itself and
+//! <app data>/mcp.json. `maqto --mcp` is a stdio MCP server: it answers `initialize` itself and
 //! forwards tools/list and tools/call to the running app, starting the app first if needed. The
 //! page runs every tool (it owns the project), so edits land on the timeline as they happen.
 use serde_json::{json, Value};
@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-/// Same folder Tauri uses for app data (identifier app.kadr.editor).
+/// Same folder Tauri uses for app data (identifier app.maqto.editor).
 fn data_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     let base = PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support");
@@ -22,7 +22,7 @@ fn data_dir() -> PathBuf {
     let base = PathBuf::from(std::env::var("APPDATA").unwrap_or_default());
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let base = PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share");
-    base.join("app.kadr.editor")
+    base.join("app.maqto.editor")
 }
 fn info_path() -> PathBuf { data_dir().join("mcp.json") }
 
@@ -86,7 +86,7 @@ impl Bridge {
 #[tauri::command]
 pub fn mcp_reply(id: u64, result: Value, state: tauri::State<Arc<Bridge>>) { state.reply(id, result); }
 
-/* ---------- `kadr --mcp`: stdio MCP server that forwards to the running app ---------- */
+/* ---------- `maqto --mcp`: stdio MCP server that forwards to the running app ---------- */
 
 fn call_app(method: &str, params: &Value) -> Result<Value, String> {
     let info: Value = std::fs::read(info_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).ok_or("no app")?;

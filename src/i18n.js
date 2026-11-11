@@ -1,5 +1,5 @@
 // UI strings. Add a key to both languages.
-window.KadrI18n = {
+window.MaqtoI18n = {
   ar: {
     appName: 'ماكتو', untitled: 'مشروع بدون اسم',
     media: 'الوسائط', text: 'نصوص', captions: 'كابشن', filters: 'فلاتر',

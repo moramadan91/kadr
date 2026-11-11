@@ -1,5 +1,5 @@
 // In-app assistant: runs the user's own Claude Code CLI (their login, their plan) headless, with only this
-// app's MCP tools (`kadr --mcp`), and streams its JSON events to the page.
+// app's MCP tools (`maqto --mcp`), and streams its JSON events to the page.
 use super::{err, R};
 use serde_json::{json, Value};
 use std::collections::HashMap;

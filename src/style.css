@@ -442,8 +442,9 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .trc.on { border-color: var(--accent); color: var(--text, #fff); }
 .trc:disabled { opacity: .45; }
 .tv, .lv { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden; background: linear-gradient(135deg, #e07a5f, #f2cc8f); }
+.tv { background: url(trpics/a.jpg) center / cover; }
 .lv canvas { width: 100%; height: 100%; display: block; }
-.tv b { position: absolute; inset: 0; background: linear-gradient(135deg, #2d4a6e, #5cd3c6); animation: 2.2s ease-in-out infinite; }
+.tv b { position: absolute; inset: 0; background: url(trpics/b.jpg) center / cover; animation: 2.2s ease-in-out infinite; }
 .tv::after { content: ''; position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .tv-none b { display: none; }
 .tv-fade b { animation-name: tvFade; }
@@ -588,3 +589,7 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 #asForm { display: flex; gap: 8px; align-items: flex-end; padding: 10px; border-top: 1px solid var(--stroke); }
 #asIn { flex: 1; resize: none; max-height: 120px; padding: 9px 12px; border-radius: 12px; font: inherit; font-size: 13px; }
 #asGo { width: 38px; height: 38px; padding: 0; border-radius: 12px; display: grid; place-items: center; flex: none; } #asGo svg { width: 17px; height: 17px; }
+
+/* transition cards hold still mid-way; the one under the pointer plays */
+.trc .tv b, .trc .tv::before, .trc .tv::after { animation-play-state: paused; animation-delay: -.9s; }
+.trc:hover .tv b, .trc:hover .tv::before, .trc:hover .tv::after { animation-play-state: running; }

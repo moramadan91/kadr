@@ -31,7 +31,7 @@ const groups = S.groupWords(words);
 assert.deepStrictEqual(groups.map(g => g.text), ['السلام عليكم،', 'كيف حالكم']);
 
 // real export
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kadr-test-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maqto-test-'));
 const run = (bin, a) => execFileSync(bin, a, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const clip = path.join(dir, 'clip.mp4'), img = path.join(dir, 'img.png'), tone = path.join(dir, 'tone.wav');
 run(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=30:d=6', '-f', 'lavfi', '-i', 'sine=f=440:d=6',
