@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "kadr"
-version = "1.0.13"
+version = "1.0.14"
 dependencies = [
  "fontdb",
  "ort",
