@@ -3246,11 +3246,7 @@ const LAYERS = {
 function renderLayers() {
   $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="96"></canvas></i><span>${tr('ly_' + id)}</span><i class="plus" title="${tr('addLayer')}">${icon('plus')}</i></button>`).join('');
   for (const c of $$('#layerCards canvas')) {
-    const g = c.getContext('2d');
-    const im = trImgs[0]; // the sample photo under the layer
-    if (im.complete && im.naturalWidth) g.drawImage(im, 60, 0, 200, 200, 0, 0, 96, 96);
-    else { g.fillStyle = '#7d8a96'; g.fillRect(0, 0, 96, 96); im.addEventListener('load', () => { if (libTab === 'layers') renderLayers(); }, { once: true }); }
-    g.drawImage(cardCanvas(f => paintFill(f, LAYERS[c.closest('[data-layer]').dataset.layer], 240, 180), 96, 96), 0, 0); // paintFill clears, so on its own canvas
+    paintFill(c.getContext('2d'), LAYERS[c.closest('[data-layer]').dataset.layer], 96, 96); // the plain layer, as in the old cards
   }
 }
 function addFill(id) {
