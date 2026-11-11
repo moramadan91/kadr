@@ -27,4 +27,4 @@ sh(`git commit -qam "Maqto ${next}"`);
 sh(`git tag v${next}`);
 sh('git push -q');
 sh(`git push -q origin v${next}`); // lightweight tags don't ride along with --follow-tags
-console.log(`v${next} pushed. Build + release: https://github.com/moramadan91/kadr/actions`);
+console.log(`v${next} pushed. Build + release: https://github.com/moramadan91/maqto/actions`);

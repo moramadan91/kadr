@@ -145,7 +145,7 @@ $$('.spot').forEach((s, i) => {
 });
 
 // Download buttons point straight at the latest release files.
-fetch('https://api.github.com/repos/moramadan91/kadr/releases/latest')
+fetch('https://api.github.com/repos/moramadan91/maqto/releases/latest')
   .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
   .then(rel => {
     for (const [id, re] of [['#mac', /\.dmg$/i], ['#win', /setup\.exe$/i]]) {

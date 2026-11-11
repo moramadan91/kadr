@@ -9,9 +9,9 @@ use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "macos")]
-const TOOL_URL: &str = "https://github.com/moramadan91/kadr/releases/download/rife-v1/rife-macos.zip";
+const TOOL_URL: &str = "https://github.com/moramadan91/maqto/releases/download/rife-v1/rife-macos.zip";
 #[cfg(not(target_os = "macos"))]
-const TOOL_URL: &str = "https://github.com/moramadan91/kadr/releases/download/rife-v1/rife-windows.zip";
+const TOOL_URL: &str = "https://github.com/moramadan91/maqto/releases/download/rife-v1/rife-windows.zip";
 const MODEL: &str = "rife-v4.6";
 
 fn root(app: &AppHandle) -> R<PathBuf> {
