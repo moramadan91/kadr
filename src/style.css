@@ -71,8 +71,8 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 #inspTabs button { flex-direction: row; font-size: 13px; font-weight: 600; }
 
 /* media bin */
-#binList.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 8px 0 12px; }
-#binList.list { display: grid; gap: 3px; margin: 8px 0 12px; }
+#binList.grid { display: grid; align-content: start; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 8px 0 12px; }
+#binList.list { display: grid; align-content: start; gap: 3px; margin: 8px 0 12px; }
 #binList.list .mi { display: flex; align-items: center; gap: 8px; border-radius: 8px; }
 #binList.list .mi .th { width: 54px; flex: none; aspect-ratio: 16/10; }
 #binList.list .mi .th .du { display: none; }
