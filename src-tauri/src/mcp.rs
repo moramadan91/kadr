@@ -115,6 +115,19 @@ fn forward(method: &str, params: &Value) -> Result<Value, String> {
     match r.get("error") { Some(e) if !e.is_null() => Err(e.as_str().map(String::from).unwrap_or(e.to_string())), _ => Ok(r["result"].clone()) }
 }
 
+// Claude Code lists tools at every session start: answer from the running editor or the last saved list,
+// never launch the editor for it (only a real tools/call does).
+fn tools_list(params: &Value) -> Value {
+    let cache = data_dir().join("mcp-tools.json");
+    if let Ok(r) = call_app("tools/list", params) {
+        if r.get("error").map_or(true, |e| e.is_null()) {
+            let _ = std::fs::write(&cache, r["result"].to_string());
+            return r["result"].clone();
+        }
+    }
+    std::fs::read(&cache).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_else(|| json!({ "tools": [] }))
+}
+
 pub fn serve_stdio() {
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
@@ -131,7 +144,7 @@ pub fn serve_stdio() {
                 "instructions": "Maqto is a video editor open on the user's screen. Every tool edits the open project live. Start with get_project and catalog; check your work with preview (it returns a frame image).",
             })),
             "ping" => Ok(json!({})),
-            "tools/list" => forward("tools/list", params).map_err(|e| (-32603, e)),
+            "tools/list" => Ok(tools_list(params)),
             // a tool failure is a tool result the model can read, not a protocol error
             "tools/call" => Ok(forward("tools/call", params).unwrap_or_else(|e| json!({ "content": [{ "type": "text", "text": e }], "isError": true }))),
             _ => Err((-32601, format!("unknown method {method}"))),
