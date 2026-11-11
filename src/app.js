@@ -2,6 +2,9 @@
 window.addEventListener('error', e => window.__TAURI__?.core.invoke('dev_log', { msg: `${e.message} @${e.lineno}` }));
 window.addEventListener('unhandledrejection', e => window.__TAURI__?.core.invoke('dev_log', { msg: 'rejection: ' + (e.reason && (e.reason.stack || e.reason)) }));
 const S = window.MaqtoShared, G = window.MaqtoGraph, I18N = window.MaqtoI18n, ICONS = window.MaqtoIcons;
+// the two sample photos (trpics/) shown on transition, filter, effect and layer cards
+const trImgs = ['a', 'b'].map(n => Object.assign(new Image(), { src: 'trpics/' + n + '.jpg' }));
+for (const [id, p] of Object.entries(S.PRESETS)) if (p.en) { I18N.en['p_' + id] = I18N.en['p_' + id] || p.en; I18N.ar['p_' + id] = I18N.ar['p_' + id] || p.ar; } // filter names live with the filters
 const TA = window.__TAURI__;
 const inv = TA.core.invoke;
 const { clamp, num } = S;
@@ -568,21 +571,58 @@ const GL = (() => {
       mat3 m = mat3(.213 + .787 * sat, .213 - .213 * sat, .213 - .213 * sat, .715 - .715 * sat, .715 + .285 * sat, .715 - .715 * sat, .072 - .072 * sat, .072 - .072 * sat, .072 + .928 * sat);
       return vec4(clamp(m * v, 0., 1.), c.a); }
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    void main(){ // clip effects (S.fxVals / S.fxChain): 1 blur 2 shake 3 zoom pulse 4 grain 5 vignette 6 rgb split 7 glitch 8 vhs 9 pixelate 10 invert 11 flash 12 letterbox
-      int id = int(fxId + .5); vec2 u = uv; vec4 c;
-      if (id == 2 || id == 3) u = .5 + (u - .5) / fxv.z + fxv.xy;
+    float L6(vec2 u){ return dot(grade(u).rgb, vec3(.299, .587, .114)); }
+    void main(){ // clip effects: ids are S.FX index + 1, numbers from S.fxVals; the export runs the same maths (S.fxChain)
+      int id = int(fxId + .5); vec2 u = uv, px = uv * bsz; vec4 c;
+      if (id == 2 || id == 3 || (id >= 13 && id <= 18)) u = .5 + (u - .5) / fxv.z + fxv.xy; // shake, zoom, bounce, sway...
+      if (id >= 19 && id <= 21) { vec2 p = (uv - .5) * bsz; float cs = cos(fxv.x), sn = sin(fxv.x); u = .5 + vec2(cs * p.x + sn * p.y, -sn * p.x + cs * p.y) / fxv.y / bsz; }
       if (id == 9) { vec2 b = fxv.x / bsz; u = (floor(u / b) + .5) * b; }
+      if (id == 22) u.x = u.x < .5 ? u.x : 1. - u.x;
+      if (id == 23) u.y = u.y < .5 ? u.y : 1. - u.y;
+      if (id == 24) u = fract(u * 2.);
+      if (id == 25) u = fract(u * 3.);
+      if (id == 26) u.x = .5 + (fract(u.x * 3.) - .5) / 3.;
+      if (id == 27) u = .5 - abs(u - .5);
+      if (id == 28) u.x += fxv.x * sin(6.2831853 * (3. * uv.y + fxv.y));
+      if (id >= 29 && id <= 32) { vec2 P = (px - .5 * bsz) / bsz.y; float r = length(P);
+        if (id == 29) P *= 1. + fxv.x * sin(40. * r - fxv.y) / (r + .0001);
+        if (id == 30 && r < .5) P *= 1. - fxv.x * (1. - 4. * r * r);
+        if (id == 31 && r < .5) P *= 1. + fxv.x * (1. - 4. * r * r);
+        if (id == 32 && r < .5) { float a = fxv.x * (1. - 2. * r) * (1. - 2. * r), cs = cos(a), sn = sin(a); P = vec2(cs * P.x - sn * P.y, sn * P.x + cs * P.y); }
+        u = .5 + P * bsz.y / bsz; }
+      if (id == 48) { float h = fract(sin(floor(px.y / fxv.y) * 1.7 + fxv.z * 3.1) * 43.758); u.x += h > .7 ? (h - .85) * fxv.x : 0.; }
+      vec2 d = 1. / bsz;
       if (id == 1) { float ws = 0.; c = vec4(0.);
         for (int i = -3; i <= 3; i++) for (int j = -3; j <= 3; j++) { float w = exp(-float(i * i + j * j) / 4.5); c += grade(u + vec2(float(i), float(j)) * fxv.x / 3. / bsz) * w; ws += w; }
         c /= ws; }
       else if (id >= 6 && id <= 8) { vec2 o = vec2(fxv.x / bsz.x, 0.); c = grade(u); c.r = grade(u + o).r; c.b = grade(u - o).b; }
+      else if (id == 44) { vec2 o = vec2(0., fxv.x / bsz.y); c = grade(u); c.r = grade(u + o).r; c.b = grade(u - o).b; }
+      else if (id == 35 || id == 36) { c = grade(u); vec3 s = vec3(0.);
+        if (id == 35) s = -2. * grade(u - d).rgb - grade(u + vec2(0., -d.y)).rgb - grade(u + vec2(-d.x, 0.)).rgb + grade(u + vec2(d.x, 0.)).rgb + grade(u + vec2(0., d.y)).rgb + 2. * grade(u + d).rgb;
+        else s = 4. * c.rgb - grade(u + vec2(0., -d.y)).rgb - grade(u + vec2(-d.x, 0.)).rgb - grade(u + vec2(d.x, 0.)).rgb - grade(u + vec2(0., d.y)).rgb;
+        c.rgb += fxv.x * s; }
+      else if (id == 37) { float tl = L6(u - d), t0 = L6(u + vec2(0., -d.y)), tr = L6(u + vec2(d.x, -d.y)), l = L6(u + vec2(-d.x, 0.)), r = L6(u + vec2(d.x, 0.)), bl = L6(u + vec2(-d.x, d.y)), b0 = L6(u + vec2(0., d.y)), br = L6(u + d);
+        float gx = tr + 2. * r + br - tl - 2. * l - bl, gy = bl + 2. * b0 + br - tl - 2. * t0 - tr;
+        c = vec4(vec3(1. - clamp(sqrt(gx * gx + gy * gy) * fxv.x, 0., 1.)), grade(u).a); }
+      else if (id == 38) { vec2 cc = (floor(px / fxv.x) + .5) * fxv.x; vec4 k = grade(cc / bsz); float L = dot(k.rgb, vec3(.299, .587, .114));
+        c = length(px - cc) < .6 * fxv.x * sqrt(L) ? k : vec4(0., 0., 0., grade(u).a); }
+      else if (id == 45) { c = grade(u); c.rgb = (c.rgb + grade(u + vec2(fxv.x * d.x, 0.)).rgb) * .5; }
       else c = grade(u);
-      if (id == 4 || id == 8) c.rgb += (hash(floor(uv * bsz) + ft) - .5) * fxv.y;
-      if (id == 5) { float d = length((uv - .5) * bsz) / (.5 * length(bsz)), k = cos(fxv.x * d); c.rgb *= d > 1. ? 0. : k * k * k * k; }
+      if (id == 40) c.rgb = clamp(vec3(.15, 1.25, .25) * dot(c.rgb, vec3(.299, .587, .114)), 0., 1.);
+      if (id == 41) c.rgb = clamp(mat3(.393, .349, .272, .769, .686, .534, .189, .168, .131) * c.rgb, 0., 1.) + fxv.z;
+      if (id == 4 || id == 8 || id == 40 || id == 41) c.rgb += (hash(floor(uv * bsz) + ft) - .5) * fxv.y;
+      if (id == 5 || id == 40 || id == 41) { float d = length((uv - .5) * bsz) / (.5 * length(bsz)), k = cos(fxv.x * d); c.rgb *= d > 1. ? 0. : k * k * k * k; }
       if (id == 8) c.rgb = mix(vec3(dot(c.rgb, vec3(.299, .587, .114))), c.rgb, fxv.z);
-      if (id == 10) c.rgb = 1. - c.rgb;
+      if (id == 10 || (id == 42 && fxv.x > .5)) c.rgb = 1. - c.rgb;
       if (id == 11) c.rgb += fxv.x;
       if (id == 12 && (uv.y < fxv.x || uv.y > 1. - fxv.x)) c = vec4(0., 0., 0., 1.);
+      if (id == 33) c.rgb = floor(clamp(c.rgb, 0., 1.) * fxv.x + .5) / fxv.x;
+      if (id == 34) c.rgb = vec3(step(fxv.x, dot(c.rgb, vec3(.2126, .7152, .0722))));
+      if (id == 39 && mod(floor(px.y), 3.) < .5) c.rgb *= fxv.x;
+      if (id == 43 && fxv.x > .5) c.rgb = vec3(0.);
+      if (id == 46) { vec3 v = clamp(c.rgb, 0., 1.); float Y = dot(v, vec3(.299, .587, .114)), U = (v.b - Y) * .564, V = (v.r - Y) * .713, cs = cos(fxv.x), sn = sin(fxv.x);
+        float U2 = cs * U - sn * V, V2 = sn * U + cs * V; c.rgb = vec3(Y + 1.403 * V2, Y - .344 * U2 - .714 * V2, Y + 1.773 * U2); }
+      if (id == 47 && (px.x < fxv.x || px.y < fxv.x || px.x > bsz.x - fxv.x || px.y > bsz.y - fxv.x)) c.rgb = vec3(1.);
       gl_FragColor = vec4(clamp(c.rgb, 0., 1.), c.a); }`));
   gl.linkProgram(prog);
   gl.useProgram(prog);
@@ -604,7 +644,7 @@ const GL = (() => {
   const lutTex = L => {
     let t = luts.get(L);
     if (t) return t;
-    const n = S.LUT_N, px = new Uint8Array(n * n * n * 4);
+    const n = L.n || S.LUT_N, px = new Uint8Array(n * n * n * 4);
     for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
       const i = (r + g * n + b * n * n) * 3, o = (g * n * n + b * n + r) * 4;
       px[o] = Math.round(L.arr[i] * 255); px[o + 1] = Math.round(L.arr[i + 1] * 255); px[o + 2] = Math.round(L.arr[i + 2] * 255); px[o + 3] = 255;
@@ -623,7 +663,7 @@ const GL = (() => {
     if (c.width !== ow || c.height !== oh) { c.width = ow; c.height = oh; }
     gl.viewport(0, 0, ow, oh);
     gl.uniform1f(u.useLut, L ? 1 : 0);
-    if (L) { const t = lutTex(L); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(u.n, S.LUT_N); }
+    if (L) { const t = lutTex(L); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(u.n, L.n || S.LUT_N); }
     gl.bindTexture(gl.TEXTURE_2D, frameTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
     gl.uniform1f(u.useMat, g.matte ? 1 : 0);
@@ -662,7 +702,7 @@ const lutBake = new Map();
 function lutFor(it) {
   const ul = userLutFor(it), key = S.colorKey(it) + (ul ? '|u' : '');
   let c = lutBake.get(it.id);
-  if (!c || c.key !== key) { c = { key, arr: S.bakeLut(it, ul) }; lutBake.set(it.id, c); }
+  if (!c || c.key !== key) { const n = /^card:/.test(it.id) ? 17 : S.LUT_N; c = { key, arr: S.bakeLut(it, ul, n), n }; lutBake.set(it.id, c); } // panel cards: a smaller table, 7x quicker
   return c;
 }
 // drawImage with the item's grade applied.
@@ -1015,7 +1055,7 @@ const ANIM_IN = ['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRigh
   'flipIn', 'unfold', 'stretchIn', 'bounceIn', 'elastic', 'swingIn', 'rollIn', 'jackBox', 'blinkIn', 'glitchIn', 'wordDrop', 'wordZoom'];
 const ANIM_OUT = ['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'shrink', 'zoomOut', 'rotateOut', 'sink', 'wipe', 'typeErase',
   'flipOut', 'squash', 'stretchOut', 'fall', 'blinkOut', 'glitchOut', 'wordFadeOut'];
-const ANIM_LOOP = ['none', 'pulse', 'float', 'shake', 'swing', 'heartbeat', 'wave', 'flicker', 'jelly', 'bounce', 'tada', 'tilt', 'zoomBeat', 'jitter', 'breathe', 'blink'];
+const ANIM_LOOP = ['none', 'pulse', 'float', 'shake', 'swing', 'heartbeat', 'wave', 'flicker', 'jelly', 'bounce', 'tada', 'tilt', 'zoomBeat', 'jitter', 'breathe', 'blink', 'spinLoop', 'hop', 'wiggle', 'orbit', 'popBeat', 'rock'];
 // Repeatable pseudo-random in 0..1 (no Math.random: preview and export must match).
 const rnd = x => { const v = Math.sin(x * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
 const elastic = p => p <= 0 ? 0 : p >= 1 ? 1 : Math.pow(2, -10 * p) * Math.sin((p * 10 - 0.75) * 2 * Math.PI / 3) + 1;
@@ -1116,6 +1156,13 @@ function textState(it, lt) {
       case 'jitter': { const q = Math.floor(lt * 12); if (rnd(q) > 0.82) { dx += (rnd(q + 1) - 0.5) * size * 0.25; dy += (rnd(q + 2) - 0.5) * size * 0.08; } break; }
       case 'breathe': sc *= 1 + 0.03 * Math.sin(TAU * lt * 0.4); break;
       case 'blink': alpha *= (lt % 1.2) < 0.12 ? 0.25 : 1; break;
+      case 'spinLoop': rot += TAU * lt * 0.5; break;
+      case 'hop': { const q = (lt % 1.1) / 1.1, up = Math.sin(Math.PI * Math.min(1, q / 0.6)), sq = q > 0.6 ? Math.sin(Math.PI * (q - 0.6) / 0.4) * 0.12 : 0;
+        dy -= up * size * 0.3; sx *= 1 + sq; sy *= 1 - sq; break; }
+      case 'wiggle': { const q = lt % 1.6; if (q < 0.5) rot += Math.sin(q * Math.PI * 8) * 0.18 * (1 - q / 0.5); break; }
+      case 'orbit': dx += Math.cos(TAU * lt * 0.7) * size * 0.1; dy += Math.sin(TAU * lt * 0.7) * size * 0.1; break;
+      case 'popBeat': { const q = (lt % 1.2) / 1.2; sc *= 1 + 0.18 * Math.max(0, Math.sin(Math.PI * Math.min(1, q / 0.25))) * (q < 0.25 ? 1 : 0); break; }
+      case 'rock': rot += Math.sin(TAU * lt * 0.6) * 0.25; break;
     }
   }
   let word = -1;
@@ -1355,6 +1402,8 @@ function loop(now) {
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
   if (inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
   if (libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
+  if (libTab === 'effects' && fxHover && now - (loop.tf || 0) > 33) { loop.tf = now; fxThumbs(now / 1000); }
+  if (libTab === 'stickers' && stCat === 'anim' && now - (loop.ts || 0) > 40) { loop.ts = now; stickerThumbs(now / 1000); }
   if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
   requestAnimationFrame(loop);
 }
@@ -3139,7 +3188,6 @@ $('#trCats').addEventListener('click', e => { const c = e.target.closest('[data-
 // Cards show a ready-made still of each shader transition (trstill/<id>.jpg, made from the two photos in
 // trpics/ by stillsDump below), so switching categories compiles nothing. Only the card under the pointer
 // plays live. After changing or adding a shader, run stillsDump() in a dev build and save its output there.
-const trImgs = ['a', 'b'].map(n => Object.assign(new Image(), { src: 'trpics/' + n + '.jpg' }));
 function trPair() {
   if (!trPics && trImgs.every(i => i.complete && i.naturalWidth)) trPics = trImgs.map(i => cardCanvas(ctx => ctx.drawImage(i, 0, 0, 240, 180), 320, 200));
   return trPics;
@@ -3195,11 +3243,13 @@ const LAYERS = {
   solid: { type: 'solid', c1: '#5cd3c6', a1: 1 },
 };
 function renderLayers() {
-  $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="56"></canvas></i><span>${tr('ly_' + id)}</span><i class="plus" title="${tr('addLayer')}">${icon('plus')}</i></button>`).join('');
+  $('#layerCards').innerHTML = Object.keys(LAYERS).map(id => `<button class="trc" data-layer="${id}"><i class="lv"><canvas width="96" height="96"></canvas></i><span>${tr('ly_' + id)}</span><i class="plus" title="${tr('addLayer')}">${icon('plus')}</i></button>`).join('');
   for (const c of $$('#layerCards canvas')) {
     const g = c.getContext('2d');
-    g.fillStyle = '#7d8a96'; g.fillRect(0, 0, 96, 56); g.fillStyle = '#b8c4cc'; g.fillRect(0, 34, 96, 22); // a little "scene" under the layer
-    paintFill(g, LAYERS[c.closest('[data-layer]').dataset.layer], 96, 56);
+    const im = trImgs[0]; // the sample photo under the layer
+    if (im.complete && im.naturalWidth) g.drawImage(im, 60, 0, 200, 200, 0, 0, 96, 96);
+    else { g.fillStyle = '#7d8a96'; g.fillRect(0, 0, 96, 96); im.addEventListener('load', () => { if (libTab === 'layers') renderLayers(); }, { once: true }); }
+    g.drawImage(cardCanvas(f => paintFill(f, LAYERS[c.closest('[data-layer]').dataset.layer], 240, 180), 96, 96), 0, 0); // paintFill clears, so on its own canvas
   }
 }
 function addFill(id) {
@@ -3383,23 +3433,70 @@ function clipThumb(it = sel && item(sel)) {
   return cardCanvas(ctx => ctx.drawImage(src, (240 - W * k) / 2, (180 - H * k) / 2, W * k, H * k));
 }
 // Filter and effect cards show the selected clip (or a sample picture) with each look applied.
-const FX_SHOW = { shake: 0.3, zoomPulse: 0.125, flash: 1 / 6, glitch: 1.1 }; // a moment where the effect shows
+// Filter and effect cards: the selected clip (or the sample photo) with each look applied, by category.
+// Cards are drawn once per picture and kept; the effect card under the pointer plays.
+const FX_SHOW = { shake: 0.3, zoomPulse: 0.125, flash: 1 / 6, glitch: 1.1, bounce: 0.3, sway: 0.5, earthquake: 0.2, zoomIn: 2.5, zoomBeat: 0.25,
+  drunk: 0.6, wobble: 0.2, wave: 0.1, ripple: 0.3, strobe: 0.05, blackout: 0.5, hueCycle: 0.8, slices: 0.5 };
+const FL_HOT = ['warm', 'cool', 'vivid', 'tealOrange', 'clear', 'glow', 'rosy', 'softSkin', 'goldFilm', 'moody', 'blockbuster', 'bw', 'noir', 'faded', 'seventies', 'sunset', 'peachy', 'lofi'];
+const FX_HOT = ['shake', 'zoomPulse', 'glitch', 'rgbSplit', 'vhs', 'blur', 'bounce', 'earthquake', 'zoomIn', 'mirror', 'oldFilm', 'strobe', 'swirl', 'grain', 'vignette', 'flash'];
+const FL_CATS = ['hot', 'fav', 'basic', 'social', 'film', 'cine', 'portrait', 'life', 'bw', 'retro', 'mood', 'creative'];
+const FX_CATS = ['hot', 'fav', ...Object.keys(S.FX_CAT)];
+let flCat = 'hot', fxCat = 'hot', fxHover = null;
+const lookCache = new Map(), LOOK_W = 168, LOOK_H = 126;
+function lookScene() { // [key, 240x180 canvas]
+  const it = sel && item(sel), c = clipThumb(it);
+  if (c) return ['c' + it.id, c];
+  const im = trImgs[0];
+  if (im.complete && im.naturalWidth) return ['photo', lookScene.photo || (lookScene.photo = cardCanvas(ctx => ctx.drawImage(im, 13.3, 0, 293.4, 200, 0, 0, 240, 180)))];
+  im.addEventListener('load', () => { if (libTab === 'filters' || libTab === 'effects') renderLookCards(); }, { once: true });
+  return ['sample', cardCanvas(sampleScene)];
+}
+const lookFake = (attr, x) => attr === 'preset' ? { id: 'card:' + x, preset: x } : { id: 'card:' + x, fx: { id: x, a: 0.7 }, dur: 5 };
 function renderLookCards() {
-  const scene = clipThumb() || cardCanvas(sampleScene), it = sel && item(sel);
-  const fill = (box, list, attr, paint, cap, on) => {
+  const [key, scene] = lookScene(), it = sel && item(sel);
+  fxHover = null;
+  if (lookCache.key !== key) { lookCache.clear(); lookCache.key = key; lookScene.cur = scene; }
+  const fill = (box, cats, cat, list, attr, cap, on) => {
+    cats.innerHTML = (attr === 'preset' ? FL_CATS : FX_CATS).map(c => `<button class="chip${c === cat ? ' on' : ''}" data-cat="${c}">${tr((attr === 'preset' ? 'flc_' : 'fxc_') + c)}</button>`).join('');
     box.innerHTML = '';
-    for (const x of favFirst(attr, list)) {
+    for (const x of favFirst(attr, ['none', ...list])) {
       const b = document.createElement('button');
       b.className = 'card' + (on === x || (x === 'none' && !on) ? ' on' : '');
       b.dataset[attr] = x;
-      b.appendChild(cardCanvas(x === 'none' ? noneSign : paint(x)));
+      let c = lookCache.get(attr + x);
+      if (!c) {
+        c = cardCanvas(x === 'none' ? noneSign : ctx => drawGraded(ctx, lookFake(attr, x), scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[x] || 0), LOOK_W, LOOK_H);
+        lookCache.set(attr + x, c);
+      }
+      b.appendChild(c);
       b.insertAdjacentHTML('beforeend', `<span class="cap">${tr(cap + x)}</span>${x === 'none' ? '' : `<i class="plus" data-plus title="${tr('addLayer')}">${icon('plus')}</i>` + favStar(attr, x)}`);
       box.appendChild(b);
     }
   };
-  fill($('#filterCards'), Object.keys(S.PRESETS), 'preset', p => ctx => drawGraded(ctx, { preset: p }, scene, 0, 0, 240, 180, 0, 0, 240, 180), 'p_', it && it.preset);
-  fill($('#fxCards'), ['none', ...S.FX], 'fx', f => f === 'none' ? ctx => ctx.drawImage(scene, 0, 0, 240, 180) : ctx => drawGraded(ctx, { fx: { id: f, a: 0.7 } }, scene, 0, 0, 240, 180, 0, 0, 240, 180, FX_SHOW[f] || 0), 'fx_', it && it.fx && it.fx.id);
+  if (!FL_CATS.includes(flCat)) flCat = 'hot';
+  const fl = flCat === 'hot' ? FL_HOT : flCat === 'fav' ? favs.preset || [] : Object.keys(S.PRESETS).filter(p => S.PRESETS[p].cat === flCat);
+  const fx = fxCat === 'hot' ? FX_HOT : fxCat === 'fav' ? favs.fx || [] : S.FX_CAT[fxCat] || FX_HOT;
+  fill($('#filterCards'), $('#flCats'), flCat, fl.filter(p => S.PRESETS[p]), 'preset', 'p_', it && it.preset);
+  fill($('#fxCards'), $('#fxCats'), fxCat, fx.filter(f => S.FX.includes(f)), 'fx', 'fx_', it && it.fx && it.fx.id);
 }
+$('#flCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { flCat = c.dataset.cat; renderLookCards(); } });
+$('#fxCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { fxCat = c.dataset.cat; renderLookCards(); } });
+// the effect card under the pointer plays its effect
+function fxThumbs(now) {
+  const c = fxHover && fxHover.querySelector('canvas'), x = fxHover && fxHover.dataset.fx;
+  if (!c || x === 'none' || !lookScene.cur) return;
+  const g = c.getContext('2d');
+  g.setTransform(LOOK_W / 240, 0, 0, LOOK_H / 180, 0, 0);
+  drawGraded(g, lookFake('fx', x), lookScene.cur, 0, 0, 240, 180, 0, 0, 240, 180, now % 5);
+}
+$('#fxCards').addEventListener('pointerover', e => {
+  const b = e.target.closest('[data-fx]');
+  if (b === fxHover) return;
+  if (fxHover) { const c = fxHover.querySelector('canvas'), k = lookCache.get('fx' + fxHover.dataset.fx); if (c && k && c !== k) c.replaceWith(k); }
+  fxHover = b;
+  if (b && b.dataset.fx !== 'none') { const k = b.querySelector('canvas'), c = document.createElement('canvas'); c.width = LOOK_W; c.height = LOOK_H; k.replaceWith(c); }
+});
+$('#fxCards').addEventListener('pointerleave', () => { if (fxHover) { const c = fxHover.querySelector('canvas'), k = lookCache.get('fx' + fxHover.dataset.fx); if (c && k && c !== k) c.replaceWith(k); } fxHover = null; });
 function noneSign(ctx) {
   ctx.fillStyle = '#20262f'; ctx.fillRect(0, 0, 240, 180);
   ctx.strokeStyle = '#ff4d4f'; ctx.lineWidth = 12; ctx.lineCap = 'round';
@@ -3479,14 +3576,45 @@ const STICKERS = {
   st_mark: '➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ 🔴 🟢 🔵 🟡 ⭕ ❌ ✅ ❗ ❓ ⚠️ 🚫 💬 💭 🆕 🆓 🔝 ✔️ 🔊',
   st_life: '☀️ 🌙 🌈 ☁️ 🌊 🌹 🌸 🍀 ☕ 🍕 🍔 🍩 🎂 🍿 🎵 🎬 📸 🎥 🎤 🎮 ⚽ ✈️ 🚗 🏠',
 };
+// Every emoji by group (emoji.js), a search over their English names, and animated stickers: an emoji with a loop.
+const ST_ANIM = [['❤️', 'heartbeat'], ['🔥', 'jelly'], ['😂', 'wiggle'], ['🎉', 'tada'], ['⭐', 'spinLoop'], ['👍', 'popBeat'], ['👏', 'jelly'], ['😍', 'pulse'],
+  ['💯', 'popBeat'], ['🚀', 'float'], ['✨', 'breathe'], ['👀', 'jitter'], ['😱', 'shake'], ['🤯', 'tada'], ['🥳', 'hop'], ['😎', 'rock'], ['🤔', 'tilt'],
+  ['😭', 'wiggle'], ['💥', 'pulse'], ['⚡', 'flicker'], ['🎵', 'float'], ['🎶', 'orbit'], ['💡', 'blink'], ['🔔', 'swing'], ['📌', 'hop'], ['👉', 'orbit'],
+  ['⬇️', 'bounce'], ['✅', 'popBeat'], ['❌', 'shake'], ['⚠️', 'blink'], ['💰', 'spinLoop'], ['🏆', 'rock'], ['👑', 'float'], ['💎', 'spinLoop'], ['🎁', 'hop'],
+  ['🌟', 'pulse'], ['😴', 'breathe'], ['🙏', 'popBeat'], ['💪', 'jelly'], ['👋', 'swing'], ['🫶', 'heartbeat'], ['🌈', 'float'], ['☀️', 'spinLoop'], ['🍕', 'rock'],
+  ['☕', 'float'], ['🎂', 'tada'], ['🎈', 'float'], ['⏰', 'shake'], ['📢', 'pulse'], ['💬', 'hop'], ['❓', 'wiggle'], ['❗', 'popBeat'], ['🤩', 'spinLoop'], ['😡', 'shake']];
+const EMOJI = Object.fromEntries(Object.entries(window.MaqtoEmoji || {}).map(([g, s]) => [g, s.split(';').map(x => x.split('|'))]));
+const ST_CATS = ['anim', 'hot', ...Object.keys(EMOJI)];
+let stCat = 'anim';
+const stBtn = (e, loop) => `<button data-st="${e}"${loop ? ` data-loop="${loop}" title="${esc(tr('an_' + loop))}"` : ''}>${loop ? '<canvas width="64" height="64"></canvas>' : e}</button>`;
 function renderStickers() {
-  $('#stickerList').innerHTML = Object.entries(STICKERS).map(([k, v]) => `<div class="gh">${tr(k)}</div><div class="stk">${v.split(' ').map(e => `<button data-st="${e}">${e}</button>`).join('')}</div>`).join('');
+  const q = ($('#stQ').value || '').trim().toLowerCase();
+  $('#stCats').innerHTML = ST_CATS.map(c => `<button class="chip${c === stCat && !q ? ' on' : ''}" data-cat="${c}">${tr('stc_' + c)}</button>`).join('');
+  let h;
+  if (q) {
+    const hits = Object.values(EMOJI).flat().filter(([, n]) => n.includes(q)).slice(0, 400);
+    h = hits.length ? `<div class="stk">${hits.map(([e]) => stBtn(e)).join('')}</div>` : `<p class="hint">${tr('stNone')}</p>`;
+  } else if (stCat === 'anim') h = `<div class="stk stanim">${ST_ANIM.map(([e, l]) => stBtn(e, l)).join('')}</div>`;
+  else if (stCat === 'hot') h = Object.entries(STICKERS).map(([k, v]) => `<div class="gh">${tr(k)}</div><div class="stk">${v.split(' ').map(e => stBtn(e)).join('')}</div>`).join('');
+  else h = `<div class="stk">${(EMOJI[stCat] || []).map(([e]) => stBtn(e)).join('')}</div>`;
+  $('#stickerList').innerHTML = h;
+  stickerThumbs(performance.now() / 1000);
 }
+function stickerThumbs(now) {
+  for (const c of $$('#stickerList canvas')) {
+    const b = c.parentElement, g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 64, 64);
+    drawTextItem(g, { w: 64, h: 64 }, { text: b.dataset.st, style: { ...presetStyle('plain'), size: 30 }, x: 0.5, y: 0.5, dur: 1e4, anim: 'none', out: 'none', loop: b.dataset.loop }, 1 + now % 60);
+  }
+}
+$('#stCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { stCat = c.dataset.cat; $('#stQ').value = ''; renderStickers(); $('#stickerList').scrollTop = 0; } });
+$('#stQ').addEventListener('input', () => renderStickers());
 $('#stickerList').addEventListener('click', e => {
   const b = e.target.closest('[data-st]');
   if (!b) return;
   snapshot();
   const it = { id: uid(), type: 'text', ...textSlot(3), dur: 3, text: b.dataset.st, style: { ...presetStyle('plain'), size: Math.round(Math.min(P.w, P.h) * 0.22) }, x: 0.5, y: 0.5, anim: 'pop', out: 'fade', sticker: true };
+  if (b.dataset.loop) it.loop = b.dataset.loop;
   P.items.push(it);
   sel = it.id; inspTab = 'tAnim'; dirty = true;
   refresh();
@@ -4070,7 +4198,7 @@ async function writeLuts(Q, work) {
   for (const it of Q.items) {
     const m = media(it);
     if (!m || m.kind === 'audio' || !S.hasColor(it)) continue;
-    const f = it.color.lut && it.color.lut.file, ul = f ? await loadUserLut(f) : null;
+    const f = it.color && it.color.lut && it.color.lut.file, ul = f ? await loadUserLut(f) : null;
     const name = 'lut_' + String(it.id).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30) + '.cube';
     out[it.id] = await inv('write_work', new TextEncoder().encode(S.cubeText(S.bakeLut(it, ul))), { headers: { 'x-id': String(work.id), 'x-name': name } });
   }

@@ -593,3 +593,23 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 /* transition cards hold still mid-way; the one under the pointer plays */
 .trc .tv b, .trc .tv::before, .trc .tv::after { animation-play-state: paused; animation-delay: -.9s; }
 .trc:hover .tv b, .trc:hover .tv::before, .trc:hover .tv::after { animation-play-state: running; }
+
+/* filters / effects: category chips and three small cards a row */
+#filterCards, #fxCards { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#filterCards .card, #fxCards .card { border-radius: 9px; }
+#filterCards .card .cap, #fxCards .card .cap { font-size: 10px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#filterCards .plus, #fxCards .plus, #filterCards .fav, #fxCards .fav { width: 20px; height: 20px; top: 4px; }
+#filterCards .plus, #fxCards .plus { inset-inline-end: 4px; } #filterCards .fav, #fxCards .fav { inset-inline-start: 4px; }
+#filterCards .plus svg, #fxCards .plus svg, #filterCards .fav svg, #fxCards .fav svg { width: 12px; height: 12px; }
+/* layers: four small squares in one row */
+#layerCards { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#layerCards .lv { aspect-ratio: 1; }
+#layerCards .trc { font-size: 10px; text-align: center; }
+#layerCards .plus { width: 20px; height: 20px; top: 8px; inset-inline-end: 8px; }
+#layerCards .plus svg { width: 12px; height: 12px; }
+
+/* stickers: search, groups, animated tiles */
+.stq { width: 100%; margin-bottom: 6px; }
+.stk.stanim { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
+.stk.stanim button { padding: 2px; }
+.stk.stanim canvas { width: 100%; aspect-ratio: 1; display: block; }
