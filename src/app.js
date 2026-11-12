@@ -3011,6 +3011,7 @@ function setLibTab(tab) {
   if (tab === 'filters' || tab === 'effects') renderLookCards();
   if (tab === 'layers') renderLayers();
   if (tab === 'icons' && !$('#iconList').childElementCount) renderIcons();
+  if (tab === 'captions') renderCapModels();
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -4267,6 +4268,15 @@ async function doExport(o) {
 }
 
 /* ---------- captions ---------- */
+// Speech models for auto captions and their download size; the user picks one, each downloads once.
+const CAP_MODELS = { small: '466 MB', 'large-v3-turbo-q5_0': '547 MB', 'large-v3-turbo': '1.6 GB', 'large-v3-q5_0': '1.1 GB' };
+const capModel = () => { const m = lsGet('kadr.capModel', 'small'); return CAP_MODELS[m] ? m : 'small'; };
+async function renderCapModels() {
+  const have = await Promise.all(Object.keys(CAP_MODELS).map(m => inv('model_ready', { model: m }).catch(() => false)));
+  $('#capModel').innerHTML = Object.keys(CAP_MODELS).map((m, i) => `<option value="${m}"${m === capModel() ? ' selected' : ''}>${tr('cm_' + m)} · ${CAP_MODELS[m]}${have[i] ? ' ✓' : ''}</option>`).join('');
+  $('#capModelHint').textContent = tr('cmh_' + capModel());
+}
+$('#capModel').addEventListener('change', e => { lsSet('kadr.capModel', e.target.value); renderCapModels(); });
 async function autoCaptions() {
   const hasAudio = P.items.some(i => { const m = media(i); return m && !i.muted && (m.kind === 'audio' || m.hasAudio); });
   if (!hasAudio) return toast(tr('needAudio'));
@@ -4276,16 +4286,18 @@ async function autoCaptions() {
   cancelled = false;
   let work = null;
   try {
-    if (!(await inv('model_ready'))) {
-      if (!(await TA.dialog.ask(tr('modelAsk'), { title: tr('genCaptions') }))) return;
+    const model = capModel();
+    if (!(await inv('model_ready', { model }))) {
+      if (!(await TA.dialog.ask(tr('modelAskN', { size: CAP_MODELS[model] }), { title: tr('genCaptions') }))) return;
       progress(tr('p_model'), 0);
-      await inv('model_download');
+      await inv('model_download', { model });
+      renderCapModels();
     }
     progress(tr('p_audio'), 0);
     work = await inv('work_begin');
     await dnPrep();
     const { args } = G.buildArgs(P, { out: work.path + '/mix.wav', audioOnly: true });
-    const json = await inv('transcribe', { id: work.id, audioArgs: args, lang: $('#capLang').value });
+    const json = await inv('transcribe', { id: work.id, audioArgs: args, lang: $('#capLang').value, model });
     work = null;
     hideModal();
     const words = S.parseWhisper(JSON.parse(json));

@@ -15,8 +15,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-const MODEL_NAME: &str = "ggml-small.bin";
-const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+// Speech models people can pick for auto captions (whisper.cpp ggml files, downloaded on first use).
+const MODELS: [&str; 4] = ["small", "large-v3-turbo-q5_0", "large-v3-turbo", "large-v3-q5_0"];
+const MODEL_BASE: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
 const IMAGE_EXT: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
 #[derive(Default)]
@@ -361,8 +362,9 @@ async fn export_run(app: AppHandle, id: u32, args: Vec<String>, concat: Option<S
     }).await.map_err(err)?
 }
 
-fn model_path(app: &AppHandle) -> R<PathBuf> {
-    Ok(app.path().app_data_dir().map_err(err)?.join("models").join(MODEL_NAME))
+fn model_path(app: &AppHandle, model: &str) -> R<PathBuf> {
+    if !MODELS.contains(&model) { return Err(format!("unknown model {model}")); }
+    Ok(app.path().app_data_dir().map_err(err)?.join("models").join(format!("ggml-{model}.bin")))
 }
 
 /// Preview proxy for a speed-curve clip: the export's own retime graph rendered once at a small size,
@@ -508,16 +510,16 @@ async fn video_stab(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: Stri
 }
 
 #[tauri::command]
-fn model_ready(app: AppHandle) -> R<bool> {
-    Ok(model_path(&app)?.exists())
+fn model_ready(app: AppHandle, model: String) -> R<bool> {
+    Ok(model_path(&app, &model)?.exists())
 }
 
 #[tauri::command]
-async fn model_download(app: AppHandle) -> R<()> {
+async fn model_download(app: AppHandle, model: String) -> R<()> {
     tauri::async_runtime::spawn_blocking(move || {
-        let file = model_path(&app)?;
+        let file = model_path(&app, &model)?;
         std::fs::create_dir_all(file.parent().unwrap()).map_err(err)?;
-        let res = ureq::get(MODEL_URL).call().map_err(err)?;
+        let res = ureq::get(&format!("{MODEL_BASE}ggml-{model}.bin")).call().map_err(err)?;
         let total: f64 = res.header("content-length").and_then(|s| s.parse().ok()).unwrap_or(0.0);
         let part = file.with_extension("part");
         let mut w = std::fs::File::create(&part).map_err(err)?;
@@ -636,7 +638,7 @@ fn find_whisper() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-async fn transcribe(app: AppHandle, id: u32, audio_args: Vec<String>, lang: String) -> R<String> {
+async fn transcribe(app: AppHandle, id: u32, audio_args: Vec<String>, lang: String, model: String) -> R<String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let whisper = find_whisper().ok_or("whisper")?;
@@ -647,7 +649,7 @@ async fn transcribe(app: AppHandle, id: u32, audio_args: Vec<String>, lang: Stri
             run_job(&state, &sidecar("ffmpeg"), &audio_args, |_| {})?;
             let base = dir.join("out");
             let threads = std::thread::available_parallelism().map(|n| n.get().clamp(2, 8)).unwrap_or(4).to_string();
-            let args: Vec<String> = ["-m", &model_path(&app)?.to_string_lossy(), "-f", &dir.join("mix.wav").to_string_lossy(),
+            let args: Vec<String> = ["-m", &model_path(&app, &model)?.to_string_lossy(), "-f", &dir.join("mix.wav").to_string_lossy(),
                 "-l", &lang, "-ml", "1", "-sow", "-oj", "-of", &base.to_string_lossy(), "-t", &threads, "-pp", "-np"]
                 .iter().map(|s| s.to_string()).collect();
             let a2 = a.clone();
