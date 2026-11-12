@@ -618,6 +618,8 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .stk.stanim { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
 .stk.stanim button { padding: 2px; }
 .stk.stanim canvas { width: 100%; aspect-ratio: 1; display: block; }
+.stk.icl button { color: var(--text, #e8e8e8); }
+.stk.icl button svg { width: 22px; height: 22px; }
 
 /* media bin: a square frame, the whole picture fitted inside (portrait or landscape) */
 #binList.grid .mi .th { overflow: hidden; }

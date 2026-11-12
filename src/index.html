@@ -34,6 +34,7 @@
       <button data-tab="filters" data-i="sparkles"><span data-t="filters"></span></button>
       <button data-tab="effects" data-i="zap"><span data-t="fxTab"></span></button>
       <button data-tab="stickers" data-i="sticker"><span data-t="stTab"></span></button>
+      <button data-tab="icons" data-i="shapes"><span data-t="icTab"></span></button>
       <button data-tab="trans" data-i="arrow-right-left"><span data-t="transitions"></span></button>
       <button data-tab="layers" data-i="layers"><span data-t="layersTab"></span></button>
       <button data-tab="sounds" data-i="volume-2"><span data-t="sfxTab"></span></button>
@@ -70,6 +71,12 @@
       <div id="stCats" class="chips"></div>
       <div id="stickerList"></div>
       <p class="hint" data-t="stHint"></p>
+    </section>
+    <section data-pane="icons" hidden>
+      <input id="icQ" type="search" class="stq" data-ph="icSearch">
+      <div id="icCats" class="chips"></div>
+      <div id="iconList"></div>
+      <p class="hint" data-t="icHint"></p>
     </section>
     <section data-pane="trans" hidden>
       <div id="transHead"></div>
@@ -156,6 +163,7 @@
 <script src="shared.js"></script>
 <script src="emoji.js"></script>
 <script src="graph.js"></script>
+<script src="iconlib.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

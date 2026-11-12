@@ -1188,6 +1188,7 @@ function textState(it, lt) {
 function drawTextItem(ctx, pr, it, lt) {
   it = S.animAt(it, lt);
   const st = { ...textDefaults(it.track === 'c1'), ...it.style }, s = textState({ ...it, style: st }, lt);
+  if (it.icon) return drawIconItem(ctx, pr, it, st, s, lt);
   // Enter starts a new line; each paragraph reads right-to-left or left-to-right on its own
   // (auto: its first letter decides; the dir buttons force one way for the whole text).
   const tokens = [], brk = new Set(), tokR = [];
@@ -1435,6 +1436,7 @@ function loop(now) {
   if (libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
   if (libTab === 'effects' && fxHover && now - (loop.tf || 0) > 33) { loop.tf = now; fxThumbs(now / 1000); }
   if (libTab === 'stickers' && stCat === 'anim' && now - (loop.ts || 0) > 40) { loop.ts = now; stickerThumbs(now / 1000); }
+  if (libTab === 'icons' && (icCat === 'anim' || icCat === 'draw') && !$('#icQ').value && now - (loop.ti || 0) > 40) { loop.ti = now; iconThumbs(now / 1000); }
   if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
   requestAnimationFrame(loop);
 }
@@ -2128,6 +2130,11 @@ function inspector() {
   if (inspTab === 'tText') {
     const st = { ...textDefaults(it.track === 'c1'), ...it.style };
     it.style = st;
+    if (it.icon) h.push(hideRow(it), grp('iconSec', `<div class="row2">${fld.range('style.size', 'size', 20, 600, 1, it)}${fld.range('style.iconW', 'lineW', 0.5, 4, 0.1, it, 2)}</div>` +
+      `<div class="inl">${fld.color('style.color', 'color', it)}${fld.check('style.gradOn', 'gradient', it)}${st.gradOn ? fld.color('style.fill2', 'color2', it) : ''}</div>` +
+      `<div class="inl">${fld.check('style.iconFillOn', 'fill', it)}${st.iconFillOn ? fld.color('style.iconFill', 'color', it) : ''}</div>` +
+      fld.select('draw', 'drawLine', [['', tr('draw_none')], ['in', tr('draw_in')], ['loop', tr('draw_loop')]], it)));
+    else {
     h.push(`<div class="f"><textarea data-k="text" dir="auto">${esc(it.text)}</textarea></div>`, hideRow(it));
     const pOpen = (() => { try { return localStorage.getItem('kadr.presetsOpen') === '1'; } catch { return false; } })();
     h.push(`<div class="grp"><div class="gh ghx"><span>${tr('presets')}</span><button class="ib pTog${pOpen ? ' open' : ''}" data-ptog title="${tr(pOpen ? 'showLess' : 'showMore')}">${icon('chevron-down')}</button></div>` +
@@ -2143,6 +2150,7 @@ function inspector() {
       `<div class="tbar"><span>${tr('dir')}</span><div class="tg">${[['ltr', 'pilcrow-right'], ['rtl', 'pilcrow-left']].map(([v, ic]) => `<button data-set="dir" data-v="${v}" class="${st.dir === v ? 'on' : ''}" title="${tr('dir_' + v + 'T')}">${icon(ic)}</button>`).join('')}</div></div>` +
       `<div class="row2">${fld.range('style.spacing', 'spacing', -5, 40, 1, it)}${fld.range('style.lineH', 'lineH', 0.8, 2.5, 0.05, it, 1.3)}</div>` +
       `<div class="inl">${fld.color('style.color', 'color', it)}${fld.check('style.gradOn', 'gradient', it)}${st.gradOn ? fld.color('style.fill2', 'color2', it) : ''}${it.words ? fld.color('style.hl', 'hl', it) : ''}</div>`));
+    }
     const extra = (key, rowFn) => (st[key] || []).map((x, i) => `<div class="xl"><div class="xlh"><span>${tr(key === 'strokes' ? 'stroke' : 'shadow')} ${i + 2}</span><button class="ib" data-xdel="${key}.${i}" title="${tr('remove')}">${icon('x')}</button></div>${rowFn(`style.${key}.${i}`)}</div>`).join('');
     const addBtn = (title, key) => `<div class="gh ghx"><span>${tr(title)}</span><button class="ib" data-xadd="${key}" title="${tr('addLayer')}">${icon('plus')}</button></div>`;
     h.push(`<div class="grp">${addBtn('stroke', 'strokes')}` + fld.range('style.strokeW', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color('style.stroke', 'strokeColor', it)}</div>` +
@@ -2740,7 +2748,7 @@ view.addEventListener('dblclick', e => {
   if (e.shiftKey || e.metaKey || e.ctrlKey) return; // quick shift-clicks build a selection, never open the editor
   const r = view.getBoundingClientRect(), k = P.w / r.width;
   const hit = hitAt((e.clientX - r.left) * k, (e.clientY - r.top) * k);
-  if (hit && isText(hit)) editTextInline(hit);
+  if (hit && isText(hit) && !hit.icon) editTextInline(hit);
 });
 function editTextInline(it) {
   const b = textBoxes.get(it.id);
@@ -2984,6 +2992,7 @@ function setLibTab(tab) {
   if (tab === 'trans') renderTrans();
   if (tab === 'filters' || tab === 'effects') renderLookCards();
   if (tab === 'layers') renderLayers();
+  if (tab === 'icons' && !$('#iconList').childElementCount) renderIcons();
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -3636,6 +3645,150 @@ const STICKERS = {
   st_mark: '➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ 🔴 🟢 🔵 🟡 ⭕ ❌ ✅ ❗ ❓ ⚠️ 🚫 💬 💭 🆕 🆓 🔝 ✔️ 🔊',
   st_life: '☀️ 🌙 🌈 ☁️ 🌊 🌹 🌸 🍀 ☕ 🍕 🍔 🍩 🎂 🍿 🎵 🎬 📸 🎥 🎤 🎮 ⚽ ✈️ 🚗 🏠',
 };
+/* ---------- icons: Lucide line icons (iconlib.js, 24x24 paths) drawn as text-like layers ----------
+   They take the text look: colour/gradient, outline strokes (+ extra), shadows (+ extra), glow, box, every animation,
+   plus line width, fill and a self-drawing line (draw: 'in' once, 'loop' draw-hold-erase). */
+const ICONS = window.MaqtoIconLib || {}, iconPaths = new Map(), iconLens = new Map();
+const iconPath = n => { if (!iconPaths.has(n)) iconPaths.set(n, new Path2D(ICONS[n][0])); return iconPaths.get(n); };
+function iconLen(n) { // total line length, measured once by the browser
+  if (!iconLens.has(n)) {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', 'path'); e.setAttribute('d', ICONS[n][0]);
+    let L = 60; try { L = e.getTotalLength() || 60; } catch {}
+    iconLens.set(n, L);
+  }
+  return iconLens.get(n);
+}
+const ease3 = x => x * x * (3 - 2 * x);
+function drawProg(it, lt) {
+  if (it.draw === 'in') return ease3(clamp(lt / num(it.drawDur, 1.2), 0, 1));
+  if (it.draw === 'loop') { const q = (lt % 2.4) / 2.4; return q < 0.45 ? ease3(q / 0.45) : q < 0.8 ? 1 : 1 - ease3((q - 0.8) / 0.2); }
+  return 1;
+}
+function drawIconItem(ctx, pr, it, st, s, lt) {
+  const alpha = s.alpha * clamp(num(it.opacity, 1), 0, 1);
+  if (alpha <= 0 || !ICONS[it.icon] || s.sc <= 0 || s.sx <= 0 || s.sy <= 0) return;
+  const sz = st.size, k = sz / 24, tk = S.trkAt(it, lt), cx = (num(it.x, 0.5) + tk[0]) * pr.w, cy = (num(it.y, 0.5) + tk[1]) * pr.h;
+  const sc = s.sc * num(it.scale, 1), box = sz * 1.2;
+  if (ctx === vctx) textBoxes.set(it.id, { cx: cx + s.dx, cy: cy + s.dy, w: box * sc * s.sx, h: box * sc * s.sy, rot: s.rot * 180 / Math.PI + num(it.rotate, 0) });
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx + s.dx, cy + s.dy);
+  ctx.rotate(s.rot + num(it.rotate, 0) * Math.PI / 180);
+  ctx.scale(sc * s.sx, sc * s.sy);
+  if (st.bgOn) { // rounded tile behind the icon
+    ctx.save(); ctx.globalAlpha = alpha * num(st.bgAlpha, 1); ctx.fillStyle = st.bg; ctx.beginPath();
+    ctx.roundRect(-box * 0.62, -box * 0.62, box * 1.24, box * 1.24, box * 1.24 * num(st.bgRadius, 0.22)); ctx.fill(); ctx.restore();
+  }
+  if (s.wipe < 1 || s.wipeOut > 0) { ctx.beginPath(); ctx.rect(-box + 2 * box * s.wipeOut, -box, 2 * box * (s.wipe - s.wipeOut), 2 * box); ctx.clip(); }
+  ctx.translate(-sz / 2, -sz / 2);
+  ctx.scale(k, k); // 24-unit icon space from here
+  const P2 = iconPath(it.icon), lw = num(st.iconW, 2), fillOn = !!st.iconFillOn, dr = drawProg(it, lt);
+  ctx.lineCap = ctx.lineJoin = 'round';
+  if (dr < 1) { const L = iconLen(it.icon); ctx.setLineDash([L, L]); ctx.lineDashOffset = L * (1 - dr); }
+  const fillA = dr < 1 ? dr * dr : 1;
+  const rings = [];
+  let rw = st.strokeW > 0 ? st.strokeW : 0;
+  for (const q of st.strokes || []) if (q.w > 0) rings.push([rw += +q.w, q.c]);
+  const body = (extra, col) => { // the icon's shape widened by `extra` px on each side, in one colour
+    ctx.strokeStyle = ctx.fillStyle = col;
+    if (fillOn) { ctx.save(); ctx.globalAlpha *= fillA; ctx.fill(P2); ctx.restore(); }
+    ctx.lineWidth = lw + extra * 2 / k; ctx.stroke(P2);
+  };
+  for (const sh of st.shadows || []) { // shadow only: the body sits far off-canvas, its shadow is shifted back
+    const m = ctx.getTransform(), OFF = 1e4, d = num(sh.dist, 0) * 0.7;
+    ctx.save();
+    ctx.shadowColor = sh.c; ctx.shadowBlur = num(sh.blur, 0); ctx.shadowOffsetX = d - OFF * m.a; ctx.shadowOffsetY = d - OFF * m.b;
+    ctx.translate(OFF, 0);
+    body(rw, sh.c);
+    ctx.restore();
+  }
+  if (st.glowOn) { ctx.save(); ctx.shadowColor = st.glowColor; ctx.shadowBlur = st.glowSize; body(rw, st.glowColor); body(rw, st.glowColor); ctx.restore(); }
+  if (st.shadowOn) { ctx.shadowColor = st.shadowColor; ctx.shadowBlur = st.shadowBlur; ctx.shadowOffsetX = ctx.shadowOffsetY = st.shadowDist * 0.7; }
+  for (let j = rings.length - 1; j >= 0; j--) { body(rings[j][0], rings[j][1]); ctx.shadowColor = 'transparent'; }
+  if (st.strokeW > 0) { body(st.strokeW, st.stroke); ctx.shadowColor = 'transparent'; }
+  let col = st.color;
+  if (st.gradOn) { col = ctx.createLinearGradient(0, 0, 0, 24); col.addColorStop(0, st.color); col.addColorStop(1, st.fill2); }
+  if (fillOn) { ctx.save(); ctx.globalAlpha *= fillA; ctx.fillStyle = st.iconFill || col; ctx.fill(P2); ctx.restore(); }
+  ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke(P2);
+  ctx.restore();
+}
+
+// Icon library panel: animated (an icon with a motion) and every icon by category, searchable by name and tags.
+const IC_ANIM = [['heart', 'heartbeat'], ['star', 'spinLoop'], ['bell', 'swing'], ['bell-ring', 'shake'], ['thumbs-up', 'popBeat'], ['flame', 'flicker'], ['zap', 'blink'],
+  ['rocket', 'float'], ['sparkles', 'breathe'], ['party-popper', 'tada'], ['gift', 'hop'], ['trophy', 'rock'], ['crown', 'float'], ['gem', 'spinLoop'], ['sun', 'spinLoop'],
+  ['moon', 'tilt'], ['cloud', 'float'], ['cloud-rain', 'jitter'], ['snowflake', 'spinLoop'], ['umbrella', 'swing'], ['wind', 'wave'], ['loader', 'spinLoop'], ['loader-circle', 'spinLoop'],
+  ['refresh-cw', 'spinLoop'], ['settings', 'spinLoop'], ['cog', 'spinLoop'], ['fan', 'spinLoop'], ['hourglass', 'rock'], ['alarm-clock', 'shake'], ['clock', 'pulse'], ['timer', 'pulse'],
+  ['phone', 'shake'], ['phone-call', 'jitter'], ['message-circle', 'hop'], ['message-square', 'popBeat'], ['mail', 'bounce'], ['send', 'float'], ['share-2', 'pulse'], ['at-sign', 'spinLoop'],
+  ['music', 'float'], ['music-2', 'wiggle'], ['headphones', 'pulse'], ['mic', 'pulse'], ['volume-2', 'zoomBeat'], ['play', 'popBeat'], ['circle-play', 'pulse'], ['video', 'pulse'], ['camera', 'popBeat'],
+  ['shopping-cart', 'wiggle'], ['shopping-bag', 'hop'], ['credit-card', 'tilt'], ['wallet', 'jelly'], ['banknote', 'float'], ['coins', 'bounce'], ['piggy-bank', 'jelly'], ['tag', 'swing'], ['percent', 'spinLoop'],
+  ['chart-line', 'pulse'], ['trending-up', 'hop'], ['chart-column', 'zoomBeat'], ['target', 'pulse'], ['award', 'swing'], ['medal', 'swing'], ['badge-check', 'popBeat'], ['circle-check', 'popBeat'],
+  ['check', 'popBeat'], ['x', 'shake'], ['circle-alert', 'blink'], ['triangle-alert', 'blink'], ['info', 'pulse'], ['circle-help', 'wiggle'], ['lightbulb', 'flicker'], ['key', 'wiggle'], ['lock', 'shake'],
+  ['lock-open', 'tada'], ['shield-check', 'breathe'], ['eye', 'blink'], ['search', 'orbit'], ['map-pin', 'hop'], ['navigation', 'float'], ['compass', 'rock'], ['globe', 'spinLoop'], ['plane', 'float'],
+  ['car', 'jitter'], ['bike', 'rock'], ['truck', 'jitter'], ['house', 'popBeat'], ['building-2', 'breathe'], ['wifi', 'pulse'], ['bluetooth', 'blink'], ['battery-charging', 'flicker'], ['smartphone', 'wiggle'],
+  ['laptop', 'float'], ['monitor', 'breathe'], ['download', 'bounce'], ['upload', 'hop'], ['cloud-download', 'bounce'], ['arrow-down', 'bounce'], ['arrow-up', 'hop'], ['arrow-right', 'wave'],
+  ['chevrons-down', 'bounce'], ['chevrons-right', 'wave'], ['mouse-pointer-click', 'popBeat'], ['hand', 'swing'], ['pointer', 'hop'], ['smile', 'jelly'], ['laugh', 'wiggle'], ['frown', 'tilt'],
+  ['user', 'breathe'], ['users', 'pulse'], ['baby', 'rock'], ['dog', 'wiggle'], ['cat', 'tilt'], ['fish', 'wave'], ['bird', 'float'], ['bug', 'jitter'], ['leaf', 'swing'], ['flower', 'spinLoop'],
+  ['tree-pine', 'swing'], ['coffee', 'float'], ['pizza', 'rock'], ['cake', 'tada'], ['ice-cream-cone', 'wiggle'], ['cookie', 'spinLoop'], ['apple', 'hop'], ['dumbbell', 'jelly'], ['activity', 'pulse'],
+  ['heart-pulse', 'heartbeat'], ['stethoscope', 'swing'], ['pill', 'spinLoop'], ['brain', 'breathe'], ['book-open', 'tilt'], ['graduation-cap', 'hop'], ['pencil', 'wiggle'], ['paintbrush', 'swing'],
+  ['palette', 'spinLoop'], ['scissors', 'jitter'], ['magnet', 'shake'], ['anchor', 'swing'], ['flag', 'wave'], ['bookmark', 'popBeat'], ['calendar', 'popBeat'], ['briefcase', 'rock']];
+const IC_DRAW = ['heart', 'star', 'check', 'circle-check', 'thumbs-up', 'bell', 'mail', 'phone', 'house', 'user', 'map-pin', 'rocket', 'lightbulb', 'shopping-cart', 'camera', 'music',
+  'gift', 'crown', 'trophy', 'sparkles', 'sun', 'cloud', 'leaf', 'coffee', 'smile', 'zap', 'flame', 'globe', 'plane', 'award', 'chart-line', 'trending-up', 'message-circle', 'send', 'calendar', 'clock'];
+const IC_POP = ['heart', 'star', 'thumbs-up', 'check', 'x', 'plus', 'minus', 'arrow-right', 'arrow-left', 'arrow-up', 'arrow-down', 'chevron-right', 'house', 'user', 'users', 'phone', 'mail', 'map-pin',
+  'search', 'settings', 'bell', 'camera', 'image', 'video', 'music', 'play', 'pause', 'mic', 'message-circle', 'send', 'share-2', 'link', 'download', 'upload', 'calendar', 'clock', 'shopping-cart',
+  'shopping-bag', 'credit-card', 'wallet', 'gift', 'tag', 'percent', 'trophy', 'crown', 'flame', 'zap', 'sparkles', 'sun', 'moon', 'cloud', 'globe', 'lock', 'eye', 'smile', 'circle-check',
+  'circle-alert', 'info', 'lightbulb', 'rocket', 'coffee', 'pizza', 'car', 'plane', 'wifi', 'smartphone', 'laptop', 'bookmark', 'flag', 'award', 'target', 'chart-line', 'trending-up', 'badge-check'];
+const IC_CATS = {
+  arrows: /arrow|chevron|move|corner|redo|undo|repeat|refresh|rotate/,
+  social: /message|chat|mail|phone|share|send|at-sign|rss|inbox|contact|reply|bell|megaphone|speech|comment/,
+  media: /play|pause|music|video|film|camera|image|mic|volume|headphone|speaker|radio|disc|clapper|tv|podcast|cast|record/,
+  money: /dollar|euro|pound|coin|wallet|credit|bank|cart|shopping|store|receipt|tag|percent|chart|trending|piggy|bitcoin|briefcase|badge|gift|package/,
+  people: /user|person|baby|smile|frown|laugh|meh|angry|hand|heart|thumb|accessibility|contact/,
+  weather: /sun|moon|cloud|rain|snow|wind|thermometer|umbrella|rainbow|leaf|tree|flower|sprout|mountain|waves|droplet|flame|zap|sunrise|sunset|star/,
+  food: /coffee|cup|pizza|apple|cake|cookie|ice-cream|beer|wine|martini|utensil|sandwich|salad|soup|egg|carrot|cherry|citrus|grape|banana|croissant|popcorn|donut|candy|milk|fish|beef|ham|drumstick|chef/,
+  tech: /laptop|monitor|smartphone|tablet|wifi|bluetooth|battery|cpu|server|database|code|terminal|keyboard|mouse|printer|hard-drive|usb|plug|cable|router|cloud|bot|app/,
+  travel: /plane|car|bus|train|bike|ship|sailboat|truck|map|compass|globe|navigation|tent|hotel|luggage|ticket|fuel|parking|route|signpost|landmark|castle/,
+  shapes: /^(circle|square|triangle|hexagon|octagon|pentagon|diamond|star|heart|shapes|cone|cylinder|cuboid|pyramid|torus|spline)/,
+};
+const IC_TABS = ['anim', 'draw', 'pop', 'all', ...Object.keys(IC_CATS)];
+let icCat = 'anim';
+const icSvg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[n][0]}"/></svg>`;
+function renderIcons() {
+  const q = ($('#icQ').value || '').trim().toLowerCase(), names = Object.keys(ICONS);
+  $('#icCats').innerHTML = IC_TABS.map(c => `<button class="chip${c === icCat && !q ? ' on' : ''}" data-cat="${c}">${tr('ic_' + c)}</button>`).join('');
+  const btn = n => `<button data-ic="${n}" title="${n}">${icSvg(n)}</button>`;
+  let h;
+  if (q) {
+    const hits = names.filter(n => n.includes(q) || ICONS[n][1].includes(q));
+    h = hits.length ? `<div class="stk icl">${hits.map(btn).join('')}</div>` : `<p class="hint">${tr('stNone')}</p>`;
+  } else if (icCat === 'anim') h = `<div class="stk stanim">${IC_ANIM.filter(([n]) => ICONS[n]).map(([n, l]) => `<button data-ic="${n}" data-loop="${l}" title="${n} · ${esc(tr('an_' + l))}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
+  else if (icCat === 'draw') h = `<div class="stk stanim">${IC_DRAW.filter(n => ICONS[n]).map(n => `<button data-ic="${n}" data-draw="loop" title="${n}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
+  else if (icCat === 'pop') h = `<div class="stk icl">${IC_POP.filter(n => ICONS[n]).map(btn).join('')}</div>`;
+  else h = `<div class="stk icl">${(icCat === 'all' ? names : names.filter(n => IC_CATS[icCat].test(n))).map(btn).join('')}</div>`;
+  $('#iconList').innerHTML = h;
+  iconThumbs(performance.now() / 1000);
+}
+function iconThumbs(now) {
+  for (const c of $$('#iconList canvas')) {
+    const b = c.parentElement, g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 64, 64);
+    drawTextItem(g, { w: 64, h: 64 }, { text: b.dataset.ic, icon: b.dataset.ic, style: { ...presetStyle('plain'), size: 30, strokeW: 0, color: '#e8ecf1' }, x: 0.5, y: 0.5, dur: 1e4, anim: 'none', out: 'none', loop: b.dataset.loop, draw: b.dataset.draw }, 1 + now % 60);
+  }
+}
+$('#icCats').addEventListener('click', e => { const c = e.target.closest('[data-cat]'); if (c) { icCat = c.dataset.cat; $('#icQ').value = ''; renderIcons(); $('#iconList').scrollTop = 0; } });
+$('#icQ').addEventListener('input', () => renderIcons());
+$('#iconList').addEventListener('click', e => {
+  const b = e.target.closest('[data-ic]');
+  if (!b) return;
+  snapshot();
+  const it = { id: uid(), type: 'text', ...textSlot(3), dur: 3, text: b.dataset.ic, icon: b.dataset.ic,
+    style: { ...presetStyle('plain'), size: Math.round(Math.min(P.w, P.h) * 0.3), color: '#ffffff', strokeW: 0, iconW: 2 }, x: 0.5, y: 0.5, anim: 'pop', out: 'fade' };
+  if (b.dataset.loop) it.loop = b.dataset.loop;
+  if (b.dataset.draw) { it.draw = b.dataset.draw; it.anim = 'none'; }
+  P.items.push(it);
+  sel = it.id; inspTab = null; dirty = true;
+  refresh();
+});
+
 // Every emoji by group (emoji.js), a search over their English names, and animated stickers: an emoji with a loop.
 const ST_ANIM = [['❤️', 'heartbeat'], ['🔥', 'jelly'], ['😂', 'wiggle'], ['🎉', 'tada'], ['⭐', 'spinLoop'], ['👍', 'popBeat'], ['👏', 'jelly'], ['😍', 'pulse'],
   ['💯', 'popBeat'], ['🚀', 'float'], ['✨', 'breathe'], ['👀', 'jitter'], ['😱', 'shake'], ['🤯', 'tada'], ['🥳', 'hop'], ['😎', 'rock'], ['🤔', 'tilt'],
