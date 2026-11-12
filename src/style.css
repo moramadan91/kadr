@@ -53,7 +53,7 @@ h4 { margin: 14px 0 8px; font-size: 12px; color: var(--dim); font-weight: 600; }
 .bar { display: flex; align-items: center; gap: 6px; padding: 0 10px; margin-top: 6px; border-radius: 14px; }
 html[dir=rtl] .bar { padding-left: 10px; }
 .bar { padding-inline-end: 10px; }
-:root.mac .bar { padding-left: 96px; } /* traffic lights, centred in the bar */
+:root.mac .bar { padding-left: 120px; } /* traffic lights (native size) clear the bar at the 80% page zoom */
 :root.mac[dir=rtl] .bar { padding-left: 96px; padding-right: 14px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; }
 .brand b { margin-inline-end: 2px; }

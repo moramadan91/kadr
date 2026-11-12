@@ -750,6 +750,8 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             app.manage(mcp::Bridge::start(app.handle().clone()));
+            // the editor UI is drawn at 80%: denser, closer to other desktop editors (all page coordinates scale with it)
+            if let Some(w) = app.get_webview_window("main") { let _ = w.set_zoom(0.8); }
             // Windows/Linux pass a double-clicked project as the first argument
             if let Some(a) = std::env::args().nth(1) { offer_file(app.handle(), PathBuf::from(a)); }
             // launch intro runs in its own small window (it calls splash_done when it ends); the editor
