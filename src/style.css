@@ -624,3 +624,5 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 /* media bin: a square frame, the whole picture fitted inside (portrait or landscape) */
 #binList.grid .mi .th { overflow: hidden; }
 #binList.grid .mi .th video, #binList.grid .mi .th img { position: absolute; inset: 0; object-fit: contain; }
+#stage .guide { position: absolute; pointer-events: none; background: #ff3d8b; z-index: 3; }
+#stage .guide.v { width: 1px; } #stage .guide.h { height: 1px; }

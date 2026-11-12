@@ -2844,16 +2844,50 @@ view.addEventListener('pointerdown', e => {
   if (!it || !active(it, t) || (media(it) && media(it).kind === 'audio')) return;
   const a0 = S.animAt(it, kfLt(it)), ox = num(a0.x, isText(it) ? 0.5 : 0), oy = num(a0.y, isText(it) ? 0.5 : 0);
   let changed = false;
+  const snap = 8 * k; // project px: centre pulls within 8 screen px, Alt turns it off
   const mv = ev => {
     const dx = (ev.clientX - x0) * k, dy = (ev.clientY - y0) * k;
     if (!changed) { snapshot(); changed = true; }
-    if (isText(it)) { it.x = clamp(ox + dx / P.w, 0, 1); it.y = clamp(oy + dy / P.h, 0, 1); }
-    else { it.x = Math.round(ox + dx); it.y = Math.round(oy + dy); }
+    let nx, ny;
+    if (isText(it)) { nx = clamp(ox + dx / P.w, 0, 1); ny = clamp(oy + dy / P.h, 0, 1); }
+    else { nx = Math.round(ox + dx); ny = Math.round(oy + dy); }
+    const c0 = isText(it) ? 0.5 : 0, sx = isText(it) ? P.w : 1, sy = isText(it) ? P.h : 1;
+    const gx = !ev.altKey && Math.abs(nx - c0) * sx < snap, gy = !ev.altKey && Math.abs(ny - c0) * sy < snap;
+    it.x = gx ? c0 : nx; it.y = gy ? c0 : ny;
+    guides(gx, gy);
     for (const k of ['x', 'y']) if (it.kf && it.kf[k]) kfSet(it, k, kfLt(it), it[k]);
     needsDraw = true;
   };
   window.addEventListener('pointermove', mv);
-  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (changed) inspector(); }, { once: true });
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); guides(false, false); if (changed) inspector(); }, { once: true });
+});
+// Centre guide lines shown while a drag is snapped to the frame's middle
+const guideEls = ['v', 'h'].map(d => $('#stage').appendChild(Object.assign(document.createElement('i'), { className: 'guide ' + d, hidden: true })));
+function guides(gx, gy) {
+  const R = view.getBoundingClientRect(), S0 = $('#stage').getBoundingClientRect();
+  Object.assign(guideEls[0].style, { left: R.left - S0.left + R.width / 2 + 'px', top: R.top - S0.top + 'px', height: R.height + 'px' });
+  Object.assign(guideEls[1].style, { top: R.top - S0.top + R.height / 2 + 'px', left: R.left - S0.left + 'px', width: R.width + 'px' });
+  guideEls[0].hidden = !gx; guideEls[1].hidden = !gy;
+}
+// Right-click on the preview: put the layer back in the frame
+view.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r = view.getBoundingClientRect(), k = P.w / r.width;
+  const hit = hitAt((e.clientX - r.left) * k, (e.clientY - r.top) * k), it = hit || (sel && item(sel));
+  if (!it || (media(it) && media(it).kind === 'audio')) return;
+  if (hit) select(hit.id);
+  const set = v => {
+    snapshot();
+    Object.assign(it, v);
+    for (const key of Object.keys(v)) if (it.kf && it.kf[key]) kfSet(it, key, kfLt(it), it[key]);
+    refresh(); inspector();
+  };
+  const c = isText(it) ? 0.5 : 0;
+  ctxMenu(e, [
+    !isText(it) && ['fitFrame', () => set({ fit: 'contain', scale: 1, x: 0, y: 0, rotate: 0 })],
+    !isText(it) && ['fillFrame', () => set({ fit: 'cover', scale: 1, x: 0, y: 0, rotate: 0 })],
+    ['centerLayer', () => set({ x: c, y: c })],
+  ]);
 });
 
 /* ---------- motion tracking (template matching, no model) ---------- */
