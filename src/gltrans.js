@@ -436,8 +436,147 @@ vec4 tr(vec2 u){vec2 k=vec2(4.*AS(),4.);float id;vec2 c=cell(u*k,id);float q=cla
   c.rgb*=mix(vec3(1.),.7+.3*cos(vec3(0.,2.,4.)+atan(s.y,s.x)*3.),b*.6);return c;}`],
     ['nVrZoom', 'light', N + `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec4 c=zc(bulge(u,3.*b),vec2(.5),.3*b,p>=.5);c.rgb+=exp(-length(sq(u))*4./(b+.01))*b*1.5;
   c.rgb=mix(c.rgb,vec3(1.),pow(b,4.)*.8);return c;}`],
+    // ---- library 3: patterns, slides, 3D, camera, glitch, light, warp, film (id, category, GLSL, English, Arabic) ----
+    ['xHex', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*7.;vec2 r=vec2(1.,1.7320508),h=r*.5;vec2 a=mod(s,r)-h,b=mod(s-h,r)-h;vec2 g=dot(a,a)<dot(b,b)?a:b;vec2 id=s-g;
+  float d=length(id)/7./(.5*length(vec2(AS(),1.)));float t=clamp((p*1.6-d*.6)*1.8,0.,1.);float hx=max(abs(g.x),abs(g.x)*.5+abs(g.y)*.866);
+  vec4 c=hx<t*.51?TB(u):TA(u);c.rgb*=1.-.5*step(t*.51-.03,hx)*step(hx,t*.51)*step(.01,t)*step(t,.99);return c;}`, 'Honeycomb', 'خلية نحل'],
+    ['xTri', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*6.,c=floor(s),f=fract(s);float k=step(f.x,f.y);float r=h1(c+k*.37);float t=clamp((p-r*.5)*2.,0.,1.);
+  vec2 m=k>.5?vec2(1./3.,2./3.):vec2(2./3.,1./3.);float w=abs(t*2.-1.);vec2 q=m+(f-m)/max(w,.001);
+  bool ins=k>.5?(q.y>=q.x&&q.x>=0.&&q.y<=1.):(q.x>=q.y&&q.y>=0.&&q.x<=1.);return ins?(t<.5?TA(u):TB(u)):bg(u);}`, 'Triangles', 'مثلثات'],
+    ['xDots', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*10.;vec2 c=floor(s)+.5;float d=length(c)/10./(.5*length(vec2(AS(),1.)));float t=clamp(p*1.7-d*.7,0.,1.);return length(s-c)<t*.72?TB(u):TA(u);}`, 'Growing dots', 'نقط بتكبر'],
+    ['xDotsDiag', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*10.;vec2 c=floor(s)+.5;float d=(u.x+u.y)*.5;float t=clamp(p*1.7-d*.7,0.,1.);return length(s-c)<t*.72?TB(u):TA(u);}`, 'Diagonal dots', 'نقط مايلة'],
+    ['xSpiral', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u);float a=atan(s.y,s.x)/6.2832+.5;float r=length(s)/(.5*length(vec2(AS(),1.)));float v=(floor(r*3.-a)+a)/3.;return v<io(p)*1.4-.35?TB(u):TA(u);}`, 'Spiral', 'حلزونة'],
+    ['xFan', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u);float a=fract((atan(s.y,s.x)/6.2832+.5)*6.);return a<io(p)*1.01?TB(u):TA(u);}`, 'Windmill', 'طاحونة'],
+    ['xZig', 'geo', `vec4 tr(vec2 u){float z=abs(fract(u.y*8.)-.5)*.12;float e=io(p)*1.14-.07;return u.x<e+z-.06?TB(u):TA(u);}`, 'Zigzag wipe', 'مسح زجزاج'],
+    ['xWave', 'geo', `vec4 tr(vec2 u){float e=io(p)*1.3-.15;float w=sin(u.y*12.+p*8.)*.05;return mix(TB(u),TA(u),smoothstep(e+w-.03,e+w+.03,u.x));}`, 'Wavy wipe', 'مسح متموّج'],
+    ['xPlus', 'geo', `vec4 tr(vec2 u){vec2 s=abs(u-.5)*2.;return min(s.x,s.y)<io(p)*1.01?TB(u):TA(u);}`, 'Plus', 'علامة زائد'],
+    ['xBoxIn', 'geo', `vec4 tr(vec2 u){vec2 s=abs(u-.5)*2.;return max(s.x,s.y)<1.001-io(p)?TA(u):TB(u);}`, 'Box in', 'مربع لجوّه'],
+    ['xBoxOut', 'geo', `vec4 tr(vec2 u){vec2 s=abs(u-.5)*2.;return max(s.x,s.y)<io(p)*1.01?TB(u):TA(u);}`, 'Box out', 'مربع لبرّه'],
+    ['xDiagDoors', 'geo', `vec4 tr(vec2 u){return abs(u.x+u.y-1.)<io(p)*1.01?TB(u):TA(u);}`, 'Diagonal doors', 'أبواب مايلة'],
+    ['xRings', 'geo', `vec4 tr(vec2 u){float r=length(sq(u))/(.5*length(vec2(AS(),1.)));float k=floor(r*6.),f=fract(r*6.);float t=clamp(p*1.5-k/6.*.5,0.,1.);bool on=mod(k,2.)<.5?f<t:f>1.-t;return on?TB(u):TA(u);}`, 'Rings', 'حلقات'],
+    ['xCorner', 'geo', `vec4 tr(vec2 u){return length(u)/1.4143<io(p)*1.01?TB(u):TA(u);}`, 'Corner sweep', 'من الركن'],
+    ['xVenetian', 'geo', `vec4 tr(vec2 u){float x=(u.x+u.y)*.5;float f=fract(x*8.);float t=clamp(p*1.4-x*.4,0.,1.);return f<t*1.01?TB(u):TA(u);}`, 'Diagonal blinds', 'شيش مايل'],
+    ['xTiles', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*3.,c=floor(s),f=fract(s);float t=clamp(p*1.6-h1(c)*.6,0.,1.);float w=abs(cos(t*PI));float x=.5+(f.x-.5)/max(w,.001);
+  if(x<0.||x>1.)return bg(u);vec2 v=(c+vec2(x,f.y))/3./vec2(AS(),1.)+.5;vec4 k=t<.5?TA(v):TB(v);k.rgb*=.55+.45*w;return k;}`, 'Flipping tiles', 'بلاطات بتتقلب'],
+    ['xAperture', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u);float e=io(p);s=rot(s,e*1.2);float a=atan(s.y,s.x);float sg=PI/3.;float d=length(s)*cos(mod(a,sg)-sg*.5)/cos(sg*.5);float r0=e*length(vec2(AS(),1.))*.62;
+  vec4 c=d<r0?TB(u):TA(u);c.rgb*=1.-.8*exp(-abs(d-r0)*90.)*step(.01,e)*step(e,.99);return c;}`, 'Camera aperture', 'فتحة عدسة'],
+    ['xBubbles', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*5.;vec2 c=floor(s);float m=0.;for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){vec2 g=c+vec2(float(i),float(j));vec2 o=vec2(h1(g),h1(g+5.3));float st=h1(g+9.1)*.6;float r=clamp((p-st)/.4,0.,1.)*1.6;m=max(m,step(length(s-g-o),r));}return m>.5?TB(u):TA(u);}`, 'Bubbles', 'فقاعات'],
+    ['xSquares', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*9.,c=floor(s),f=fract(s)-.5;float t=clamp((p-h1(c)*.6)/.4,0.,1.);return max(abs(f.x),abs(f.y))<t*.51?TB(u):TA(u);}`, 'Random squares', 'مربعات عشوائية'],
+    ['xBricks', 'geo', `vec4 tr(vec2 u){vec2 s=u*vec2(5.,10.);s.x+=mod(floor(s.y),2.)*.5;vec2 c=floor(s),f=fract(s);float st=h1(c)*.4+u.x*.4;float t=clamp((p-st)/.2,0.,1.);return f.y<t*1.01?TB(u):TA(u);}`, 'Bricks', 'طوب'],
+    ['xFlipStrips', 'geo', `vec4 tr(vec2 u){float n=8.,k=floor(u.x*n),f=fract(u.x*n);float t=clamp(p*1.6-k/n*.6,0.,1.);float w=abs(cos(t*PI));float x=.5+(f-.5)/max(w,.001);
+  if(x<0.||x>1.)return bg(u);vec2 v=vec2((k+x)/n,u.y);vec4 c=t<.5?TA(v):TB(v);c.rgb*=.6+.4*w;return c;}`, 'Flipping strips', 'شرايط بتتقلب'],
+    ['xVoronoi', 'geo', `vec4 tr(vec2 u){vec2 s=sq(u)*5.,c=floor(s);float md=9.,md2=9.;vec2 mg=vec2(0.);for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){vec2 g=c+vec2(float(i),float(j));float d=length(s-g-vec2(h1(g),h1(g+4.1)));if(d<md){md2=md;md=d;mg=g;}else if(d<md2)md2=d;}
+  float t=h1(mg+2.7);vec4 k=t*.8<p*.95-.02?TB(u):TA(u);k.rgb+=vec3(1.,.9,.6)*(1.-smoothstep(0.,.06,md2-md))*sin(PI*p);return k;}`, 'Cells', 'خلايا'],
+    ['xNoise', 'mask', `vec4 tr(vec2 u){float n=fbm(sq(u)*4.);float w=p*1.4-.2;return mix(TB(u),TA(u),smoothstep(w-.04,w+.04,n));}`, 'Cloud dissolve', 'ذوبان سحاب'],
+    ['xBlocks', 'mask', `vec4 tr(vec2 u){vec2 c=floor(sq(u)*14.);return h1(c)<p?TB(u):TA(u);}`, 'Block dissolve', 'ذوبان بلوكات'],
+    ['xDrop', 'mask', `vec4 tr(vec2 u){vec2 s=sq(u);float r=length(s);float e=io(p)*length(vec2(AS(),1.))*.55;float w=sin((r-e)*50.)*exp(-abs(r-e)*14.)*.035*sin(PI*p);vec2 v=u+s/(r+1e-4)/vec2(AS(),1.)*w;return r<e?TB(v):TA(v);}`, 'Water drop', 'نقطة ماية'],
+    ['xLightning', 'mask', `vec4 tr(vec2 u){float j=(vn(vec2(u.y*20.,3.))-.5)*.15+(vn(vec2(u.y*60.,7.))-.5)*.05;float e=io(p)*1.6-.25;float d=u.x+u.y*.2-.1+j-e;vec4 c=d<0.?TB(u):TA(u);c.rgb+=vec3(.6,.8,1.)*exp(-abs(d)*60.)*sin(PI*p)*1.5;return c;}`, 'Lightning', 'برق'],
+    ['xSmokeWipe', 'mask', `vec4 tr(vec2 u){float n=fbm(sq(u)*3.+vec2(0.,p*2.));float e=io(p)*1.8-.4;float m=smoothstep(e-.15,e+.15,u.x+(n-.5)*.4);vec4 c=mix(TB(u),TA(u),m);c.rgb=mix(c.rgb,vec3(.85),(1.-abs(m*2.-1.))*.6*n);return c;}`, 'Smoke wipe', 'مسح دخان'],
+    ['xBrush', 'mask', `vec4 tr(vec2 u){float k=floor(u.y*7.);float st=h1(vec2(k,1.))*.35;float t=clamp((p-st)/.65,0.,1.);float x=mod(k,2.)<.5?u.x:1.-u.x;return x<t*1.15-vn(vec2(u.y*40.,k))*.15?TB(u):TA(u);}`, 'Brush strokes', 'ضربات فرشاة'],
+    ['xSplash', 'mask', `vec4 tr(vec2 u){vec2 s=sq(u);float a=atan(s.y,s.x);float r=length(s)/(.5*length(vec2(AS(),1.)));float sh=.75+.35*vn(vec2(a*2.5+3.,1.))+.15*vn(vec2(a*9.,4.));
+  float k1=ei(clamp(p*1.6,0.,1.))*1.5,k2=ei(clamp(p*1.6-.6,0.,1.))*1.5;if(r<k2*sh)return TB(u);if(r<k1*sh)return vec4(vec3(1.,.32,.45)*(.85+.15*vn(s*8.)),1.);return TA(u);}`, 'Paint splash', 'رشة بوية'],
+    ['xSand', 'mask', `vec4 tr(vec2 u){vec2 g=floor(u*R/2.);float n=h1(g);if(n<p*1.15-.08)return TB(u);return TA(u-vec2(p*.18*h1(g+1.),0.));}`, 'Sand', 'رمل'],
+    ['xEmber', 'light', `vec4 tr(vec2 u){float n=fbm(sq(u)*4.);float w=p*1.4-.2;vec4 c=mix(TB(u),TA(u),smoothstep(w-.03,w+.03,n));c.rgb+=vec3(1.,.45,.1)*exp(-abs(n-w)*40.)*1.5*sin(PI*p);return c;}`, 'Embers', 'جمر'],
+    ['xStripes', 'slide', `vec4 tr(vec2 u){float n=8.,k=floor(u.x*n);float dr=mod(k,2.)<.5?1.:-1.;float e=io(clamp(p*1.4-k/n*.4,0.,1.));float y=u.y+dr*e;return (y>=0.&&y<=1.)?TA(vec2(u.x,y)):TB(vec2(u.x,y-dr));}`, 'Stripes up and down', 'شرايط طالعة نازلة'],
+    ['xRowsFall', 'slide', `vec4 tr(vec2 u){float n=6.,k=floor(u.y*n);float t=eo(clamp(p*1.5-(n-1.-k)/n*.5,0.,1.));float v=u.y+(1.-t)*(k+1.)/n;return v<(k+1.)/n?TB(vec2(u.x,v)):TA(u);}`, 'Falling rows', 'صفوف نازلة'],
+    ['xColsDrop', 'slide', `vec4 tr(vec2 u){float n=10.,k=floor(u.x*n);float t=clamp(p*1.5-h1(vec2(k,3.))*.5,0.,1.);float v=u.y-ei(t)*1.05;return v>=0.?TA(vec2(u.x,v)):TB(u);}`, 'Dropping columns', 'أعمدة بتقع'],
+    ['xBounceSlide', 'slide', `vec4 tr(vec2 u){float x=u.x+bk(p*p);return x<1.?TA(vec2(x,u.y)):TB(vec2(x-1.,u.y));}`, 'Bouncy push', 'دفع بارتداد'],
+    ['xReveal', 'slide', `vec4 tr(vec2 u){float e=io(p);float x=u.x+e;if(x<=1.)return TA(vec2(x,u.y));vec4 c=TB(u);c.rgb*=1.-.55*(1.-p)*exp(-(u.x-(1.-e))*18.);return c;}`, 'Slide away', 'يتسحب ويكشف'],
+    ['xCover', 'slide', `vec4 tr(vec2 u){float t=1.-io(p);if(u.y>t)return TB(vec2(u.x,u.y-t));vec4 c=TA(u);c.rgb*=1.-.55*exp(-(t-u.y)*18.)*step(.001,1.-t);return c;}`, 'Cover up', 'يغطّي من تحت'],
+    ['xDoubleSlide', 'slide', `vec4 tr(vec2 u){float dr=u.y<.5?1.:-1.;float x=u.x+dr*io(p);return (x>=0.&&x<=1.)?TA(vec2(x,u.y)):TB(vec2(x-dr,u.y));}`, 'Double push', 'دفع مزدوج'],
+    ['xQuadFly', 'slide', `vec4 tr(vec2 u){float e=ei(p);vec2 q=sign(u-.5);vec2 a=u-q*e*.7;if(sign(a-.5)==q&&inb(a))return TA(a);return TB(zm(u,vec2(.5),1.2-.2*eo(p)));}`, 'Four corners', 'أربع أركان'],
+    ['xSplitOut', 'slide', `vec4 tr(vec2 u){float e=io(p);if(u.x<.5){float x=u.x+e*.5;if(x<.5)return TA(vec2(x,u.y));}else{float x=u.x-e*.5;if(x>.5)return TA(vec2(x,u.y));}return TB(zm(u,vec2(.5),1.15-.15*e));}`, 'Split open', 'ينفتح نصّين'],
+    ['xSliceSlide', 'slide', `vec4 tr(vec2 u){float n=10.,k=floor(u.y*n);float dr=mod(k,2.)<.5?1.:-1.;float e=io(clamp(p*1.4-h1(vec2(k,1.))*.4,0.,1.));float x=u.x+dr*e;return (x>=0.&&x<=1.)?TA(vec2(x,u.y)):TB(vec2(x-dr,u.y));}`, 'Sliding slices', 'شرايح بتتزحلق'],
+    ['xDiagSlide', 'slide', `vec4 tr(vec2 u){float e=io(p);vec2 b=u-(1.-e);if(inb(b))return TB(b);return TA(u+e);}`, 'Diagonal push', 'دفع مايل'],
+    ['xElastic', 'slide', `float el(float x){return 1.-exp(-4.*x)*cos(x*6.);}
+vec4 tr(vec2 u){float x=u.x+el(p*p)/el(1.);return x<1.?TA(vec2(x,u.y)):TB(vec2(x-1.,u.y));}`, 'Rubber push', 'دفع مطّاطي'],
+    ['xDropIn', 'slide', `float bn(float x){if(x<.3636)return 7.5625*x*x;if(x<.7273){x-=.5455;return 7.5625*x*x+.75;}if(x<.9091){x-=.8182;return 7.5625*x*x+.9375;}x-=.9545;return 7.5625*x*x+.984375;}
+vec4 tr(vec2 u){vec2 b=vec2(u.x,u.y+1.-bn(clamp(p,0.,1.)));if(b.y<=1.)return TB(b);vec4 a=TA(u);a.rgb*=1.-.4*p;return a;}`, 'Drop and bounce', 'يقع وينط'],
+    ['xPageTurn', '3d', `vec4 tr(vec2 u){float f=1.-io(p)*1.02;if(u.x>f){vec4 b=TB(u);b.rgb*=1.-.4*(1.-p)*exp(-(u.x-f)*12.);return b;}float m=2.*f-u.x;if(m<=1.){vec4 c=TA(vec2(m,u.y));c.rgb=mix(c.rgb,vec3(.95),.55)*(.75+.25*(f-u.x)/max(1.-f,.01));return c;}return TA(u);}`, 'Page turn', 'تقليب صفحة'],
+    ['xFallBack', '3d', `vec4 tr(vec2 u){float a=ei(p)*1.5708;vec3 e2=rx(vec3(0.,1.,0.),a);vec3 A=card(u,vec3(0.,-1.,0.)+e2,vec3(1.,0.,0.),e2);if(A.z>0.){vec4 c=TA(A.xy);c.rgb*=1.-.5*sin(a);return mix(c,TB(u),smoothstep(.75,1.,p));}vec4 b=TB(u);b.rgb*=.55+.45*p;return b;}`, 'Fall back', 'يقع لورا'],
+    ['xFlapUp', '3d', `vec4 tr(vec2 u){float a=ei(p)*1.5708;vec3 e2=rx(vec3(0.,1.,0.),-a);vec3 A=card(u,vec3(0.,1.,0.)-e2,vec3(1.,0.,0.),e2);if(A.z>0.){vec4 c=TA(A.xy);c.rgb*=1.-.5*sin(a);return mix(c,TB(u),smoothstep(.75,1.,p));}vec4 b=TB(u);b.rgb*=.55+.45*p;return b;}`, 'Flip up', 'يتقلب لفوق'],
+    ['xSwingDoor', '3d', `vec4 tr(vec2 u){float a=ei(p)*1.5708;vec3 e1=ry(vec3(1.,0.,0.),-a);vec3 A=card(u,vec3(-AS(),0.,0.)+e1*AS(),e1,vec3(0.,1.,0.));if(A.z>0.){vec4 c=TA(A.xy);c.rgb*=1.-.45*sin(a);return mix(c,TB(u),smoothstep(.75,1.,p));}vec4 b=TB(u);b.rgb*=.55+.45*p;return b;}`, 'Swing door', 'باب بيتفتح'],
+    ['xCarousel', '3d', `vec4 tr(vec2 u){float e=io(p),b=sin(PI*p);float th=e*PI*.5;float rr=AS()*1.8;vec3 C=vec3(0.,0.,rr+b*1.2);
+  vec3 qa=C+vec3(sin(-th),0.,-cos(-th))*rr,qb=C+vec3(sin(PI*.5-th),0.,-cos(PI*.5-th))*rr;
+  vec3 A=card(u,qa,ry(vec3(1.,0.,0.),th),vec3(0.,1.,0.)),B=card(u,qb,ry(vec3(1.,0.,0.),th-PI*.5),vec3(0.,1.,0.));
+  if(A.z>0.&&(B.z<0.||A.z<B.z))return TA(A.xy);if(B.z>0.)return TB(B.xy);return bg(u);}`, 'Carousel', 'دوّارة'],
+    ['xTumble', '3d', `vec4 tr(vec2 u){float e=ei(p);vec3 e1=rx(ry(vec3(1.,0.,0.),e*2.2),e*1.3),e2=rx(ry(vec3(0.,1.,0.),e*2.2),e*1.3);vec3 A=card(u,vec3(e*e*5.*AS(),-e*e*2.,e*5.),e1,e2);if(A.z>0.)return TA(A.xy);return TB(zm(u,vec2(.5),1.2-.2*p));}`, 'Tumble away', 'يتشقلب ويطير'],
+    ['xZoomFade', 'cam', `vec4 tr(vec2 u){float e=io(p);vec2 v=zm(u,vec2(.5),.55+.45*e);vec4 b=inb(v)?TB(v):vec4(0.);vec4 a=bA(zm(u,vec2(.5),1.+.25*e),.03*e);return mix(a,b,clamp(e*1.6,0.,1.)*b.a);}`, 'Zoom in fade', 'زووم وظهور'],
+    ['xZoomSpin', 'cam', `vec4 tr(vec2 u){float e=io(p),b=sin(PI*p);vec2 v=rc(zm(u,vec2(.5),1.+b*1.2),vec2(.5),(e<.5?e:e-1.)*PI);return e<.5?sbA(v,b*.5):sbB(v,b*.5);}`, 'Zoom spin', 'زووم ولفّة'],
+    ['xVertigo', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=zm(u,vec2(.5),1.+b*(1.2-length(sq(u))*2.));return X(v,p);}`, 'Vertigo', 'دوخة'],
+    ['xSpin360', 'cam', `vec4 tr(vec2 u){float e=io(p),b=sin(PI*p);vec2 v=rc(zm(u,vec2(.5),1.+b*.8),vec2(.5),e*6.2832);return e<.5?sbA(v,b*.9):sbB(v,b*.9);}`, 'Full spin', 'لفّة كاملة'],
+    ['xRollCorner', 'cam', `vec4 tr(vec2 u){float e=io(p);vec2 c=vec2(0.,1.);vec2 b=rc(u,c,-(1.-e)*PI*.5);if(inb(b))return TB(b);vec2 a=rc(u,c,e*PI*.5);if(inb(a))return TA(a);return bg(u);}`, 'Wheel', 'عجلة'],
+    ['xFlyAway', 'cam', `vec4 tr(vec2 u){float e=ei(p);float s=max(1.-e,.001);vec2 c=vec2(.5)+vec2(.6,-.6)*e;vec2 a=.5+(rc(u,c,e*.9)-c)/s;if(inb(a))return TA(a);vec4 b=TB(zm(u,vec2(.5),1.15-.15*e));vec2 sh=.5+(rc(u-vec2(.012,-.018)*e,c,e*.9)-c)/s;b.rgb*=inb(sh)?.6:1.;return b;}`, 'Fly away', 'يطير بعيد'],
+    ['xPopIn', 'cam', `vec4 tr(vec2 u){vec2 b=.5+(u-.5)/max(bk(clamp(p,0.,1.)),.001);if(inb(b))return TB(b);vec4 a=TA(u);a.rgb*=1.-.5*p;return a;}`, 'Pop in', 'يطلع فجأة'],
+    ['xShrinkOut', 'cam', `vec4 tr(vec2 u){float e=ei(p);vec2 a=.5+(rc(u,vec2(.5),e*2.5)-.5)/max(1.-e,.001);if(inb(a))return TA(a);return TB(zm(u,vec2(.5),1.1-.1*e));}`, 'Shrink and spin', 'يصغر ويلف'],
+    ['xPunch', 'cam', `vec4 tr(vec2 u){vec4 c=p<.5?TA(zm(u,vec2(.5),1.+.5*ei(p*2.))):TB(zm(u,vec2(.5),1.5-.5*eo(p*2.-1.)));c.rgb+=pow(sin(PI*p),8.)*.8;return c;}`, 'Punch zoom', 'زووم بوكس'],
+    ['xPendulum', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);float ang=sin(p*PI*4.)*(1.-p)*p*2.2;vec2 v=rc(zm(u,vec2(.5),1.+.35*b),vec2(.5,-.3),ang);return X(v,p);}`, 'Pendulum', 'بندول'],
+    ['xHandheld', 'cam', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 o=vec2(vn(vec2(p*18.,1.))-.5,vn(vec2(p*18.,9.))-.5)*.12*b;vec2 v=zm(u+o,vec2(.5),1.+.12*b);return p<.5?dbA(v,o*1.5):dbB(v,o*1.5);}`, 'Handheld', 'كاميرا في الإيد'],
+    ['xCrash', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=ei(p*2.);return zbA(zm(u,vec2(.5),1.+2.*t),.5*t);}float t=1.-eo(p*2.-1.);return zbB(zm(u,vec2(.5),1.+2.*t),.5*t);}`, 'Crash zoom', 'زووم صاروخ'],
+    ['xDolly', 'cam', `vec4 tr(vec2 u){if(p<.5){float t=io(p*2.);return zbA(zm(u,vec2(.5),1.+t),.25*t);}float t=io(p*2.-1.);vec2 v=.5+(u-.5)/(.3+.7*t);if(inb(v))return TB(v);return zbA(zm(u,vec2(.5),2.+t),.3);}`, 'Dolly in', 'دولي لقدّام'],
+    ['xTiltShift', 'blur', `vec4 tr(vec2 u){float b=sin(PI*p);float k=pow(abs(u.y-.5)*2.,1.5)*b*.04+b*.004;return mix(bA(u,k),bB(u,k),smoothstep(.35,.65,p));}`, 'Tilt shift', 'تلت شيفت'],
+    ['xAnamorphic', 'blur', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=vec2(.5+(u.x-.5)/(1.+b*3.),u.y);vec2 d=vec2(.12*b,0.);return p<.5?dbA(v,d):dbB(v,d);}`, 'Wide stretch', 'مطّ عريض'],
+    ['xBlurWipe', 'blur', `vec4 tr(vec2 u){float x=u.x-(io(p)*1.5-.25);float k=.04*exp(-x*x*120.);return x<0.?bB(u,k):bA(u,k);}`, 'Blur wipe', 'مسح بلور'],
+    ['xGaussDip', 'blur', `vec4 tr(vec2 u){float b=sin(PI*p);float k=.05*b*b;return mix(bA(u,k),bB(u,k),smoothstep(.4,.6,p));}`, 'Deep blur', 'بلور عميق'],
+    ['xDatamosh', 'glitch', `vec4 tr(vec2 u){vec2 bl=floor(u*vec2(16.,9.));float r=h1(bl);vec2 off=(vec2(h1(bl+3.),h1(bl+7.))-.5)*.15*sin(PI*p);return r<p*1.2-.1?TB(u+off*.5):TA(u+off);}`, 'Datamosh', 'داتاموش'],
+    ['xScan', 'glitch', `vec4 tr(vec2 u){float e=p*1.1-.05;vec4 c=u.y<e?TB(u):TA(u);float d=abs(u.y-e);c.rgb+=vec3(.6,1.,.9)*exp(-d*120.);c.rgb*=1.-.3*step(.5,fract(u.y*R.y*.25))*exp(-d*10.);return c;}`, 'Scan line', 'خط سكان'],
+    ['xRgbWipe', 'glitch', `vec4 tr(vec2 u){float e=io(p)*1.32-.01;vec4 a=TA(u),b=TB(u);vec3 m=step(vec3(u.x,u.x+.15,u.x+.3),vec3(e));return vec4(mix(a.rgb,b.rgb,m),mix(a.a,b.a,m.g));}`, 'RGB wipe', 'مسح ألوان'],
+    ['xPixelSort', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=X(u,p);float l=dot(c.rgb,vec3(.3,.59,.11));float s=step(1.-b*.85,l)*b*.3*h1(vec2(floor(u.x*R.x/3.),floor(p*12.)));return X(vec2(u.x,u.y-s),p);}`, 'Pixel sort', 'فرز بكسلات'],
+    ['xTvOff', 'glitch', `vec4 tr(vec2 u){float t=p<.5?p*2.:2.-p*2.;float sy=1.-smoothstep(0.,.6,t)*.992,sx=1.-smoothstep(.55,1.,t)*.99;vec2 v=.5+(u-.5)/vec2(sx,sy);float k=inb(v)?1.:0.;vec4 c=p<.5?TA(v):TB(v);c.rgb=(c.rgb+smoothstep(.3,1.,t)*.9)*k;c.a=1.;return c;}`, 'Old TV off', 'تلفزيون بيقفل'],
+    ['xInterlace', 'glitch', `vec4 tr(vec2 u){float l=mod(floor(u.y*R.y/2.),2.);float t=l>.5?smoothstep(.25,.55,p):smoothstep(.45,.75,p);vec2 o=vec2((l-.5)*.06*sin(PI*p),0.);return t>.5?TB(u+o):TA(u+o);}`, 'Interlace', 'سطور متداخلة'],
+    ['xBitcrush', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p);float s=max(b*.07,1./R.y);vec2 bs=vec2(s/AS(),s);vec2 v=b>.05?(floor(u/bs)+.5)*bs:u;vec4 c=mixAB(v,smoothstep(.45,.55,p));float n=mix(64.,3.,b);c.rgb=mix(c.rgb,floor(c.rgb*n+.5)/n,smoothstep(0.,.2,b));return c;}`, 'Bit crush', 'بِت كراش'],
+    ['xJpeg', 'glitch', `vec4 tr(vec2 u){vec2 bs=vec2(24./R.x,24./R.y);vec2 c=floor(u/bs);bool on=h1(c)<p;vec4 s=on?TB((c+.5)*bs):TA((c+.5)*bs);vec4 f=on?TB(u):TA(u);return mix(f,s,step(1.-sin(PI*p)*.7,h1(c+floor(p*10.))));}`, 'Broken JPEG', 'جيبج بايظ'],
+    ['xRoll', 'glitch', `vec4 tr(vec2 u){float e=io(p),b=sin(PI*p);float v=u.y+e*1.12;vec2 j=vec2((h1(vec2(floor(u.y*60.),floor(p*20.)))-.5)*.03*b,0.);if(v<1.)return TA(vec2(u.x,v)+j);if(v<1.12)return vec4(vec3(h1(u*R+p)*.25),1.);return TB(vec2(u.x,v-1.12)+j);}`, 'Signal roll', 'إشارة بتلف'],
+    ['xMatrix', 'glitch', `vec4 tr(vec2 u){float cw=12./R.x;float n=floor(u.x/cw);float hy=p*2.4-h1(vec2(n,5.))*.8;vec4 c=u.y<hy?TB(u):TA(u);float tl=clamp(1.-(hy-u.y)/.35,0.,1.)*step(u.y,hy);
+  float ch=step(.45,h1(floor(u*R/vec2(12.,16.))+floor(p*25.)));c.rgb=mix(c.rgb,vec3(.15,1.,.35)*ch*(.5+.5*tl),tl*.85);c.rgb+=vec3(.6,1.,.7)*exp(-abs(u.y-hy)*120.)*ch;return c;}`, 'Code rain', 'مطر كود'],
+    ['xTear', 'glitch', `vec4 tr(vec2 u){float b=pow(sin(PI*p),2.);float k=floor(u.y*5.+h1(vec2(floor(p*8.),2.))*3.);vec4 c=X(vec2(u.x+(h1(vec2(k,floor(p*8.)))-.5)*.5*b,u.y),p);c.rgb=mix(c.rgb,c.rgb*vec3(1.2,.8,1.3),b*step(.7,h1(vec2(k,3.))));return c;}`, 'Tear', 'تقطيع'],
+    ['xNegFlash', 'glitch', `vec4 tr(vec2 u){vec4 c=X(zm(u,vec2(.5),1.+.08*sin(PI*p)),p);c.rgb=mix(c.rgb,1.-c.rgb,step(.38,p)*step(p,.62));return c;}`, 'Negative flash', 'فلاش نيجاتيف'],
+    ['xLed', 'glitch', `vec4 tr(vec2 u){float b=sin(PI*p),w=smoothstep(.4,.6,p);float s=mix(1./R.y,.02,b);vec2 bs=vec2(s/AS(),s);vec2 c=(floor(u/bs)+.5)*bs;vec4 k=mixAB(c,w);float d=length((u-c)/bs);return mix(mixAB(u,w),vec4(k.rgb*step(d,.42),1.),smoothstep(.1,.4,b));}`, 'LED screen', 'شاشة ليد'],
+    ['xGlitchZoom', 'glitch', `vec4 tr(vec2 u){float b=max(sin(PI*p),0.);vec2 v=zm(u,vec2(.5),1.+floor(b*6.)/6.*.45);vec2 o=vec2((h1(vec2(floor(p*15.),2.))-.5)*.05*b,0.);return p<.5?rgbA(v,o):rgbB(v,o);}`, 'Glitch zoom', 'زووم جليتش'],
+    ['xHueSpin', 'light', `vec3 hr(vec3 c,float a){float Y=dot(c,vec3(.299,.587,.114)),I=dot(c,vec3(.596,-.274,-.322)),Q=dot(c,vec3(.211,-.523,.312));float cs=cos(a),sn=sin(a);vec2 iq=vec2(cs*I-sn*Q,sn*I+cs*Q);
+  return vec3(Y+.956*iq.x+.621*iq.y,Y-.272*iq.x-.647*iq.y,Y-1.106*iq.x+1.703*iq.y);}
+vec4 tr(vec2 u){vec4 c=mixAB(u,smoothstep(.3,.7,p));c.rgb=hr(c.rgb,p*6.2832);return c;}`, 'Colour spin', 'ألوان بتلف'],
+    ['xBloom', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mix(bA(u,.03*b),bB(u,.03*b),smoothstep(.45,.55,p));c.rgb+=pow(b,3.)*.7;c.rgb=mix(c.rgb,vec3(1.),pow(b,6.)*.6);return c;}`, 'Bloom', 'نور ناعم'],
+    ['xFlare', 'light', `vec4 tr(vec2 u){float x=p*1.6-.3;vec4 c=mixAB(u,smoothstep(.3,.7,p));float st=exp(-abs(u.y-.5)*40.)*exp(-abs(u.x-x)*3.)+exp(-length(sq(u)-vec2((x-.5)*AS(),0.))*8.)*1.5;c.rgb+=vec3(.6,.8,1.)*st*sin(PI*p);return c;}`, 'Lens flare sweep', 'فلير عدسة'],
+    ['xSunRays', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 s=sq(u);float rays=pow(.5+.5*sin(atan(s.y,s.x)*14.+p*4.),8.);vec4 c=mixAB(u,smoothstep(.4,.6,p));c.rgb+=vec3(1.,.85,.5)*(rays*(1.-length(s)*.8)+b*.4)*b;return c;}`, 'Sun rays', 'أشعة شمس'],
+    ['xNeon', 'light', `float lm(vec2 v,float w){return dot(mixAB(v,w).rgb,vec3(.3,.59,.11));}
+vec4 tr(vec2 u){float b=sin(PI*p),w=smoothstep(.4,.6,p);vec2 d=1.5/R;float gx=lm(u+vec2(d.x,0.),w)-lm(u-vec2(d.x,0.),w),gy=lm(u+vec2(0.,d.y),w)-lm(u-vec2(0.,d.y),w);float ed=clamp(length(vec2(gx,gy))*6.,0.,1.);
+  vec4 c=mixAB(u,w);c.rgb=mix(c.rgb,c.rgb*.15+mix(vec3(1.,.1,.8),vec3(.1,1.,.9),p)*ed*1.6,smoothstep(.2,.8,b));return c;}`, 'Neon edges', 'حواف نيون'],
+    ['xRainbowDip', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=X(u,p);vec3 g=.5+.5*cos(6.2832*(u.x+p+vec3(0.,.33,.67)));c.rgb=mix(c.rgb,g,smoothstep(.3,1.,b)*.9);return c;}`, 'Rainbow dip', 'قوس قزح'],
+    ['xShine', 'light', `vec4 tr(vec2 u){float x=u.x+u.y*.5;float band=exp(-pow((x-(p*2.2-.6))*8.,2.));vec4 c=mixAB(u,smoothstep(.35,.65,p));c.rgb+=band*.9;return c;}`, 'Shine', 'لمعة'],
+    ['xExposure', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=X(u,p);c.rgb=mix(c.rgb,1.-exp(-c.rgb*(1.+7.*b)),smoothstep(0.,.25,b));return c;}`, 'Over exposure', 'تعريض زيادة'],
+    ['xRainbowWipe', 'light', `vec4 tr(vec2 u){float x=u.x-(io(p)*1.5-.25);vec4 c=x<-.25?TB(u):x>0.?TA(u):mixAB(u,1.-smoothstep(-.25,0.,x));vec3 rb=.5+.5*cos(6.2832*(x*4.+vec3(0.,.33,.67)));c.rgb=mix(c.rgb,rb,step(-.25,x)*step(x,0.)*.75);return c;}`, 'Rainbow wipe', 'مسح قوس قزح'],
+    ['xThermal', 'light', `vec3 heat(float t){return clamp(vec3(1.6*t-.25,2.2*t*t-.2,abs(sin(t*3.1416*1.2))*(1.-t*.6)),0.,1.);}
+vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.45,.55,p));c.rgb=mix(c.rgb,heat(dot(c.rgb,vec3(.3,.59,.11))),smoothstep(.2,.9,b));return c;}`, 'Thermal', 'كاميرا حرارية'],
+    ['xDuotone', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.45,.55,p));c.rgb=mix(c.rgb,mix(vec3(.12,.05,.35),vec3(1.,.45,.6),dot(c.rgb,vec3(.3,.59,.11))),smoothstep(0.,.5,b));return c;}`, 'Duotone flash', 'لونين'],
+    ['xLeakSweep', 'light', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.35,.65,p));float g=exp(-length(sq(u)-vec2((p*1.6-.8)*AS(),.2-p*.4))*2.5);c.rgb+=mix(vec3(1.,.45,.1),vec3(1.,.2,.5),p)*g*b*1.6;return c;}`, 'Moving light leak', 'تسريب ضوء ماشي'],
+    ['xVortex', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);return mixAB(twirl(u,b*b*b*9.),smoothstep(.4,.6,p));}`, 'Vortex', 'دوامة قوية'],
+    ['xSine', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);return mixAB(u+vec2(sin(u.y*20.+p*10.)*.06*b,0.),smoothstep(.4,.6,p));}`, 'Sine waves', 'موجات'],
+    ['xHaze', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=u+(vec2(fbm(u*6.+p*3.),fbm(u*6.+7.-p*3.))-.5)*.08*b;return mixAB(v,smoothstep(.3,.7,p));}`, 'Heat haze', 'سراب'],
+    ['xDripUp', 'warp', `vec4 tr(vec2 u){float t=clamp(p*1.5-vn(vec2(u.x*25.,1.))*.45,0.,1.);float v=u.y+ei(t)*1.15;return v<=1.?TA(vec2(u.x,v)):TB(u);}`, 'Drip up', 'سيحان لفوق'],
+    ['xLens', 'warp', `vec4 tr(vec2 u){float cx=p*1.9-.45;vec2 s=sq(u),cp=vec2((cx-.5)*AS(),0.);float d=length(s-cp),r=.32;vec2 v=u;if(d<r)v=(cp+(s-cp)*(.55+.45*d/r))/vec2(AS(),1.)+.5;
+  vec4 c=v.x<cx?TB(v):TA(v);c.rgb+=vec3(.8,.9,1.)*exp(-abs(d-r)*120.)*.6;return c;}`, 'Magnifier', 'عدسة مكبّرة'],
+    ['xBubblePop', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);return mixAB(bulge(u,b*b*b*2.5),smoothstep(.45,.55,p));}`, 'Bubble pop', 'فقاعة'],
+    ['xTwist', 'warp', `vec4 tr(vec2 u){float a=sin(PI*p)*1.3*(u.y-.5)*2.;float x=.5+(u.x-.5)/max(cos(a),.05);if(x<0.||x>1.)return bg(u);vec4 c=X(vec2(x,u.y),p);c.rgb*=.6+.4*cos(a);return c;}`, 'Twist', 'لفّ'],
+    ['xShatter', 'warp', `vec2 sd(vec2 g){return g+vec2(h1(g),h1(g+4.1))*.8+.1;}
+vec4 tr(vec2 u){float e=ei(p);vec2 s=sq(u)*4.;vec2 c=floor(s);for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){vec2 g=c+vec2(float(i),float(j));vec2 o=sd(g);float sc=max(1.-e*.9,.05);
+  vec2 q=o+(s-o-normalize(o+vec2(.001))*e*3.)/sc;vec2 qc=floor(q);float md=9.;vec2 mg=vec2(0.);for(int k=-1;k<=1;k++)for(int l=-1;l<=1;l++){vec2 h=qc+vec2(float(k),float(l));float dd=length(q-sd(h));if(dd<md){md=dd;mg=h;}}
+  if(mg==g){vec2 a=q/4./vec2(AS(),1.)+.5;if(inb(a))return TA(a)*vec4(vec3(1.-e*.5),1.);}}return TB(zm(u,vec2(.5),1.1-.1*e));}`, 'Shatter', 'تكسير'],
+    ['xKaleido', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 s=sq(u);float sg=6.2832/(2.+floor(b*6.));float a=abs(mod(atan(s.y,s.x),sg)-sg*.5);vec2 v=mix(u,vec2(cos(a),sin(a))*length(s)/vec2(AS(),1.)+.5,smoothstep(.2,.9,b));return X(v,p);}`, 'Kaleidoscope burst', 'كاليدوسكوب متفجر'],
+    ['xMirrorTiles', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);return X(.5+(u-.5)*(1.+3.*b*b*b),p);}`, 'Mirror tiles', 'مرايات مكررة'],
+    ['xSmokeUp', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=u+vec2(0.,(fbm(u*4.+vec2(0.,p*2.))-.4)*b*.25);vec4 c=mixAB(v,smoothstep(.3,.7,p));c.rgb=mix(c.rgb,vec3(.8),b*.3*fbm(u*3.-vec2(0.,p)));return c;}`, 'Rising smoke', 'دخان طالع'],
+    ['xJelly', 'warp', `vec4 tr(vec2 u){float b=sin(PI*p);return mixAB(u+vec2(sin(u.y*10.+p*20.),cos(u.x*8.+p*15.))*.025*b,smoothstep(.4,.6,p));}`, 'Jelly', 'جيلي'],
+    ['xFilmSlip', 'film', `vec4 tr(vec2 u){float e=io(p),b=sin(PI*p);float v=u.y+e*1.16;vec2 d=vec2(0.,.06*b);vec4 c;if(v<1.)c=dbA(vec2(u.x,v),d);else if(v<1.16)c=vec4(vec3(.04)+vec3(.7)*step(.6,fract(u.x*8.))*step(abs(v-1.08),.025),1.);else c=dbB(vec2(u.x,v-1.16),d);
+  c.rgb*=mix(1.,.85+.15*h1(vec2(floor(p*24.),1.)),b);return c;}`, 'Film slip', 'الفيلم بيفلت'],
+    ['xProjector', 'film', `vec4 tr(vec2 u){float b=sin(PI*p),f=floor(p*24.);vec2 j=(vec2(h1(vec2(f,3.)),h1(vec2(f,8.)))-.5)*.02*b;vec4 c=X(u+j,p);c.rgb*=mix(1.,.75+.25*h1(vec2(f,5.)),b);c.rgb*=1.-b*.6*smoothstep(.3,.9,length(sq(u)));return c;}`, 'Projector', 'بروجكتور'],
+    ['xPolaroid', 'film', `vec4 tr(vec2 u){float e=ei(p);float s=max(1.-.65*e,.01);vec2 c=vec2(.5,.5+e*.9);vec2 a=.5+(rc(u,c,e*.4)-c)/s;if(inb(a))return TA(a);
+  if(e>.001&&a.x>-.05&&a.x<1.05&&a.y>-.05&&a.y<1.18)return vec4(.96,.95,.92,1.);return TB(zm(u,vec2(.5),1.12-.12*e));}`, 'Polaroid', 'صورة بولارويد'],
+    ['xSepia', 'film', `vec4 tr(vec2 u){float b=sin(PI*p);vec4 c=mixAB(u,smoothstep(.3,.7,p));vec3 sp=mat3(.393,.349,.272,.769,.686,.534,.189,.168,.131)*c.rgb;c.rgb=mix(c.rgb,sp+(h1(u*R+floor(p*24.))-.5)*.15,b);return c;}`, 'Sepia flash', 'سيبيا'],
+    ['xFrameShake', 'film', `vec4 tr(vec2 u){float b=sin(PI*p);vec2 v=zm(u+vec2(0.,sin(p*55.)*.06*b),vec2(.5),1.+.1*b);return p<.5?dbA(v,vec2(0.,.08*b)):dbB(v,vec2(0.,.08*b));}`, 'Frame shake', 'كادر بيترج'],
+    ['xHalation', 'film', `vec4 tr(vec2 u){float b=sin(PI*p),w=smoothstep(.4,.6,p);vec4 c=mixAB(u,w);vec4 g=mix(bA(u,.025),bB(u,.025),w);c.rgb+=(vec3(1.,.35,.15)*max(dot(g.rgb,vec3(.3,.59,.11))-.45,0.)*2.2+g.rgb*.3)*b;return c;}`, 'Halation', 'هالة حمرا'],
+    ['xVignetteDip', 'film', `vec4 tr(vec2 u){float b=sin(PI*p);float r=1.7-1.8*b*b*b;vec4 c=X(u,p);c.rgb*=1.-smoothstep(r-.3,r,length(sq(u)));return c;}`, 'Vignette dip', 'تعتيم أطراف'],
 ];
-  const CATS = ['cam', 'blur', 'glitch', 'light', 'film', 'shape', '3d', 'mask', 'slide', 'warp'];
+  const CATS = ['cam', 'blur', 'glitch', 'light', 'film', 'shape', '3d', 'mask', 'slide', 'warp', 'geo'];
   const MAIN = '\nvoid main(){R=(D>.5&&D<1.5)||D>2.5?RR.yx:RR;gl_FragColor=tr(dfwd(uv0));}';
   // easing of the transition's progress (all stay inside 0..1, which every shader expects)
   const EASES = ['lin', 'smooth', 'hit', 'soft', 'bounce', 'short'];

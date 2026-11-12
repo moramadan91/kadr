@@ -5,6 +5,9 @@ const S = window.MaqtoShared, G = window.MaqtoGraph, I18N = window.MaqtoI18n, IC
 // the two sample photos (trpics/) shown on transition, filter, effect and layer cards
 const trImgs = ['a', 'b'].map(n => Object.assign(new Image(), { src: 'trpics/' + n + '.jpg' }));
 for (const [id, p] of Object.entries(S.PRESETS)) if (p.en) { I18N.en['p_' + id] = I18N.en['p_' + id] || p.en; I18N.ar['p_' + id] = I18N.ar['p_' + id] || p.ar; } // filter names live with the filters
+for (const [id, , , en, ar] of window.MaqtoGLT.LIST) if (en) { I18N.en['tr_' + id] = en; I18N.ar['tr_' + id] = ar; } // so do the newer transition names
+for (const f of S.FXG) { I18N.en['fx_' + f.id] = f.en; I18N.ar['fx_' + f.id] = f.ar; } // and the formula effects'
+Object.assign(I18N.en, { trc_geo: 'Patterns', fxc_color: 'Colour', fxc_light: 'Light', fxc_overlay: 'Overlays' }); Object.assign(I18N.ar, { trc_geo: 'أنماط', fxc_color: 'ألوان', fxc_light: 'إضاءة', fxc_overlay: 'طبقات فوق' });
 const TA = window.__TAURI__;
 const inv = TA.core.invoke;
 const { clamp, num } = S;
@@ -572,8 +575,10 @@ const GL = (() => {
       return vec4(clamp(m * v, 0., 1.), c.a); }
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     float L6(vec2 u){ return dot(grade(u).rgb, vec3(.299, .587, .114)); }
+    ${S.fxgGLSL()}
     void main(){ // clip effects: ids are S.FX index + 1, numbers from S.fxVals; the export runs the same maths (S.fxChain)
       int id = int(fxId + .5); vec2 u = uv, px = uv * bsz; vec4 c;
+      if (id >= ${S.FXG0}) { gl_FragColor = gfx(id); return; } // formula effects (S.FXG), clamped inside gfx
       if (id == 2 || id == 3 || (id >= 13 && id <= 18)) u = .5 + (u - .5) / fxv.z + fxv.xy; // shake, zoom, bounce, sway...
       if (id >= 19 && id <= 21) { vec2 p = (uv - .5) * bsz; float cs = cos(fxv.x), sn = sin(fxv.x); u = .5 + vec2(cs * p.x + sn * p.y, -sn * p.x + cs * p.y) / fxv.y / bsz; }
       if (id == 9) { vec2 b = fxv.x / bsz; u = (floor(u / b) + .5) * b; }

@@ -236,6 +236,117 @@
     ['hueShift', 'creative', 'Hue shift', 'لف الألوان', hue(90)],
     ['alien', 'creative', 'Alien', 'فضائي', hue(140), sat(1.2)],
     ['gameboy', 'creative', 'Game screen', 'شاشة جيم', gray(1), ramp('#0f380f', '#306230', '#8bac0f', '#9bbc0f')],
+    // v1.1 library: 100+ more, same steps
+    ['brightPop', 'basic', 'Bright pop', 'منوّر وحيوي', bri(1.08), sat(1.15), con(1.05)],
+    ['gentle', 'basic', 'Gentle', 'هادي', con(.92), sat(.92), lift(.03)],
+    ['deep', 'basic', 'Deep', 'عميق', con(1.18), gamma(.92)],
+    ['cleanWhite', 'basic', 'Clean white', 'أبيض نضيف', bri(1.1), lift(.05), sat(.9)],
+    ['warmTouch', 'basic', 'Warm touch', 'لمسة دفا', gain(1.05, 1.01, .94)],
+    ['coolTouch', 'basic', 'Cool touch', 'لمسة برودة', gain(.95, 1, 1.06)],
+    ['richColor', 'basic', 'Rich colour', 'ألوان مليانة', sat(1.3), curve(.12)],
+    ['lowSat', 'basic', 'Low colour', 'ألوان هادية', sat(.7)],
+    ['contrasty', 'basic', 'Contrast', 'تباين', curve(.3)],
+    ['lifted', 'basic', 'Lifted', 'مرفوع', lift(.08), con(1.05)],
+    ['feedGlow', 'social', 'Feed glow', 'لمعة فيد', bri(1.06), tn([.5, .45, .5], [1, .8, .6], .35), sat(1.1)],
+    ['coral', 'social', 'Coral', 'كورال', blend('softlight', '#ff7f6a', .35), sat(1.05)],
+    ['sage', 'social', 'Sage', 'مريمية', tn([.4, .55, .45], [.75, .8, .65], .4), sat(.85), lift(.04)],
+    ['beige', 'social', 'Beige', 'بيج', sat(.75), blend('multiply', '#f3e2c7', .5), lift(.05)],
+    ['blueHour', 'social', 'Blue hour', 'الساعة الزرقا', tn([.25, .35, .7], [.7, .65, .8], .5), con(1.05)],
+    ['goldenHour', 'social', 'Golden hour', 'الساعة الدهبي', tn([.55, .4, .3], [1, .75, .35], .55), sat(1.1)],
+    ['softPink', 'social', 'Soft pink', 'بمبي ناعم', blend('screen', '#ffd1dc', .25), sat(.95)],
+    ['cleanLook', 'social', 'Clean', 'كلين', bri(1.05), sat(.88), tn([.5, .5, .5], [.75, .65, .6], .25)],
+    ['moodBoard', 'social', 'Mood board', 'مود بورد', sat(.8), lift(.06), tn([.45, .45, .5], [.7, .6, .5], .35)],
+    ['juicy', 'social', 'Juicy', 'عصير', sat(1.4), curve(.1), gain(1.03, 1, .97)],
+    ['mintPop', 'social', 'Mint pop', 'نعناع', tn([.3, .6, .55], [.8, .95, .85], .4), sat(1.1)],
+    ['portraitFilm', 'film', 'Portrait film', 'فيلم بورتريه', curve(.12), tn([.45, .5, .5], [.75, .6, .45], .4), sat(.9), lift(.03)],
+    ['vividFilm', 'film', 'Vivid film', 'فيلم ألوان قوية', sat(1.35), curve(.2), gain(1.04, 1, .96)],
+    ['greenCast', 'film', 'Green cast', 'فيلم مخضّر', tn([.4, .58, .45], [.6, .6, .5], .4), curve(.15)],
+    ['slideFilm', 'film', 'Slide film', 'فيلم شرائح', sat(1.5), curve(.3), gamma(.95)],
+    ['nightFilm', 'film', 'Night film', 'فيلم ليلي', tn([.25, .45, .55], [.95, .55, .35], .6), curve(.15), lift(.03)],
+    ['pushed', 'film', 'Pushed', 'فيلم مدفوع', con(1.3), sat(1.1), lift(.05)],
+    ['halfFrame', 'film', 'Half frame', 'نص كادر', look('film'), gain(1.04, 1, .94), lift(.04)],
+    ['disposable', 'film', 'Disposable', 'كاميرا رمي', sat(1.2), blend('softlight', '#ffe08a', .3), curve(.1), lift(.03)],
+    ['filmFade', 'film', 'Faded film', 'فيلم باهت', look('film'), lift(.1), sat(.85)],
+    ['redScale', 'film', 'Redscale', 'ريد سكيل', mix([1, .2, 0, .4, .6, 0, .1, .2, .3]), curve(.15)],
+    ['agedFilm', 'film', 'Aged film', 'فيلم قديم', look('vintage'), tn([.4, .4, .5], [.8, .65, .45], .35)],
+    ['orangeHaze', 'cine', 'Orange haze', 'ضباب برتقاني', tn([.3, .35, .45], [1, .6, .3], .6), con(1.1), sat(.9)],
+    ['emerald', 'cine', 'Emerald', 'زمردي', tn([.2, .5, .4], [.6, .75, .55], .5), con(1.1)],
+    ['steel', 'cine', 'Steel', 'حديد', sat(.6), tn([.3, .4, .55], [.6, .65, .7], .5), con(1.15)],
+    ['heat', 'cine', 'Heat', 'حر', gain(1.08, 1, .85), con(1.1), sat(.9)],
+    ['coldWar', 'cine', 'Cold war', 'حرب باردة', sat(.45), gain(.95, 1, 1.05), curve(.25)],
+    ['neoNoir', 'cine', 'Neo noir', 'نيو نوار', tn([.15, .3, .5], [.9, .4, .6], .6), con(1.2), sat(.8)],
+    ['dayForNight', 'cine', 'Day for night', 'ليل من نهار', gain(.55, .65, .95), con(1.15), sat(.6)],
+    ['brightBlock', 'cine', 'Bright blockbuster', 'بلوكباستر منوّر', look('tealOrange'), bri(1.06), sat(1.1)],
+    ['redPlanet', 'cine', 'Red planet', 'كوكب أحمر', gain(1.1, .85, .7), curve(.2)],
+    ['indie', 'cine', 'Indie', 'إندي', sat(.8), lift(.06), tn([.45, .5, .5], [.7, .6, .5], .3), curve(.1)],
+    ['bunker', 'cine', 'Bunker', 'مخبأ', sat(.5), gamma(.85), tn([.35, .4, .35], [.6, .6, .5], .4)],
+    ['silk', 'portrait', 'Silk', 'حرير', con(.92), lift(.03), tn([.5, .45, .45], [.8, .65, .55], .3)],
+    ['tan', 'portrait', 'Tan', 'سمار', gain(1.06, .98, .88), sat(1.05)],
+    ['rose', 'portrait', 'Rose', 'وردي', blend('softlight', '#ffb3c1', .4)],
+    ['ivory', 'portrait', 'Ivory', 'عاجي', bri(1.06), sat(.85), blend('screen', '#fff1dc', .2)],
+    ['caramel', 'portrait', 'Caramel', 'كراميل', tn([.5, .4, .3], [.9, .7, .5], .45), sat(.95)],
+    ['fair', 'portrait', 'Fair', 'فاتح', bri(1.08), gamma(1.08), sat(.92)],
+    ['studioCool', 'portrait', 'Studio cool', 'استوديو بارد', gain(.97, 1, 1.04), con(1.06), sat(.9)],
+    ['matteSkin', 'portrait', 'Matte skin', 'بشرة مط', lift(.06), con(.95), sat(.95)],
+    ['sunKissed', 'portrait', 'Sun kissed', 'بوسة شمس', blend('softlight', '#ffc070', .35), bri(1.03)],
+    ['blushPop', 'portrait', 'Blush', 'خدود', sat(1.1), blend('overlay', '#ff9aa8', .15)],
+    ['picnic', 'life', 'Picnic', 'نزهة', sat(1.2), gain(1.03, 1.04, .95)],
+    ['beach', 'life', 'Beach', 'بحر', tn([.3, .55, .65], [.95, .85, .65], .45), bri(1.04)],
+    ['forest', 'life', 'Forest', 'غابة', gain(.95, 1.06, .92), sat(1.1), con(1.05)],
+    ['street', 'life', 'Street', 'شارع', sat(.85), curve(.2), gain(1, 1, 1.02)],
+    ['coffee', 'life', 'Coffee', 'قهوة', tn([.35, .25, .2], [.85, .7, .5], .5), sat(.85)],
+    ['foodie', 'life', 'Foodie', 'أكلات', sat(1.25), gain(1.05, 1.01, .92), curve(.1)],
+    ['snowDay', 'life', 'Snow day', 'يوم تلج', bri(1.1), gain(.95, 1, 1.07), sat(.85)],
+    ['roadTrip', 'life', 'Road trip', 'رحلة', gain(1.07, 1, .88), con(1.1), lift(.03)],
+    ['garden', 'life', 'Garden', 'جنينة', sat(1.25), tn([.35, .5, .35], [.8, .85, .6], .3)],
+    ['harbor', 'life', 'Harbor', 'ميناء', tn([.25, .4, .55], [.8, .75, .65], .4), sat(.95), con(1.05)],
+    ['cityLights', 'life', 'City lights', 'أنوار المدينة', tn([.2, .25, .5], [1, .7, .4], .55), con(1.1), sat(1.15)],
+    ['silver', 'bw', 'Silver', 'فضي', gray(1), curve(.2), gain(.98, 1, 1.03)],
+    ['charcoal', 'bw', 'Charcoal', 'فحم', gray(1), gamma(.8), con(1.2)],
+    ['softBw', 'bw', 'Soft B&W', 'أبيض وأسود ناعم', gray(1), con(.85), lift(.05)],
+    ['hardBw', 'bw', 'Hard B&W', 'أبيض وأسود حاد', gray(1), curve(.6)],
+    ['warmBw', 'bw', 'Warm B&W', 'أبيض وأسود دافي', gray(1), tn([.5, .45, .4], [.62, .55, .45], .5)],
+    ['blueBw', 'bw', 'Blue B&W', 'أبيض وأسود أزرق', gray(1), tn([.35, .42, .6], [.55, .55, .6], .5)],
+    ['newsprint', 'bw', 'Newsprint', 'جرنال', gray(1), con(1.4), lift(.08), gain(1, .98, .93)],
+    ['ghost', 'bw', 'Ghost', 'شبح', gray(1), bri(1.2), con(.75), lift(.1)],
+    ['blueFilter', 'bw', 'Blue filter', 'فلتر أزرق', mix([0, .2, .8, 0, .2, .8, 0, .2, .8]), curve(.2)],
+    ['yellowFilter', 'bw', 'Yellow filter', 'فلتر أصفر', mix([.5, .45, .05, .5, .45, .05, .5, .45, .05]), curve(.15)],
+    ['greenTintBw', 'bw', 'Green tint', 'أخضر باهت', gray(1), tn([.4, .5, .42], [.6, .62, .55], .45)],
+    ['polaroid', 'retro', 'Polaroid', 'بولارويد', look('vintage'), tn([.35, .45, .55], [.9, .8, .6], .35), lift(.05)],
+    ['chrome64', 'retro', 'Chrome 64', 'كروم ٦٤', sat(1.3), curve(.25), gain(1.05, 1, .92)],
+    ['fifties', 'retro', 'Fifties', 'الخمسينات', sat(.7), tn([.45, .5, .55], [.95, .75, .6], .45), lift(.06)],
+    ['sixties', 'retro', 'Sixties', 'الستينات', sat(1.15), gain(1.04, 1.02, .88), lift(.05), con(.92)],
+    ['y2k', 'retro', 'Y2K', 'الألفينات', sat(1.2), tn([.4, .3, .65], [.75, .85, .95], .45), bri(1.04)],
+    ['camcorder', 'retro', 'Camcorder', 'كاميرا فيديو', sat(1.25), con(1.1), gain(1, 1.03, 1.05), lift(.04)],
+    ['postcard', 'retro', 'Postcard', 'كارت بوستال', sat(1.3), lift(.08), gain(1.04, .99, .9)],
+    ['threeStrip', 'retro', 'Three strip', 'تلات شرايط', mix([1.3, -.15, -.15, -.15, 1.3, -.15, -.15, -.15, 1.3]), curve(.1)],
+    ['faded80s', 'retro', 'Faded 80s', 'تمانينات باهتة', look('fade'), tn([.5, .35, .55], [.8, .65, .75], .4)],
+    ['arcade', 'retro', 'Arcade', 'أركيد', sat(1.6), curve(.35), hue(-8)],
+    ['oldTv', 'retro', 'Old TV', 'تلفزيون قديم', sat(.55), gain(.95, 1.05, 1), con(1.15), lift(.04)],
+    ['fog', 'mood', 'Fog', 'شبورة', lift(.18), con(.8), sat(.7)],
+    ['twilight', 'mood', 'Twilight', 'آخر النهار', tn([.3, .3, .6], [.75, .55, .6], .55), gamma(.92)],
+    ['ember', 'mood', 'Ember', 'جمر', tn([.3, .15, .1], [1, .55, .25], .6), gamma(.9), sat(.9)],
+    ['lonely', 'mood', 'Lonely', 'وحيد', sat(.4), gain(.95, 1, 1.05), lift(.05)],
+    ['mystic', 'mood', 'Mystic', 'غامض', tn([.35, .25, .55], [.6, .75, .7], .5), con(1.1), sat(.85)],
+    ['haunted', 'mood', 'Haunted', 'مسكون', sat(.3), tn([.35, .45, .4], [.6, .6, .55], .45), gamma(.85)],
+    ['candle', 'mood', 'Candlelight', 'ضوء شمعة', gain(1.1, .92, .7), gamma(.9), curve(.1)],
+    ['deepSea', 'mood', 'Deep sea', 'قاع البحر', gain(.6, .9, 1.1), con(1.1), sat(.9)],
+    ['ashes', 'mood', 'Ashes', 'رماد', sat(.25), lift(.08), con(.9)],
+    ['bloodMoon', 'mood', 'Blood moon', 'قمر دموي', tn([.3, .1, .15], [.9, .45, .4], .6), sat(.8), con(1.1)],
+    ['calm', 'mood', 'Calm', 'هدوء', sat(.75), tn([.45, .5, .55], [.7, .7, .7], .3), lift(.05)],
+    ['keepOrange', 'creative', 'Only orange', 'البرتقاني بس', keep(30)],
+    ['keepPink', 'creative', 'Only pink', 'البمبي بس', keep(330)],
+    ['xray', 'creative', 'X-ray', 'أشعة إكس', gray(1), F.inv(), gamma(.7), tn([.2, .35, .5], [.8, .9, 1], .5)],
+    ['duoTeal', 'creative', 'Duo teal', 'لونين تيل', ...duo('#002b36', '#7fffd4')],
+    ['duoSunset', 'creative', 'Duo sunset', 'لونين غروب', ...duo('#3d0c45', '#ffb347')],
+    ['duoCoffee', 'creative', 'Duo coffee', 'لونين بني', ...duo('#2b1a0f', '#f5e6c8')],
+    ['tritone', 'creative', 'Tritone', 'تلات ألوان', gray(1), ramp('#1a1033', '#d7263d', '#fbd87f')],
+    ['hueFlip', 'creative', 'Hue flip', 'ألوان مقلوبة', hue(180)],
+    ['channelSwap', 'creative', 'Channel swap', 'تبديل قنوات', mix([0, 0, 1, 0, 1, 0, 1, 0, 0])],
+    ['heatMap', 'creative', 'Heat map', 'خريطة حرارة', gray(1), ramp('#0000ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000')],
+    ['psychedelic', 'creative', 'Psychedelic', 'سايكيدليك', sat(2.2), hue(60), curve(.3)],
+    ['goldFoil', 'creative', 'Gold foil', 'دهبي لامع', gray(1), ramp('#1a1206', '#8a6a1f', '#f3d77a', '#fffbe6')],
+    ['matrix', 'creative', 'Matrix', 'ماتريكس', gray(1), ramp('#000000', '#003b00', '#00ff41', '#d4ffd9')],
   ].forEach(([id, cat, en, ar, ...ops]) => { PRESETS[id] = { cat, en, ar, f: chain(ops) }; });
   const presetFn = it => { const p = PRESETS[it.preset]; return p && p.f; };
 
@@ -793,6 +904,202 @@
     mirror: ['mirror', 'mirrorV', 'kaleido', 'quad', 'grid9', 'split3'],
     art: ['comic', 'sketch', 'emboss', 'dots'] };
   const q4 = x => Math.round(x * 1e4) / 1e4; // numbers that go into ffmpeg, used as-is by the preview too
+  /* ---------- formula effects: one definition makes both the preview shader and the export geq ---------- */
+  // x, y = where each output pixel reads the clip (0..1); c = its colour per channel (0..1); d = named parts.
+  // U V = output pixel, T = clip time, a = amount, AR = width/height, PX PY = centred position in height
+  // units, PR PA = its radius and angle, C = the read channel, L = luma there, R0 G0 B0 = the read colour,
+  // pick(r,g,b) = a value per channel (in x or y it reads each channel from its own place).
+  const FXG = [
+    // motion
+    { id: 'gHeartbeat', cat: 'motion', en: 'Heartbeat', ar: 'نبض قلب', d: [['z', '1+a*0.1*(pow(max(0,sin(7.54*T)),16)+0.6*pow(max(0,sin(7.54*T-0.7)),16))']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z' },
+    { id: 'gBreathe', cat: 'motion', en: 'Breathe', ar: 'تنفّس', d: [['z', '1+a*0.08*(0.5-0.5*cos(2.094*T))']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z' },
+    { id: 'gFloat', cat: 'motion', en: 'Float', ar: 'طفو', d: [['z', '1+a*0.08']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z+a*0.03*sin(2.513*T)' },
+    { id: 'gOrbit', cat: 'motion', en: 'Orbit', ar: 'دوران كاميرا', d: [['z', '1+a*0.1']], x: '0.5+(U-0.5)/z+a*0.035*cos(3.1416*T)', y: '0.5+(V-0.5)/z+a*0.035*sin(3.1416*T)' },
+    { id: 'gStopMotion', cat: 'motion', en: 'Stop motion', ar: 'ستوب موشن', d: [['f', 'floor(T*8)'], ['z', '1+a*0.06']], x: '0.5+(U-0.5)/z+(rnd(f)-0.5)*a*0.05', y: '0.5+(V-0.5)/z+(rnd(f+3.1)-0.5)*a*0.05' },
+    { id: 'gSpin', cat: 'motion', en: 'Spin', ar: 'لفّ مستمر', d: [['ang', 'a*T*1.2'], ['zc', 'hypot(AR,1)/min(AR,1)'], ['qx', '(PX*cos(ang)-PY*sin(ang))/zc'], ['qy', '(PX*sin(ang)+PY*cos(ang))/zc']], x: '0.5+qx/AR', y: '0.5+qy' },
+    { id: 'gSwing', cat: 'motion', en: 'Swing', ar: 'مرجحة', d: [['ang', 'a*0.2*sin(3.77*T)'], ['zc', '1+a*0.2*max(AR,1/AR)'], ['qx', '(PX*cos(ang)-PY*sin(ang))/zc'], ['qy', '(PX*sin(ang)+PY*cos(ang))/zc']], x: '0.5+qx/AR', y: '0.5+qy' },
+    { id: 'gJello', cat: 'motion', en: 'Jello', ar: 'جيلي', d: [['z', '1+a*0.05']], x: '0.5+(U-0.5)/z+a*0.02*sin(V*20+T*30)', y: '0.5+(V-0.5)/z' },
+    { id: 'gScroll', cat: 'motion', en: 'Endless slide', ar: 'تزحلق مستمر', x: 'fr(U+T*a*0.3)' },
+    { id: 'gScrollUp', cat: 'motion', en: 'Endless rise', ar: 'طلوع مستمر', y: 'fr(V+T*a*0.3)' },
+    { id: 'gZoomSteps', cat: 'motion', en: 'Zoom steps', ar: 'زووم درجات', d: [['z', '1+a*0.1*floor(fr(T*0.5)*4)']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z' },
+    { id: 'gVertigo', cat: 'motion', en: 'Vertigo', ar: 'دوخة', d: [['w', '0.5-0.5*cos(2.094*T)'], ['z', '1+a*0.35*w*(1-PR*1.4)+a*0.2']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z' },
+    { id: 'gStretchBeat', cat: 'motion', en: 'Stretch beat', ar: 'مطّ على الإيقاع', d: [['s', '1+a*0.15*pow(max(0,sin(6.2832*T)),8)']], x: '0.5+(U-0.5)/s', y: '0.5+(V-0.5)/(1+(s-1)*0.3)' },
+    // distort
+    { id: 'gFisheye', cat: 'distort', en: 'Fisheye', ar: 'عين السمكة', d: [['k', '1+a*0.8*PR*PR']], x: '0.5+PX/k/AR', y: '0.5+PY/k' },
+    { id: 'gPincushion', cat: 'distort', en: 'Pincushion', ar: 'وسادة', d: [['k', '(1+a*0.5*PR*PR)/(1+a*0.5*0.33)']], x: '0.5+PX*k/AR', y: '0.5+PY*k' },
+    { id: 'gUnderwater', cat: 'distort', en: 'Underwater', ar: 'تحت الماية', d: [['z', '1+a*0.04']], x: '0.5+(U-0.5)/z+a*0.012*sin(V*25+T*3)', y: '0.5+(V-0.5)/z+a*0.012*cos(U*20+T*2.5)', c: 'mix(C,C*pick(0.8,0.97,1.12),a)' },
+    { id: 'gHeatHaze', cat: 'distort', en: 'Heat haze', ar: 'سراب', x: 'U+a*0.006*sin(V*80-T*12)+a*0.004*sin(V*37+T*7)' },
+    { id: 'gFrosted', cat: 'distort', en: 'Frosted glass', ar: 'زجاج مصنفر', d: [['gx', 'floor(U*160)'], ['gy', 'floor(V*160)']], x: 'U+(rnd(gx+gy*1.37)-0.5)*a*0.03', y: 'V+(rnd(gx*1.7+gy*0.71+5)-0.5)*a*0.03' },
+    { id: 'gReeded', cat: 'distort', en: 'Reeded glass', ar: 'زجاج مضلّع', x: 'U+a*0.05*(fr(U*30)-0.5)' },
+    { id: 'gShear', cat: 'distort', en: 'Shear', ar: 'ميلان', d: [['z', '1+a*0.3']], x: '0.5+(U-0.5)/z+(V-0.5)*a*0.2', y: '0.5+(V-0.5)/z' },
+    { id: 'gWaveV', cat: 'distort', en: 'Flag wave', ar: 'علم بيرفرف', d: [['z', '1+a*0.07']], x: '0.5+(U-0.5)/z', y: '0.5+(V-0.5)/z+a*0.03*sin(U*12+T*3)' },
+    { id: 'gZigzag', cat: 'distort', en: 'Zigzag', ar: 'زجزاج', d: [['z', '1+a*0.06']], x: '0.5+(U-0.5)/z+a*0.025*(abs(fr(V*10)-0.5)*4-1)', y: '0.5+(V-0.5)/z' },
+    { id: 'gMelt', cat: 'distort', en: 'Melt', ar: 'سيحان', y: 'V-a*0.25*V*rnd(floor(U*90))' },
+    { id: 'gStairs', cat: 'distort', en: 'Stairs', ar: 'سلالم', x: 'U+(floor(V*8)/8-0.4375)*a*0.2' },
+    { id: 'gTunnel', cat: 'distort', en: 'Tunnel', ar: 'نفق', x: 'fr(PA/6.2832+0.5)', y: 'fr(0.12/max(PR,0.01)+T*a*0.6)' },
+    { id: 'gTinyPlanet', cat: 'distort', en: 'Tiny planet', ar: 'كوكب صغير', x: 'mix(U,fr(PA/6.2832+0.75),a)', y: 'mix(V,clip(1-PR*1.8,0,1),a)' },
+    // mirror
+    { id: 'gMirrorDiag', cat: 'mirror', en: 'Diagonal mirror', ar: 'مراية مايلة', x: 'sel(gt(U,V),V,U)', y: 'sel(gt(U,V),U,V)' },
+    { id: 'gKaleido6', cat: 'mirror', en: 'Kaleidoscope 6', ar: 'كاليدوسكوب ٦', d: [['aa', 'abs(mod(PA+T*a*0.5,1.0472)-0.5236)']], x: '0.5+PR*cos(aa)/AR', y: '0.5+PR*sin(aa)' },
+    { id: 'gMirrorTiles', cat: 'mirror', en: 'Mirror tiles', ar: 'مرايات مكررة', d: [['n', '1+floor(a*3.99)']], x: '1-abs(mod(U*n,2)-1)', y: '1-abs(mod(V*n,2)-1)' },
+    { id: 'gFlipH', cat: 'mirror', en: 'Flip sideways', ar: 'قلب أفقي', x: '1-U' },
+    { id: 'gFlipV', cat: 'mirror', en: 'Upside down', ar: 'مقلوب', y: '1-V' },
+    // glitch
+    { id: 'gBlockShift', cat: 'glitch', en: 'Block shift', ar: 'إزاحة بلوكات', d: [['h', 'rnd(floor(V*20)+floor(T*10)*7.3)']], x: 'U+sel(gt(h,1-a*0.3),(rnd(h*13)-0.5)*0.3,0)' },
+    { id: 'gScanJitter', cat: 'glitch', en: 'Line jitter', ar: 'سطور بتترعش', x: 'U+a*0.012*(rnd(floor(V*300)+floor(T*30)*3.1)-0.5)' },
+    { id: 'gVRoll', cat: 'glitch', en: 'Vertical roll', ar: 'صورة بتلف', d: [['r', 'fr(V+T*a*0.6)']], y: 'r', c: 'C*sstep(0,0.03,r)' },
+    { id: 'gRgbWave', cat: 'glitch', en: 'RGB wave', ar: 'موجة ألوان', x: 'U+pick(1,0,-1)*a*0.012*sin(V*30+T*5)' },
+    { id: 'gAberration', cat: 'glitch', en: 'Lens aberration', ar: 'زيغ عدسة', d: [['k', '1+pick(-1,0,1)*a*0.03*PR']], x: '0.5+(U-0.5)*k', y: '0.5+(V-0.5)*k' },
+    { id: 'gRgbJitter', cat: 'glitch', en: 'RGB jitter', ar: 'ألوان بتترعش', d: [['f', 'floor(T*10)']], x: 'U+(rnd(f+pick(0,7,13))-0.5)*a*0.03', y: 'V+(rnd(f+pick(3,9,17))-0.5)*a*0.02' },
+    { id: 'gAnaglyph', cat: 'glitch', en: '3D glasses', ar: 'نضارة 3D', x: 'U+pick(-1,1,1)*a*0.012', c: 'L' },
+    { id: 'gStatic', cat: 'glitch', en: 'TV static', ar: 'تشويش', c: 'mix(C,rnd(floor(U*320)*1.3+floor(V*560)*0.7+floor(T*24)*5.1),a*0.6)' },
+    { id: 'gDigital', cat: 'glitch', en: 'Digital blocks', ar: 'بلوكات ديجيتال', d: [['bx', 'floor(U*24)'], ['by', 'floor(V*40)'], ['on', 'gt(rnd(bx*0.37+by*1.31+floor(T*8)*2.7),1-a*0.3)']], x: 'sel(on,(bx+0.5)/24,U)', y: 'sel(on,(by+0.5)/40,V)', c: 'sel(on,floor(C*4+0.5)/4,C)' },
+    { id: 'gBadTV', cat: 'glitch', en: 'Bad TV', ar: 'تلفزيون بايظ', x: 'U+a*0.02*sin(V*6+T*4)*sin(T*1.3)+a*0.01*(rnd(floor(V*200)+floor(T*30))-0.5)', c: 'C*(1-a*0.15+a*0.15*sin(V*600))+(rnd(floor(U*300)+floor(V*500)*1.3+floor(T*24))-0.5)*a*0.2' },
+    { id: 'gVhsTrack', cat: 'retro', en: 'VHS tracking', ar: 'تراكينج VHS', d: [['bn', 'sstep(0.06,0,abs(V-fr(T*0.3)*1.2+0.1))'], ['j', 'rnd(floor(V*200)+floor(T*30))']], x: 'U+bn*a*0.12*(j-0.5)', c: 'C+bn*a*0.35*(j-0.3)' },
+    // colour
+    { id: 'gSolarize', cat: 'color', en: 'Solarize', ar: 'سولارايز', c: 'mix(C,sel(gt(C,0.5),1-C,C)*1.6,a)' },
+    { id: 'gXray', cat: 'color', en: 'X-ray', ar: 'أشعة إكس', c: 'mix(C,(1-L)*pick(0.75,0.9,1.1),a)' },
+    { id: 'gInfrared', cat: 'color', en: 'Infrared', ar: 'أشعة تحت الحمرا', c: 'mix(C,pick(G0*1.2,R0*0.4+B0*0.2,B0*0.7+G0*0.2),a)' },
+    { id: 'gSwapRB', cat: 'color', en: 'Swap colours', ar: 'بدّل الألوان', c: 'mix(C,pick(B0,G0,R0),a)' },
+    { id: 'gThermal', cat: 'color', en: 'Thermal', ar: 'حراري', c: 'mix(C,clip(pick(1.6*L-0.25,2.2*L*L-0.2,abs(sin(L*3.77))*(1-L*0.6)),0,1),a)' },
+    { id: 'gCyber', cat: 'color', en: 'Cyberpunk', ar: 'سايبربانك', c: 'C+a*(pick(0.25,-0.08,0.3)*(1-L)+pick(-0.05,0.2,0.25)*L)' },
+    { id: 'gBleach', cat: 'color', en: 'Bleach bypass', ar: 'مبيّض', c: 'mix(C,clip((L+(C-L)*0.4-0.5)*1.4+0.5,0,1),a)' },
+    { id: 'gRainbow', cat: 'color', en: 'Rainbow flow', ar: 'قوس قزح ماشي', d: [['Y', '0.299*R0+0.587*G0+0.114*B0'], ['I', '0.596*R0-0.274*G0-0.322*B0'], ['Q', '0.211*R0-0.523*G0+0.312*B0'], ['h', '6.2832*(U*0.7+T*0.25)'], ['I2', 'cos(h)*I-sin(h)*Q'], ['Q2', 'sin(h)*I+cos(h)*Q']],
+      c: 'mix(C,Y+pick(0.956*I2+0.621*Q2,-0.272*I2-0.647*Q2,-1.106*I2+1.703*Q2),a)' },
+    { id: 'gTechnicolor', cat: 'color', en: 'Two-strip colour', ar: 'تكنيكلر', c: 'mix(C,pick(R0*1.1,(G0+B0)*0.55,(G0+B0)*0.55),a)' },
+    { id: 'gNegFilm', cat: 'color', en: 'Film negative', ar: 'نيجاتيف فيلم', c: 'mix(C,(1-C)*pick(1,0.75,0.55),a)' },
+    { id: 'gChrome', cat: 'color', en: 'Chrome', ar: 'كروم', c: 'mix(C,abs(sin(L*9.42))*pick(0.9,0.95,1),a)' },
+    { id: 'gGold', cat: 'color', en: 'Gold', ar: 'دهبي', c: 'mix(C,mix(pick(0.1,0.05,0),pick(1,0.85,0.4),L),a)' },
+    { id: 'gIce', cat: 'color', en: 'Ice', ar: 'تلج', c: 'mix(C,L*pick(0.7,0.9,1.15)+0.05,a)' },
+    { id: 'gWarhol', cat: 'color', en: 'Pop art 4', ar: 'بوب آرت', d: [['t', 'floor(U*2)+2*floor(V*2)'], ['on', 'step(0.45,L)']], x: 'fr(U*2)', y: 'fr(V*2)',
+      c: 'mix(C,sel(lt(t,0.5),mix(pick(0.2,0.05,0.4),pick(1,0.2,0.6),on),sel(lt(t,1.5),mix(pick(0.05,0.2,0.4),pick(0.1,0.85,1),on),sel(lt(t,2.5),mix(pick(0.4,0.1,0.05),pick(1,0.9,0.1),on),mix(pick(0.05,0.3,0.1),pick(0.5,1,0.3),on)))),a)' },
+    // light
+    { id: 'gFlicker', cat: 'light', en: 'Flicker', ar: 'رعشة نور', c: 'C*(1-a*0.35*rnd(floor(T*24)))' },
+    { id: 'gSpotlight', cat: 'light', en: 'Spotlight', ar: 'سبوت لايت', c: 'C*(1-a*0.85*sstep(0.12,0.42,hypot(PX-0.25*sin(T*0.8),PY-0.15*sin(T*1.1))))' },
+    { id: 'gLeak', cat: 'light', en: 'Light leak', ar: 'تسريب ضوء', c: 'C+a*pick(1,0.45,0.15)*exp(-hypot(PX-0.5*sin(T*0.5),PY+0.3)*3)*1.3' },
+    { id: 'gSunset', cat: 'light', en: 'Sunset glow', ar: 'وهج الغروب', d: [['g', 'mix(pick(1,0.55,0.2),pick(0.55,0.1,0.6),V)']], c: '1-(1-C)*(1-g*a*0.6)' },
+    { id: 'gPulseLight', cat: 'light', en: 'Light pulse', ar: 'نبضة نور', c: 'C*(1+a*0.6*pow(max(0,sin(12.566*T)),6))' },
+    // art
+    { id: 'gHatch', cat: 'art', en: 'Cross hatch', ar: 'تظليل قلم', d: [['s1', 'fr((PX+PY)*70)'], ['s2', 'fr((PX-PY)*70)'], ['ink', 'max(lt(s1,0.5*(1-L*1.6)),lt(s2,0.5*(0.6-L*1.6)))']], c: 'mix(C,1-ink*0.9,a)' },
+    { id: 'gWoodcut', cat: 'art', en: 'Woodcut', ar: 'حفر خشب', c: 'mix(C,step(0.5+0.5*sin(PY*300+L*8),L),a)' },
+    { id: 'gStipple', cat: 'art', en: 'Stipple', ar: 'تنقيط', c: 'mix(C,step(rnd(floor(U*AR*500)*1.1+floor(V*500)*0.37),L),a)' },
+    { id: 'gMosaic', cat: 'art', en: 'Mosaic tiles', ar: 'موزاييك', d: [['n', '60-a*45'], ['fx', 'fr(U*n*AR)'], ['fy', 'fr(V*n)'], ['g', 'sstep(0,0.07,min(fx,fy))*(1-sstep(0.93,1,max(fx,fy)))']], x: '(floor(U*n*AR)+0.5)/(n*AR)', y: '(floor(V*n)+0.5)/n', c: 'C*(0.35+0.65*g)' },
+    { id: 'gLed', cat: 'art', en: 'LED wall', ar: 'شاشة ليد', d: [['n', '140-a*100']], x: '(floor(U*n*AR)+0.5)/(n*AR)', y: '(floor(V*n)+0.5)/n', c: 'C*sstep(0.48,0.34,hypot(fr(U*n*AR)-0.5,fr(V*n)-0.5))*1.3' },
+    // retro
+    { id: 'gGameboy', cat: 'retro', en: 'Game console', ar: 'جيم بوي', d: [['n', '160-a*100'], ['q', 'floor(clip(L,0,0.999)*4)/3']], x: '(floor(U*n*AR)+0.5)/(n*AR)', y: '(floor(V*n)+0.5)/n', c: 'mix(pick(0.06,0.22,0.06),pick(0.61,0.74,0.06),q)' },
+    { id: 'g8bit', cat: 'retro', en: '8-bit', ar: '٨ بت', d: [['n', '120-a*80']], x: '(floor(U*n*AR)+0.5)/(n*AR)', y: '(floor(V*n)+0.5)/n', c: 'floor(C*4+0.5)/4' },
+    { id: 'gCrt', cat: 'retro', en: 'CRT screen', ar: 'شاشة قديمة', d: [['k', 'floor(fr(U*240*AR)*3)'], ['msk', 'sel(lt(abs(k-pick(0,1,2)),0.5),1,0.45)']], c: 'mix(C,C*msk*(0.8+0.2*sin(V*1696))*1.3,a)' },
+    { id: 'gSecurity', cat: 'retro', en: 'Security camera', ar: 'كاميرا مراقبة', c: 'mix(C,L*pick(0.85,1,0.85)*(0.9+0.1*sin(V*1600))+(rnd(floor(U*300)+floor(V*520)*1.3+floor(T*24))-0.5)*0.1,a)' },
+    { id: 'gFilmGate', cat: 'retro', en: 'Old projector', ar: 'بروجكتور قديم', y: 'V+a*0.004*sin(T*25)', c: 'C*(1-a*0.15*rnd(floor(T*24)))*(1-a*0.5*sstep(0.35,0.75,PR))' },
+    { id: 'gScratches', cat: 'retro', en: 'Film scratches', ar: 'خدوش فيلم', d: [['f', 'floor(T*24)'], ['ln', 'sstep(0.002,0,abs(U-rnd(f)))+sstep(0.0015,0,abs(U-rnd(f+7)))*gt(rnd(f+3),0.5)']], c: 'C*(1-clip(ln,0,1)*a*0.7)' },
+    { id: 'gDust', cat: 'retro', en: 'Dust', ar: 'تراب', d: [['ix', 'floor(U*AR*60)'], ['iy', 'floor(V*60)']], c: 'C*(1-gt(rnd(ix*1.3+iy*7.1+floor(T*12)*3.7),0.995-a*0.012)*0.8)' },
+    // overlays
+    { id: 'gSnow', cat: 'overlay', en: 'Snow', ar: 'تلج نازل', d: [['cx', 'U*AR*14+0.3*sin(T+V*3)'], ['cy', 'V*14-T*1.5'], ['ix', 'floor(cx)'], ['iy', 'floor(cy)']],
+      c: 'C+sstep(0.12,0.04,hypot(fr(cx)-rnd(ix*7.1+iy*3.3),fr(cy)-rnd(ix*1.9+iy*5.7)))*gt(rnd(ix+iy*9.1),0.4)*a*1.2' },
+    { id: 'gRain', cat: 'overlay', en: 'Rain', ar: 'مطر', d: [['cx', 'U*AR*40'], ['cy', 'V*6-T*10'], ['r', 'rnd(floor(cx)*3.1+floor(cy)*7.7)']], c: 'C*(1-a*0.15)+sstep(0.08,0,abs(fr(cx)-r))*sstep(0,0.6,fr(cy))*gt(r,0.5)*a*0.6' },
+    { id: 'gSparkle', cat: 'overlay', en: 'Sparkles', ar: 'لمعة نجوم', d: [['cx', 'U*AR*20'], ['cy', 'V*20'], ['id', 'floor(cx)*1.7+floor(cy)*9.3']],
+      c: 'C+exp(-hypot(fr(cx)-rnd(id),fr(cy)-rnd(id+2.1))*40)*pow(max(0,sin(T*4+rnd(id+5)*6.28)),6)*gt(rnd(id+7.3),0.7)*a*2' },
+    { id: 'gConfetti', cat: 'overlay', en: 'Confetti', ar: 'كونفيتي', d: [['cx', 'U*AR*12+0.5*sin(T*0.7+V*4)'], ['cy', 'V*12-T*2'], ['id', 'floor(cx)*2.3+floor(cy)*5.1']],
+      c: 'mix(C,0.4+0.6*rnd(id+pick(1,2,3)),clip(lt(max(abs(fr(cx)-rnd(id)),abs(fr(cy)-rnd(id+3.3))),0.08)*gt(rnd(id+5.7),0.5)*a*2,0,1))' },
+    { id: 'gBubbles', cat: 'overlay', en: 'Bubbles', ar: 'فقاعات', d: [['cx', 'U*AR*8'], ['cy', 'V*8+T*1.2'], ['id', 'floor(cx)*3.7+floor(cy)*1.3']],
+      c: 'C+sstep(0.03,0,abs(hypot(fr(cx)-0.5,fr(cy)-0.5)-0.15-0.2*rnd(id)))*gt(rnd(id+4.4),0.45)*a*0.8' },
+    { id: 'gGrid', cat: 'overlay', en: 'Grid lines', ar: 'شبكة', d: [['ln', 'max(sstep(0.05,0,fr(U*AR*12)),sstep(0.05,0,fr(V*12)))']], c: 'mix(C,pick(0.4,0.85,1),ln*a*0.6)' },
+    { id: 'gStripes', cat: 'overlay', en: 'Moving stripes', ar: 'خطوط ماشية', c: 'C*(1-step(0.5,fr((PX+PY)*8+T*a))*a*0.3)' },
+  ];
+  const FXG_BY = Object.fromEntries(FXG.map(f => [f.id, f]));
+  const FXG0 = FX.length + 1; // shader id of the first one
+  for (const f of FXG) { FX.push(f.id); (FX_CAT[f.cat] = FX_CAT[f.cat] || []).push(f.id); }
+  // tiny compiler: parse once, print as GLSL (preview) or as an ffmpeg expression (export)
+  function fxgParse(src) {
+    const tk = src.match(/\d*\.?\d+(?:e[-+]?\d+)?|[A-Za-z_]\w*|[-+*/(),]/g) || [];
+    let i = 0;
+    const eat = x => { if (tk[i] !== x) throw new Error('expected ' + x + ' in ' + src); i++; };
+    const prim = () => {
+      const t = tk[i++];
+      if (t === '(') { const v = sum(); eat(')'); return v; }
+      if (t === '-') return { t: 'neg', x: prim() };
+      if (/^[\d.]/.test(t)) return { t: 'num', v: +t };
+      if (tk[i] === '(') { i++; const a = [sum()]; while (tk[i] === ',') { i++; a.push(sum()); } eat(')'); return { t: 'call', f: t, a }; }
+      if (/^[A-Za-z_]/.test(t)) return { t: 'var', n: t };
+      throw new Error('bad token ' + t + ' in ' + src);
+    };
+    const prod = () => { let v = prim(); while (tk[i] === '*' || tk[i] === '/') v = { t: 'bin', op: tk[i++], l: v, r: prim() }; return v; };
+    const sum = () => { let v = prod(); while (tk[i] === '+' || tk[i] === '-') v = { t: 'bin', op: tk[i++], l: v, r: prod() }; return v; };
+    const v = sum();
+    if (i !== tk.length) throw new Error('trailing input in ' + src);
+    return v;
+  }
+  // does n read any of the names k (pk: a pick() counts too)
+  const uses = (n, k, pk) => n.t === 'var' ? k.includes(n.n) : n.t === 'call' ? (pk && n.f === 'pick') || n.a.some(x => uses(x, k, pk)) : n.t === 'bin' ? uses(n.l, k, pk) || uses(n.r, k, pk) : n.t === 'neg' ? uses(n.x, k, pk) : false;
+  function fxgAst(f) { // x, y, c with the named parts put in place (the shader), and kept apart (the export)
+    if (f.ast) return f.ast;
+    const raw = (f.d || []).map(([n, e]) => [n, fxgParse(e)]), defs = {};
+    if (raw.length > 6) throw new Error(f.id + ': at most 6 named parts (geq registers 3..8)');
+    const fill = n => n.t === 'var' && defs[n.n] ? defs[n.n] : n.t === 'call' ? { ...n, a: n.a.map(fill) } : n.t === 'bin' ? { ...n, l: fill(n.l), r: fill(n.r) } : n.t === 'neg' ? { ...n, x: fill(n.x) } : n;
+    for (const [n, t] of raw) defs[n] = fill(t);
+    const rx = fxgParse(f.x || 'U'), ry = fxgParse(f.y || 'V'), rc = fxgParse(f.c || 'C'), x = fill(rx), y = fill(ry);
+    const late = []; // parts that read the picture, so they come after the read
+    for (const [n, t] of raw) if (uses(t, ['C', 'L', 'R0', 'G0', 'B0', ...late])) late.push(n);
+    return (f.ast = { x, y, c: fill(rc), raw, rx, ry, rc, late, perCh: uses(x, ['K'], 1) || uses(y, ['K'], 1), moves: !!(f.x || f.y) });
+  }
+  // m = 'gl' | 'ff'; k = channel 0..2; V = variable names for this mode
+  function fxgPrint(n, m, k, V) {
+    const P = x => fxgPrint(x, m, k, V);
+    switch (n.t) {
+      case 'num': { const s = String(n.v); return m === 'gl' && !/[.e]/.test(s) ? s + '.' : s; }
+      case 'neg': return `(-${P(n.x)})`;
+      case 'bin': return `(${P(n.l)}${n.op}${P(n.r)})`;
+      case 'var': if (n.n === 'K') return m === 'gl' ? k + '.' : String(k); if (!(n.n in V)) throw new Error('unknown ' + n.n); return V[n.n];
+    }
+    const a = n.a.map(P), [p, q, r] = a;
+    if (n.f === 'pick') return a[k];
+    const gl = { fr: `fract(${p})`, mod: `mod(${p},${q})`, hypot: `length(vec2(${p},${q}))`, atan2: `atan(${p},${q})`, clip: `clamp(${p},${q},${r})`,
+      sstep: `ss_(${p},${q},${r})`, lt: `lt_(${p},${q})`, gt: `gt_(${p},${q})`, sel: `((${p})>.5?(${q}):(${r}))`, rnd: `rnd_(${p})` };
+    // register 9 holds a value just long enough to use it twice (nothing else runs between its st and ld)
+    const ff = { fr: `(st(9,${p});ld(9)-floor(ld(9)))`, mod: `((${p})-(${q})*floor((${p})/(${q})))`, mix: `((${p})+((${q})-(${p}))*(${r}))`, step: `gte(${q},${p})`,
+      sstep: `(st(9,clip(((${r})-(${p}))/((${q})-(${p})),0,1));ld(9)*ld(9)*(3-2*ld(9)))`, sel: `if(gt(${p},0.5),${q},${r})`,
+      rnd: `(st(9,sin((${p})*12.9898)*437.5453);ld(9)-floor(ld(9)))` };
+    const t = (m === 'gl' ? gl : ff)[n.f];
+    if (t) return t;
+    if (!['sin', 'cos', 'tan', 'abs', 'floor', 'min', 'max', 'pow', 'sqrt', 'exp', 'mix', 'step', 'hypot', 'atan2', 'clip', 'lt', 'gt'].includes(n.f)) throw new Error('unknown function ' + n.f);
+    return `${n.f}(${a.join(',')})`;
+  }
+  // the preview shader's part: vec4 gfx(int id), reading the clip through grade(u)
+  function fxgGLSL() {
+    const V = { U: 'U', V: 'V', T: 'T', a: 'a', AR: 'AR', PX: 'PX', PY: 'PY', PR: 'PR', PA: 'PA', C: 'C', L: 'L', R0: 'R0', G0: 'G0', B0: 'B0' };
+    const ch = 'rgb';
+    let s = `float lt_(float a,float b){return a<b?1.:0.;} float gt_(float a,float b){return a>b?1.:0.;}
+    float ss_(float a,float b,float x){float t=clamp((x-a)/(b-a),0.,1.);return t*t*(3.-2.*t);} float rnd_(float x){return fract(sin(x*12.9898)*437.5453);}
+    vec4 gfx(int id){ float U=uv.x, V=uv.y, a=fxv.x, T=fxv.y, AR=bsz.x/bsz.y, PX=(U-.5)*AR, PY=V-.5, PR=length(vec2(PX,PY)), PA=atan(PY,PX);\n`;
+    FXG.forEach((f, j) => {
+      const A = fxgAst(f);
+      s += `  if(id==${FXG0 + j}){ vec4 o;`;
+      for (let k = 0; k < 3; k++) {
+        if (k === 0 || A.perCh) s += ` vec4 c${A.perCh ? k : 0}=grade(vec2(${fxgPrint(A.x, 'gl', k, V)},${fxgPrint(A.y, 'gl', k, V)}));`;
+        const c = 'c' + (A.perCh ? k : 0);
+        s += ` { float C=${c}.${ch[k]}, R0=${c}.r, G0=${c}.g, B0=${c}.b, L=dot(${c}.rgb,vec3(.299,.587,.114)); o.${ch[k]}=clamp(${fxgPrint(A.c, 'gl', k, V)},0.,1.); }`;
+      }
+      s += ` o.a=c${A.perCh ? 1 : 0}.a; return o; }\n`;
+    });
+    return s + '  return grade(uv); }\n';
+  }
+  // the export's part: one geq over the clip's w x h box (pixel centres at X+0.5, like the shader)
+  function fxgChain(f, a) {
+    const A = fxgAst(f), ch = 'rgb';
+    const at = (c, k) => `${c}(ld(0),ld(1))`;
+    const V0 = { U: '((X+0.5)/W)', V: '((Y+0.5)/H)', T: 'T', a: String(q4(a)), AR: '(W/H)', PX: '((X+0.5-W/2)/H)', PY: '((Y+0.5-H/2)/H)' };
+    V0.PR = `hypot(${V0.PX},${V0.PY})`; V0.PA = `atan2(${V0.PY},${V0.PX})`;
+    // registers: 0, 1 = where to read, 2 = luma there, 3.. = the named parts, each worked out once per pixel
+    A.raw.forEach(([n], i) => { V0[n] = `ld(${3 + i})`; });
+    const parts = (k, V, late) => A.raw.map(([n, t], i) => A.late.includes(n) === late ? `st(${3 + i},${fxgPrint(t, 'ff', k, V)});` : '').join('');
+    const read = k => A.moves ? `st(0,(${fxgPrint(A.rx, 'ff', k, V0)})*W-0.5);st(1,(${fxgPrint(A.ry, 'ff', k, V0)})*H-0.5);` : 'st(0,X);st(1,Y);';
+    const one = k => {
+      const V = { ...V0, C: `(${at(ch[k])}/255)`, R0: `(${at('r')}/255)`, G0: `(${at('g')}/255)`, B0: `(${at('b')}/255)`, L: '(ld(2)/255)' };
+      return parts(k, V0, false) + read(k) + `st(2,0.299*${at('r')}+0.587*${at('g')}+0.114*${at('b')});` + parts(k, V, true) + `255*clip(${fxgPrint(A.rc, 'ff', k, V)},0,1)`;
+    };
+    const al = A.moves ? parts(1, V0, false) + read(1) + 'alpha(ld(0),ld(1))' : 'alpha(X,Y)';
+    return ['format=gbrap', `geq=r='${one(0)}':g='${one(1)}':b='${one(2)}':a='${al}'`];
+  }
   // per-effect numbers shared by fxVals and fxChain
   function fxP(id, a, w, h, dur) {
     switch (id) {
@@ -838,6 +1145,7 @@
   function fxVals(it, t, w, h) {
     const f = fxOf(it);
     if (!f) return null;
+    if (FXG_BY[f.id]) return { i: FX.indexOf(f.id) + 1, v: [f.a, t, 0, 0] };
     const a = f.a, v = [0, 0, 1, 0];
     switch (f.id) {
       case 'blur': v[0] = a * 0.02 * w; break;
@@ -887,6 +1195,7 @@
   function fxChain(it, w, h) {
     const f = fxOf(it);
     if (!f) return [];
+    if (FXG_BY[f.id]) return fxgChain(FXG_BY[f.id], f.a);
     const a = f.a, ev = x => Math.max(2, Math.round(x / 2) * 2), r3 = x => (+x).toFixed(3);
     switch (f.id) {
       case 'blur': return [`gblur=sigma=${r3(a * 0.01 * w)}`];
@@ -967,7 +1276,7 @@
     return [];
   }
 
-  const api = { FX, FX_CAT, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, GLT, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  const api = { FX, FX_CAT, FXG, FXG0, fxgGLSL, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, GLT, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MaqtoShared = api;
 })(this);
