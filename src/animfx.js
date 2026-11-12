@@ -265,6 +265,164 @@
     reset(g);
   }
 
+  /* ---------- v2: strip remaps (twist, bend, melt, genie, cylinder, accordion, bulge) ---------- */
+  // fn(v, i, N) per strip (v 0..1 across): {o offset and s scale along the strip, c new centre and k thickness across, sh shade, a alpha}
+  function remap(src, R, rows, fn, slot) {
+    const W = src.width, H = src.height, o = buf(slot, W, H), g = o.getContext('2d');
+    const across = rows ? R.h : R.w, N = clamp(Math.ceil(across / 2), 4, 900), step = across / N;
+    const c0 = rows ? R.y : R.x, cA = rows ? R.x + R.w / 2 : R.y + R.h / 2;
+    for (let i = 0; i < N; i++) {
+      const a0 = c0 + i * step, r = fn((i + 0.5) / N, i, N);
+      if (!r || r.a === 0) continue;
+      const sc = r.s ?? 1, off = r.o || 0, k = r.k ?? 1, cc = r.c ?? (a0 + step / 2), ky = (step * k + 0.6) / step;
+      if (Math.abs(sc) < 1e-3 || k <= 0) continue;
+      g.globalAlpha = clamp(r.a ?? 1, 0, 1);
+      if (rows) { g.setTransform(sc, 0, 0, ky, cA - sc * cA + off, cc - ky * step / 2 - ky * a0); g.drawImage(src, 0, a0, W, step, 0, a0, W, step); }
+      else { g.setTransform(ky, 0, 0, sc, cc - ky * step / 2 - ky * a0, cA - sc * cA + off); g.drawImage(src, a0, 0, step, H, a0, 0, step, H); }
+      if (r.sh) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = clamp(Math.abs(r.sh), 0, 1); g.fillStyle = r.sh < 0 ? '#000' : '#fff'; if (rows) g.fillRect(0, a0, W, step); else g.fillRect(a0, 0, step, H); g.globalCompositeOperation = 'source-over'; }
+    }
+    reset(g);
+    return o;
+  }
+  function remaps(cur, R, q) {
+    const T = Math.PI;
+    if (q.twist) cur = remap(cur, R, true, v => { const c = Math.cos(q.twist * (v - 0.5) * 2 * T / 180); return { s: c, sh: -(1 - Math.abs(c)) * 0.6 }; }, 21);
+    if (q.bend) cur = remap(cur, R, true, v => ({ o: q.bend * R.w * Math.pow((v - 0.5) * 2, 2) }), 22);
+    if (q.genie > 0.001) { const p = q.genie; cur = remap(cur, R, true, v => { const l = clamp(p * 1.8 - (1 - v) * 0.8, 0, 1); return { s: 1 - 0.94 * E3(l), o: 0 }; }, 23); }
+    if (q.melt > 0.001) { const p = q.melt; cur = remap(cur, R, false, (v, i, N) => { const r = rnd(Math.floor(v * 24), 31); return { o: p * p * (0.3 + 0.7 * r) * R.h * 1.3, s: 1 + p * r * 0.6, a: 1 - p * p * 0.8 }; }, 24); }
+    if (q.cyl) { const a = clamp(Math.abs(q.cyl), 0.001, 1), cx = R.x + R.w / 2, sg = Math.sign(q.cyl), ph = q.cylP || 0;
+      // the content scrolls round the drum (cylP), so at cyl -> 0 it is flat and in place
+      const rr = R.w / 2 / Math.sin(a * T / 2);
+      cur = remap(cur, R, false, v => { const w = ((v + ph) % 1 + 1) % 1 - 0.5, th = w * a * T, c = Math.cos(th); if (c <= 0.02) return { a: 0 }; return { c: cx + rr * Math.sin(th), k: c * a * T / 2 / Math.sin(a * T / 2), sh: -(1 - c) * 0.7 * sg }; }, 25); }
+    if (q.accord > 0.001) { const p = q.accord, n = 8, cx = R.x + R.w / 2, k = Math.cos(p * T / 2);
+      cur = remap(cur, R, false, v => { const f = Math.floor(v * n); return { c: cx + (R.x + v * R.w - cx) * k, k, sh: (f % 2 ? -0.5 : 0.25) * p }; }, 26); }
+    if (q.bulge) { const b = q.bulge;
+      cur = remap(cur, R, true, v => ({ s: 1 + b * 0.35 * Math.cos((v - 0.5) * T) }), 27);
+      cur = remap(cur, R, false, v => ({ s: 1 + b * 0.35 * Math.cos((v - 0.5) * T) }), 28); }
+    return cur;
+  }
+
+  /* ---------- v2: per-pixel passes on the box (twirl, ripple, burn, hue, posterize, thermal, sketch) ---------- */
+  let NZ = null;
+  const noise = (x, y) => { // smooth seeded value noise, 0..1
+    if (!NZ) { NZ = new Float32Array(64 * 64); for (let i = 0; i < NZ.length; i++) NZ[i] = rnd(i, 77); }
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const at = (a, b) => NZ[((b & 63) << 6) | (a & 63)];
+    return (at(xi, yi) * (1 - u) + at(xi + 1, yi) * u) * (1 - v) + (at(xi, yi + 1) * (1 - u) + at(xi + 1, yi + 1) * u) * v;
+  };
+  const THERM = [[0, 0, 30], [70, 0, 140], [200, 0, 80], [255, 90, 0], [255, 220, 0], [255, 255, 230]];
+  function pixops(src, R, q) {
+    const W = src.width, H = src.height, x0 = Math.max(0, Math.floor(R.x - R.w * 0.1)), y0 = Math.max(0, Math.floor(R.y - R.h * 0.1));
+    const x1 = Math.min(W, Math.ceil(R.x + R.w * 1.1)), y1 = Math.min(H, Math.ceil(R.y + R.h * 1.1)), w = x1 - x0, h = y1 - y0;
+    if (w < 2 || h < 2) return src;
+    const S = src.getContext('2d').getImageData(x0, y0, w, h).data, out = new ImageData(w, h), D = out.data;
+    const cx = R.x + R.w / 2 - x0, cy = R.y + R.h / 2 - y0, rad = Math.max(R.w, R.h) / 2, tw = (q.twirl || 0) * Math.PI / 180, rp = q.ripple || 0, t = q.t || 0;
+    const hue = (q.hue || 0) * Math.PI / 180, hc = Math.cos(hue), hs = Math.sin(hue), burn = q.burn || 0, post = q.poster || 0, th = q.thermal || 0, sk = q.sketch || 0;
+    // hue rotation matrix (luma preserving)
+    const m = hue ? [0.213 + hc * 0.787 - hs * 0.213, 0.715 - hc * 0.715 - hs * 0.715, 0.072 - hc * 0.072 + hs * 0.928,
+      0.213 - hc * 0.213 + hs * 0.143, 0.715 + hc * 0.285 + hs * 0.140, 0.072 - hc * 0.072 - hs * 0.283,
+      0.213 - hc * 0.213 - hs * 0.787, 0.715 - hc * 0.715 + hs * 0.715, 0.072 + hc * 0.928 + hs * 0.072] : null;
+    const lv = post > 0 ? Math.max(2, Math.round(8 - post * 6)) : 0, nsc = 6 / Math.max(R.w, R.h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let sx = x, sy = y;
+      if (tw || rp) {
+        const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), f = Math.max(0, 1 - d / rad);
+        if (tw && f > 0) { const a = tw * f * f, c = Math.cos(a), s = Math.sin(a); sx = cx + dx * c - dy * s; sy = cy + dx * s + dy * c; }
+        if (rp && d > 0) { const o = rp * rad * 0.06 * Math.sin(d / rad * 28 - t * 9) * f; sx += dx / d * o; sy += dy / d * o; }
+      }
+      sx = Math.round(sx); sy = Math.round(sy);
+      const o = (y * w + x) * 4;
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+      const i = (sy * w + sx) * 4;
+      let r = S[i], g = S[i + 1], b = S[i + 2], a = S[i + 3];
+      if (!a) continue;
+      if (sk) { // edges: dark lines on paper
+        const L = (k) => k < 0 || k >= S.length ? 0 : S[k] * 0.3 + S[k + 1] * 0.59 + S[k + 2] * 0.11;
+        const gx = L(i + 4) - L(i - 4), gy = L(i + w * 4) - L(i - w * 4), e = Math.min(255, Math.hypot(gx, gy) * 2.5), v = 255 - e;
+        r += (v - r) * sk; g += (v * 0.97 - g) * sk; b += (v * 0.92 - b) * sk;
+      }
+      if (m) { const R2 = r * m[0] + g * m[1] + b * m[2], G2 = r * m[3] + g * m[4] + b * m[5], B2 = r * m[6] + g * m[7] + b * m[8]; r = R2; g = G2; b = B2; }
+      if (lv) { const st = 255 / (lv - 1); r = Math.round(r / st) * st; g = Math.round(g / st) * st; b = Math.round(b / st) * st; }
+      if (th) { const l = (r * 0.3 + g * 0.59 + b * 0.11) / 255 * (THERM.length - 1), k = Math.min(THERM.length - 2, Math.floor(l)), f = l - k, A = THERM[k], B = THERM[k + 1];
+        r += (A[0] + (B[0] - A[0]) * f - r) * th; g += (A[1] + (B[1] - A[1]) * f - g) * th; b += (A[2] + (B[2] - A[2]) * f - b) * th; }
+      if (burn > 0) { // dissolve on smooth noise with a glowing edge
+        const n = noise((x0 + x) * nsc * 3, (y0 + y) * nsc * 3) * 0.65 + noise((x0 + x) * nsc * 9, (y0 + y) * nsc * 9) * 0.35, e = n - burn * 1.15 + 0.08;
+        if (e < 0) continue;
+        if (e < 0.06) { const k = 1 - e / 0.06; r += (255 - r) * k; g += (150 * (1 - k) + 230 * k - g) * k; b += (30 - b) * k; }
+        else if (e < 0.12) { const k = 1 - (e - 0.06) / 0.06; r *= 1 - 0.7 * k; g *= 1 - 0.75 * k; b *= 1 - 0.8 * k; }
+      }
+      D[o] = r; D[o + 1] = g; D[o + 2] = b; D[o + 3] = a;
+    }
+    const c = buf(30, W, H); c.getContext('2d').putImageData(out, x0, y0);
+    return c;
+  }
+  function halftone(src, R, amt) {
+    const W = src.width, H = src.height, cell = Math.max(3, Math.round(Math.min(R.w, R.h) / 34)), x0 = Math.max(0, Math.floor(R.x)), y0 = Math.max(0, Math.floor(R.y));
+    const w = Math.min(W, Math.ceil(R.x + R.w)) - x0, h = Math.min(H, Math.ceil(R.y + R.h)) - y0;
+    if (w < cell || h < cell) return src;
+    const S = src.getContext('2d').getImageData(x0, y0, w, h).data, o = buf(31, W, H), g = o.getContext('2d');
+    g.globalAlpha = 1 - amt; g.drawImage(src, 0, 0); g.globalAlpha = 1;
+    for (let y = cell / 2; y < h; y += cell) for (let x = (Math.round(y / cell) % 2 ? cell : cell / 2); x < w; x += cell) {
+      const i = (Math.floor(y) * w + Math.floor(x)) * 4; if (S[i + 3] < 20) continue;
+      const l = (S[i] * 0.3 + S[i + 1] * 0.59 + S[i + 2] * 0.11) / 255, r = cell * 0.62 * Math.sqrt(1 - l * 0.85) * amt;
+      g.fillStyle = `rgb(${S[i]},${S[i + 1]},${S[i + 2]})`; g.beginPath(); g.arc(x0 + x, y0 + y, r, 0, tau); g.fill();
+    }
+    return o;
+  }
+
+  /* ---------- v2: overlays in front (ov) and backdrops behind (bg) ---------- */
+  function overlay(g, R, ov, t) {
+    const cx = R.x + R.w / 2, cy = R.y + R.h / 2, M = Math.max(R.w, R.h), p = clamp(ov.p ?? 1, 0, 1), c = ov.c || '#ffffff', seed = Math.floor(t * 16);
+    reset(g); g.globalCompositeOperation = 'lighter';
+    if (ov.k === 'flare') { // lens flare: bright core and rings along a line through the centre
+      const ax = R.x + R.w * (-0.2 + 1.4 * p), ay = R.y + R.h * 0.2, bx = 2 * cx - ax, by = 2 * cy - ay, a = ov.a ?? 1;
+      const blob = (x, y, r, col, al) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = al * a; g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, tau); g.fill(); };
+      blob(ax, ay, M * 0.35, 'rgba(255,240,210,1)', 0.9); blob(ax, ay, M * 0.06, '#ffffff', 1);
+      g.globalAlpha = 0.5 * a; g.fillStyle = 'rgba(255,230,200,.8)'; g.fillRect(ax - M * 0.8, ay - 1.5, M * 1.6, 3);
+      [[0.3, 0.05, '#7fd8ff'], [0.55, 0.09, '#b388ff'], [0.8, 0.04, '#ffd27f'], [1.1, 0.12, '#7fffd4']].forEach(([f, r, col]) => blob(ax + (bx - ax) * f, ay + (by - ay) * f, M * r, col, 0.35));
+    } else if (ov.k === 'bolt') { // lightning: jagged branches, new shape every few frames
+      if (rnd(seed, 3) > (ov.on ?? 0.6)) { reset(g); return; }
+      g.globalAlpha = 1; g.strokeStyle = c; g.shadowColor = c; g.shadowBlur = M * 0.04; g.lineCap = 'round';
+      for (let b = 0; b < (ov.n || 2); b++) {
+        let x = R.x + R.w * rnd(seed, 10 + b), y = R.y - R.h * 0.05; g.lineWidth = Math.max(1.5, M * 0.008); g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 14; k++) { x += (rnd(seed, b * 50 + k) - 0.5) * R.w * 0.14; y += R.h * 0.08; g.lineTo(x, y); }
+        g.stroke();
+      }
+      g.shadowBlur = 0;
+    } else if (ov.k === 'rays') { // god rays from above
+      for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * 0.13 + Math.sin(t * 0.7 + i) * 0.03, L = M * 1.6;
+        const gr = g.createLinearGradient(cx, R.y - M * 0.4, cx + Math.cos(a + Math.PI) * 0, R.y + R.h); gr.addColorStop(0, `rgba(255,245,220,${0.22 * p})`); gr.addColorStop(1, 'rgba(255,245,220,0)');
+        g.fillStyle = gr; g.beginPath(); g.moveTo(cx, R.y - M * 0.4); g.lineTo(cx + Math.cos(a - Math.PI) * -L * 0.1 + Math.sin(i) * M * 0.05 - L * Math.cos(a + 0.03), R.y - M * 0.4 - L * Math.sin(a + 0.03)); g.lineTo(cx - L * Math.cos(a - 0.03), R.y - M * 0.4 - L * Math.sin(a - 0.03)); g.closePath(); g.fill(); }
+    } else if (ov.k === 'speed') { // anime speed lines around the box
+      g.globalCompositeOperation = 'source-over'; g.fillStyle = c;
+      for (let i = 0; i < 70; i++) { const a = rnd(i, seed % 4 + 40) * tau, r0 = M * (0.55 + rnd(i, seed % 4 + 41) * 0.25), r1 = M * 1.6, wd = M * 0.006 * (0.5 + rnd(i, 43));
+        g.globalAlpha = 0.85 * p; g.beginPath(); g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); g.lineTo(cx + Math.cos(a + wd / r1 * 6) * r1, cy + Math.sin(a + wd / r1 * 6) * r1); g.lineTo(cx + Math.cos(a - wd / r1 * 6) * r1, cy + Math.sin(a - wd / r1 * 6) * r1); g.closePath(); g.fill(); }
+    } else if (ov.k === 'ring') { // shockwave rings
+      for (let i = 0; i < (ov.n || 2); i++) { const q = clamp(p * 1.3 - i * 0.18, 0, 1); if (q <= 0 || q >= 1) continue;
+        g.globalAlpha = (1 - q) * 0.9; g.strokeStyle = c; g.lineWidth = M * 0.03 * (1 - q) + 1; g.shadowColor = c; g.shadowBlur = M * 0.03; g.beginPath(); g.arc(cx, cy, M * (0.1 + q * 0.9), 0, tau); g.stroke(); }
+      g.shadowBlur = 0;
+    } else if (ov.k === 'leak') { // drifting warm light leaks
+      for (let i = 0; i < 3; i++) { const x = R.x + R.w * (0.5 + 0.6 * Math.sin(t * 0.5 + i * 2.1)), y = R.y + R.h * (0.5 + 0.5 * Math.cos(t * 0.4 + i * 1.7)), r = M * (0.5 + 0.2 * i);
+        const col = ['255,120,40', '255,60,120', '255,200,80'][i], gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${col},${0.45 * p})`); gr.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+    }
+    reset(g);
+  }
+  function backdrop(g, R, bg, t) {
+    const cx = R.x + R.w / 2, cy = R.y + R.h / 2, M = Math.max(R.w, R.h), p = clamp(bg.p ?? 1, 0, 1);
+    reset(g);
+    if (bg.k === 'burst') { g.globalAlpha = p; g.fillStyle = bg.c || '#ffd23f'; g.beginPath(); star(g, cx, cy, M * 0.85 * p, M * 0.55 * p, 14, t * 0.4); g.fill(); g.fillStyle = bg.c2 || '#ff4d6d'; g.beginPath(); star(g, cx, cy, M * 0.68 * p, M * 0.46 * p, 14, t * 0.4 + 0.2); g.fill(); }
+    else if (bg.k === 'glow') { const gr = g.createRadialGradient(cx, cy, 0, cx, cy, M * 0.9); gr.addColorStop(0, bg.c || 'rgba(120,200,255,.8)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = p; g.fillStyle = gr; g.fillRect(cx - M, cy - M, M * 2, M * 2); }
+    else if (bg.k === 'portal') { for (let i = 0; i < 6; i++) { g.globalAlpha = p * 0.5; g.strokeStyle = i % 2 ? '#7c4dff' : '#00e5ff'; g.lineWidth = M * 0.025; g.shadowColor = g.strokeStyle; g.shadowBlur = M * 0.05; g.beginPath(); g.ellipse(cx, cy, M * (0.55 + i * 0.06) * p, M * (0.62 + i * 0.06) * p, t * (i % 2 ? 1 : -1) * 0.8, 0, tau); g.stroke(); } g.shadowBlur = 0; }
+    reset(g);
+  }
+  function strokeDraw(g, B, st) { // a border drawn around the box, with glow
+    const w = B.w, h = B.h, L = 2 * (w + h), p = clamp(st.p ?? 1, 0, 1), lw = Math.max(1.5, Math.min(w, h) * (st.w || 0.02));
+    if (p <= 0) return;
+    local(g, B); g.strokeStyle = st.c || '#00e5ff'; g.lineWidth = lw; g.shadowColor = g.strokeStyle; g.shadowBlur = lw * 3; g.lineJoin = 'round';
+    g.setLineDash([L * p, L]); g.beginPath(); g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, -h / 2); g.lineTo(w / 2, h / 2); g.lineTo(-w / 2, h / 2); g.closePath(); g.stroke();
+    g.setLineDash([]); g.shadowBlur = 0; reset(g);
+  }
+
   let scanPat = null;
   function draw(dst, layer, B0, q) {
     const W = layer.width, H = layer.height, B = { ...B0, cx: B0.x + B0.w / 2, cy: B0.y + B0.h / 2, rad: (B0.r || 0) * Math.PI / 180 };
@@ -304,6 +462,9 @@
     if (q.wave > 0.001) cur = waved(cur, q.wave * R.w, q.t, R);
     if (q.glitch > 0.02) cur = glitched(cur, q.glitch, q.t, R);
     if (q.rgb > 0.002) { const o = q.rgb * R.w; if (o >= 0.7) cur = rgbSplit(cur, o); }
+    if (q.twirl || q.ripple || q.burn > 0.001 || q.hue || q.poster > 0.01 || q.thermal > 0.01 || q.sketch > 0.01) cur = pixops(cur, R, q);
+    if (q.halftone > 0.02) cur = halftone(cur, R, Math.min(1, q.halftone));
+    cur = remaps(cur, R, q);
     // stretch / skew about the pivot, then the 3D turns
     const pv = q.pv || [0.5, 0.5];
     if (q.sx !== 1 || q.sy !== 1 || q.sk) {
@@ -315,7 +476,31 @@
     if (Math.abs(q.rx) > 0.05) { const R2 = { x: R.x - R.w * 0.15, y: R.y, w: R.w * 1.3, h: R.h }; cur = turn(cur, R2, q.rx, false, pv[1], 17); }
     // onto the frame
     dst.save(); reset(dst);
-    if (q.tiles && q.tiles.p > 0.001) tiles(dst, cur, R, q.tiles, q.t);
+    if (q.bg) backdrop(dst, R, q.bg, q.t);
+    if (q.reflect > 0.01) { // mirrored copy under the box, fading away
+      const o = buf(32, W, H), g = o.getContext('2d'), by = R.y + R.h;
+      g.translate(0, by * 2); g.scale(1, -1); g.drawImage(cur, 0, 0); reset(g);
+      const gr = g.createLinearGradient(0, by, 0, by + R.h * 0.5); gr.addColorStop(0, 'rgba(0,0,0,.65)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
+      g.globalCompositeOperation = 'destination-out'; g.fillStyle = gr; g.fillRect(0, by, W, H - by); g.fillStyle = '#000'; g.fillRect(0, 0, W, by); reset(g);
+      dst.globalAlpha = clamp(q.reflect, 0, 1); dst.drawImage(o, 0, 0); dst.globalAlpha = 1;
+    }
+    if (q.extrude > 0.01) { // thickness: darkened copies stepping back
+      const o = buf(33, W, H), g = o.getContext('2d'); g.drawImage(cur, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, W, H); reset(g);
+      const d = q.extrude * Math.min(R.w, R.h) * 0.08, n = Math.max(2, Math.round(d));
+      for (let i = n; i >= 1; i--) dst.drawImage(o, d * i / n, d * i / n);
+    }
+    if (q.echo > 0.01) { const n = 4, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+      for (let i = n; i >= 1; i--) { const k = 1 + i * 0.09 * q.echo; dst.setTransform(k, 0, 0, k, cx * (1 - k), cy * (1 - k)); dst.globalAlpha = 0.32 * (1 - i / (n + 1)) * Math.min(1, q.echo * 2); dst.drawImage(cur, 0, 0); }
+      reset(dst); }
+    if (q.mirror) { // kaleidoscope: one part of the box mirrored into the others
+      const mk = q.mirror.k, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+      const parts = mk === 'h' ? [[1, 1, 'l'], [-1, 1, 'l']] : mk === 'v' ? [[1, 1, 't'], [1, -1, 't']] : [[1, 1, 'q'], [-1, 1, 'q'], [1, -1, 'q'], [-1, -1, 'q']];
+      for (const [sx, sy, m] of parts) {
+        dst.save(); dst.beginPath(); dst.rect(sx > 0 ? R.x : cx, sy > 0 ? R.y : cy, m === 't' ? R.w : R.w / 2, m === 'l' ? R.h : R.h / 2);
+        dst.clip(); dst.setTransform(sx, 0, 0, sy, cx * (1 - sx), cy * (1 - sy)); dst.drawImage(cur, 0, 0); dst.restore();
+      }
+      reset(dst);
+    } else if (q.tiles && q.tiles.p > 0.001) tiles(dst, cur, R, q.tiles, q.t);
     else {
       for (const gh of q.ghosts) { // where it just was
         dst.setTransform(1, 0, 0, 1, 0, 0); dst.globalAlpha = gh.o;
@@ -332,6 +517,8 @@
     }
     if (q.glow > 0.01) { const gl = blurred(cur, Math.max(4, Math.min(R.w, R.h) * 0.06), 18); dst.globalCompositeOperation = 'lighter'; dst.globalAlpha = clamp(q.glow * 0.75, 0, 1); dst.drawImage(gl, 0, 0); reset(dst); }
     if (q.spark) sparks(dst, R, q.spark, q.t);
+    if (q.stroke) strokeDraw(dst, FB, q.stroke);
+    if (q.ov) overlay(dst, R, q.ov, q.t);
     dst.restore();
   }
 

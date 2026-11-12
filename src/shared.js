@@ -902,8 +902,9 @@
     for (const k in AX.OUT) { VA_OUT[k] = AX.OUT[k]; RICH.out.add(k); }
     for (const k in AX.LOOP) { VA_LOOP[k] = { f: AX.LOOP[k], e: {} }; RICH.loop.add(k); }
   }
-  const FXK = ['sk', 'ry', 'rx', 'blur', 'px', 'rgb', 'glitch', 'wave', 'scan', 'flash', 'dark', 'gray', 'inv', 'glow'];
-  const FXO = ['pv', 'tint', 'shine', 'mb', 'wipe', 'tiles', 'spark', 'frame'];
+  const FXK = ['sk', 'ry', 'rx', 'blur', 'px', 'rgb', 'glitch', 'wave', 'scan', 'flash', 'dark', 'gray', 'inv', 'glow',
+    'twist', 'bend', 'melt', 'cyl', 'cylP', 'accord', 'bulge', 'genie', 'twirl', 'ripple', 'burn', 'hue', 'poster', 'thermal', 'sketch', 'halftone', 'echo', 'extrude', 'reflect'];
+  const FXO = ['pv', 'tint', 'shine', 'mb', 'wipe', 'tiles', 'spark', 'frame', 'bg', 'ov', 'stroke', 'mirror'];
   // The rich channels of an item at local time lt (null when none of its animations is rich right now).
   function vaFx(it, lt) {
     if (it.type === 'text') return null;

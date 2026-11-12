@@ -167,6 +167,100 @@
   I('ghostIn', 'شبح', 'Ghost trail', 'elastic', u => { const e = E.out(u); return { dx: 0.6 * (1 - e), trail: 0.7, o: clamp(u * 3, 0, 1) }; });
   I('zigzagMove', 'دخول زجزاج', 'Zigzag in', 'elastic', u => { const e = E.out(u); return { dy: 0.6 * (1 - e), dx: 0.12 * sin(u * 5 * Math.PI) * (1 - e), trail: 0.4 }; });
 
+  /* ================= batch 2 ================= */
+  cat('distort', 'تشويه وسوائل', 'Distort & liquid'); cat('comic', 'كوميك وبوب آرت', 'Comic & pop art'); cat('paper', 'ورق وكروت', 'Paper & cards'); cat('cinema', 'سينمائي', 'Cinematic');
+  const fade = (u, k = 3) => clamp(u * k, 0, 1);
+  /* distort */
+  I('twistIn', 'لفّ شريطة', 'Twist', 'distort', u => { const e = E.out(u); return { twist: 540 * (1 - e), s: 0.7 + 0.3 * e, o: fade(u) }; });
+  I('ribbonIn', 'شريطة طايرة', 'Ribbon', 'distort', u => { const e = E.out(u); return { twist: 300 * (1 - e), dy: 0.4 * (1 - e), r: 15 * (1 - e) }; });
+  I('bendIn', 'انحناء', 'Bend', 'distort', u => { const e = E.back(u); return { bend: 0.5 * (1 - e), dx: -0.4 * (1 - E.out(u)) }; });
+  I('genieIn', 'جيني', 'Genie', 'distort', u => { const e = E.io(u); return { genie: 1 - e, dy: 0.35 * (1 - e), sy: 0.3 + 0.7 * e, pv: [0.5, 1] }; });
+  I('meltIn', 'سيحان', 'Melt', 'distort', u => ({ melt: 1 - E.out(u), o: fade(u, 2) }));
+  I('cylinderIn', 'أسطوانة بتلف', 'Cylinder roll', 'distort', u => { const e = E.out(u); return { cyl: 0.999 * (1 - e), cylP: 0.5 * (1 - e), o: fade(u, 4) }; });
+  I('globeIn', 'كرة', 'Globe', 'distort', u => { const e = E.out(u); return { cyl: 0.9 * (1 - e), bulge: 1.2 * (1 - e), s: 0.5 + 0.5 * e, o: fade(u, 4) }; });
+  I('accordionIn', 'أكورديون', 'Accordion', 'distort', u => ({ accord: 1 - E.back(u) * 0.999 - 0.001 * u, o: fade(u, 5) }));
+  I('bulgeIn', 'انتفاخ', 'Bulge', 'distort', u => { const e = E.out(u); return { bulge: 1.6 * (1 - e), s: 0.7 + 0.3 * E.back(u) }; });
+  I('pinchIn', 'قرصة', 'Pinch', 'distort', u => { const e = E.out(u); return { bulge: -1.2 * (1 - e), o: fade(u) }; });
+  I('twirlIn', 'دوّامة', 'Twirl', 'distort', u => { const e = E.out(u); return { twirl: 540 * (1 - e), s: 0.6 + 0.4 * e, o: fade(u) }; });
+  I('rippleIn', 'تموّج مايّة', 'Water ripple', 'distort', u => ({ ripple: 1.2 * (1 - E.out(u)), o: fade(u, 4) }));
+  I('liquidIn', 'سايل', 'Liquid', 'distort', u => { const e = E.out(u); return { ripple: 0.8 * (1 - e), wave: 0.03 * (1 - e), blur: 0.03 * (1 - e), o: e }; });
+  I('vortexSuck', 'شفط دوّامة', 'Vortex pull', 'distort', u => { const e = E.back(u); return { twirl: -720 * (1 - E.out(u)), s: Math.max(0.01, e) }; });
+  I('genieSkew', 'جيني مايل', 'Genie skew', 'distort', u => { const e = E.io(u); return { genie: 1 - e, sk: 25 * (1 - e), dx: 0.3 * (1 - e), dy: 0.3 * (1 - e) }; });
+  I('waveRoll', 'موجة بتتفرد', 'Wave roll', 'distort', u => { const e = E.out(u); return { wave: 0.05 * (1 - e), bend: -0.3 * (1 - e), dy: -0.3 * (1 - e) }; });
+  I('jellyTwist', 'جيلي لفّ', 'Jelly twist', 'distort', u => ({ twist: 70 * wob(u), s: fade(u, 5) || 0.01, sx: 1 + 0.15 * wob(u) }));
+  I('rubberBend', 'انحناء مطّاط', 'Rubber bend', 'distort', u => ({ bend: 0.25 * wob(u), dx: 0.3 * (1 - E.out(u)) }));
+  /* comic */
+  I('comicPop', 'بوب كوميك', 'Comic pop', 'comic', u => ({ s: Math.max(0.01, E.back(u)), bg: { k: 'burst', p: 1 - E.in(u) }, halftone: 0.8 * (1 - u) }));
+  I('powIn', 'باو!', 'Pow!', 'comic', u => { const a = Math.exp(-5 * u); return { bg: { k: 'burst', p: u < 0.8 ? E.back(clamp(u * 2, 0, 1)) * (1 - E.in(clamp((u - 0.5) * 2, 0, 1))) : 0, c: '#fff200', c2: '#ff2d55' }, flash: 0.7 * a * (1 - u), dx: 0.04 * a * Math.sin(u * 60), s: 1.2 - 0.2 * E.out(u) }; });
+  I('halftoneIn', 'نقط جرايد', 'Halftone', 'comic', u => ({ halftone: 1 - E.io(u), o: fade(u) }));
+  I('posterIn', 'بوستر', 'Posterize', 'comic', u => ({ poster: 1 - u, rgb: 0.02 * (1 - u), o: fade(u) }));
+  I('speedIn', 'خطوط سرعة', 'Speed lines', 'comic', u => { const e = E.expo(u); return { dx: 0.8 * (1 - e), mb: [0.1 * (1 - e), 0], ov: { k: 'speed', p: 1 - u } }; });
+  I('popArt', 'بوب آرت', 'Pop art', 'comic', u => ({ hue: 240 * (1 - E.io(u)), poster: 0.9 * (1 - u), s: 0.8 + 0.2 * E.back(u) }));
+  I('inkSketch', 'رسم بالرصاص', 'Pencil sketch', 'comic', u => ({ sketch: 1 - E.io(u) }));
+  I('pencilReveal', 'رسم وبعدين صورة', 'Sketch reveal', 'comic', u => ({ sketch: clamp(1.6 - u * 1.8, 0, 1), wipe: { k: 'lr', p: E.out(clamp(u * 1.7, 0, 1)) } }));
+  I('comicSlam', 'خبطة كوميك', 'Comic slam', 'comic', u => { const e = E.bounce(u), hit = u > 0.36 ? Math.exp(-6 * (u - 0.36)) * (1 - u) : 0; return { dy: -0.7 * (1 - e), sx: 1 + 0.25 * hit, sy: 1 - 0.25 * hit, ov: { k: 'speed', p: hit * 0.8 } }; });
+  I('stickerPop', 'ستيكر', 'Sticker pop', 'comic', u => ({ s: Math.max(0.01, E.back(u)), r: -18 * (1 - E.back(u)), extrude: 0.5 * (1 - u), o: fade(u, 5) }));
+  I('zoomLines', 'زووم بخطوط', 'Zoom lines', 'comic', u => ({ s: 2.2 - 1.2 * E.expo(u), ov: { k: 'speed', p: 1 - E.out(u) }, o: fade(u, 4) }));
+  I('outlineDraw', 'إطار بيترسم', 'Outline draw', 'comic', u => ({ stroke: { p: clamp(u * 1.6, 0, 1) * (u < 0.98 ? 1 : 0), c: '#ffffff' }, o: clamp((u - 0.45) * 2.2, 0, 1) }));
+  /* paper & cards */
+  I('thickFlip', 'كارت تخين بيتقلب', 'Thick card flip', 'paper', u => { const e = E.out(u); return { ry: 160 * (1 - e), extrude: 0.6 * (1 - e) }; });
+  I('cardDeal', 'توزيع كوتشينة', 'Card deal', 'paper', u => { const e = E.out(u); return { dx: 0.7 * (1 - e), dy: -0.2 * (1 - e), r: 50 * (1 - e), ry: 40 * (1 - e), extrude: 0.4 * (1 - e) }; });
+  I('postcard', 'كارت بوستال', 'Postcard', 'paper', u => { const e = E.back(u); return { r: -20 * (1 - e), dy: 0.3 * (1 - E.out(u)), extrude: 0.4 * (1 - u), reflect: 0.3 * (1 - u) }; });
+  I('cutoutIn', 'قصاصة', 'Cutout', 'paper', u => ({ s: Math.max(0.01, E.back(u)), extrude: 0.7 * (1 - E.io(u)), r: 6 * (1 - u) }));
+  I('stackIn', 'رصّة صور', 'Photo stack', 'paper', u => { const e = E.out(u); return { echo: 1 - e, s: 1.3 - 0.3 * e, o: fade(u) }; });
+  I('paperCurl', 'ورقة ملفوفة', 'Paper curl', 'paper', u => { const e = E.out(u); return { cyl: 0.85 * (1 - e), cylP: -0.35 * (1 - e), dx: 0.3 * (1 - e) }; });
+  I('origami', 'أوريجامي', 'Origami', 'paper', u => ({ accord: 1 - E.out(u) - 0.001, ry: 30 * (1 - E.out(u)), o: fade(u, 4) }));
+  I('tornIn', 'ورقة مقطوعة', 'Torn paper', 'paper', u => ({ wipe: { k: 'zigzag', p: E.io(u), n: 14 }, extrude: 0.3 * (1 - u) }));
+  I('foldDown', 'طيّة لتحت', 'Fold down', 'paper', u => { const e = E.out(u); return { rx: 100 * (1 - e), pv: [0.5, 0], extrude: 0.4 * (1 - e), o: fade(u, 4) }; });
+  I('flipBook', 'فليب بوك', 'Flip book', 'paper', u => { const k = Math.floor(u * 7), e = E.out(u); return { r: u > 0.9 ? 0 : (rnd(k, 5) - 0.5) * 16 * (1 - e), dx: u > 0.9 ? 0 : (rnd(k, 6) - 0.5) * 0.08 * (1 - e), echo: 0.6 * (1 - e) }; });
+  /* cinema */
+  I('flareIn', 'فلير عدسة', 'Lens flare', 'cinema', u => ({ ov: { k: 'flare', p: E.io(u), a: Math.sin(Math.PI * u) }, o: fade(u, 2.5) }));
+  I('raysIn', 'أشعة سماوية', 'God rays', 'cinema', u => ({ ov: { k: 'rays', p: Math.sin(Math.PI * u) }, o: E.out(u), blur: 0.04 * (1 - E.out(u)) }));
+  I('leakIn', 'تسريب ضوء', 'Light leak', 'cinema', u => ({ ov: { k: 'leak', p: Math.sin(Math.PI * u) * 1.2 }, flash: 0.4 * (1 - u), o: fade(u, 2) }));
+  I('reflectRise', 'طلوع بانعكاس', 'Reflection rise', 'cinema', u => { const e = E.out(u); return { dy: 0.3 * (1 - e), reflect: 0.4 * (1 - u), o: fade(u, 2) }; });
+  I('dollyZoom', 'دولي زووم', 'Dolly zoom', 'cinema', u => { const e = E.io(u); return { s: 1.5 - 0.5 * e, bulge: -0.8 * (1 - e) }; });
+  I('crashZoom', 'زووم صادم', 'Crash zoom', 'cinema', u => { const e = E.expo(u); return { s: 3 - 2 * e, blur: 0.05 * (1 - e), rgb: 0.04 * (1 - e) }; });
+  I('cinemaFocus', 'فوكس سينما', 'Cinema focus', 'cinema', u => { const e = E.io(u); return { blur: 0.12 * (1 - e), dark: 0.6 * (1 - e), s: 1.08 - 0.08 * e }; });
+  I('noirIn', 'نوار', 'Noir', 'cinema', u => ({ gray: 1 - E.io(u), dark: 0.5 * (1 - u), flash: u < 0.15 ? 0.6 : 0 }));
+  I('dawnIn', 'شروق', 'Sunrise', 'cinema', u => ({ tint: ['#ff9d4d', 0.6 * (1 - u)], ov: { k: 'rays', p: 1 - u }, dark: 0.7 * (1 - E.out(u)) }));
+  I('spotlightIn', 'سبوت لايت', 'Spotlight', 'cinema', u => ({ wipe: { k: 'circle', p: E.io(clamp(u * 1.2, 0, 1)) * (u < 0.5 ? 0.45 : 1) + (u < 0.5 ? 0 : 0) }, dark: 0.3 * (1 - u) }));
+  I('sweepLight', 'إضاءة بتعدّي', 'Light sweep', 'cinema', u => ({ shine: { p: E.io(u), w: 0.3 }, glow: 0.5 * Math.sin(Math.PI * u), o: fade(u, 2) }));
+  I('heroReveal', 'ظهور البطل', 'Hero reveal', 'cinema', u => { const e = E.out(u); return { ov: { k: 'rays', p: Math.sin(Math.PI * u) }, s: 1.2 - 0.2 * e, glow: 0.8 * (1 - e), dark: 0.8 * (1 - fade(u, 2)) }; });
+  /* VFX */
+  I('burnReveal', 'نار بتكشف', 'Burn reveal', 'vfx', u => ({ burn: 1 - E.io(u) }));
+  I('ashIn', 'رماد', 'Ash', 'vfx', u => ({ burn: 1 - u, gray: 1 - E.out(u), spark: { k: 'ember', p: u, n: 20, c: '#bbbbbb' } }));
+  I('lightningStrike', 'ضربة برق', 'Lightning strike', 'vfx', u => { const a = Math.exp(-4 * u); return { ov: { k: 'bolt', on: u < 0.6 ? 0.9 : 0, n: 3, c: '#bfe6ff' }, flash: u < 0.5 && rnd(Math.floor(u * 16), 9) > 0.5 ? 0.8 : 0, dx: 0.02 * a * Math.sin(u * 70), o: fade(u, 6) }; });
+  I('shockIn', 'موجة صدمة', 'Shockwave', 'vfx', u => ({ s: Math.max(0.01, E.back(u)), ov: { k: 'ring', p: u, n: 3, c: '#ffffff' }, flash: 0.5 * Math.exp(-6 * u) }));
+  I('thermalIn', 'كاميرا حرارية', 'Thermal', 'vfx', u => ({ thermal: 1 - E.io(u) }));
+  I('hueSpin', 'لفّة ألوان', 'Hue spin', 'vfx', u => ({ hue: 360 * (1 - E.out(u)), o: fade(u) }));
+  I('rainbowIn', 'قوس قزح', 'Rainbow', 'vfx', u => ({ hue: 540 * (1 - E.out(u)), glow: 0.7 * (1 - u), s: 0.85 + 0.15 * E.back(u) }));
+  I('portalWarp', 'بوابة سحرية', 'Magic portal', 'vfx', u => { const e = E.out(u); return { bg: { k: 'portal', p: Math.sin(Math.PI * u) * 1.1 }, twirl: 360 * (1 - e), s: Math.max(0.01, e) }; });
+  I('warpSpeed', 'سرعة الضوء', 'Warp speed', 'vfx', u => { const e = E.expo(u); return { s: 0.2 + 0.8 * e, ov: { k: 'speed', p: 1 - e, c: '#cfe8ff' }, rgb: 0.05 * (1 - e), glow: 0.6 * (1 - e) }; });
+  I('nebulaIn', 'سديم', 'Nebula', 'vfx', u => ({ bg: { k: 'glow', p: Math.sin(Math.PI * u), c: 'rgba(170,110,255,.9)' }, spark: { k: 'star', p: u, n: 30, c: '#e0d0ff' }, blur: 0.06 * (1 - E.out(u)), o: E.out(u) }));
+  I('holoGlitch', 'هولو جليتش', 'Holo glitch', 'vfx', u => ({ tint: ['#40c4ff', 0.5 * (1 - u)], scan: 0.6 * (1 - u), rgb: 0.04 * (1 - u), glitch: 0.8 * (1 - u), ripple: 0.4 * (1 - u), o: fade(u, 3) }));
+  I('electricIn', 'كهربا', 'Electric', 'vfx', u => ({ ov: { k: 'bolt', on: 0.8 * (1 - u), n: 2, c: '#7fdcff' }, glow: 0.8 * (1 - u), tint: ['#3fa9ff', 0.4 * (1 - u)], o: u > 0.6 ? 1 : flick(u, 8) }));
+  I('plasmaIn', 'بلازما', 'Plasma', 'vfx', u => { const e = E.out(u); return { twirl: 200 * (1 - e), hue: 200 * (1 - e), glow: 0.7 * (1 - e), o: fade(u) }; });
+  I('ghostEcho', 'صدى شبح', 'Ghost echo', 'vfx', u => ({ echo: 1 - E.out(u), o: E.out(u), blur: 0.02 * (1 - u) }));
+  I('kaleidoIn', 'كاليدوسكوب', 'Kaleidoscope', 'vfx', u => ({ mirror: u < 0.82 ? { k: 'q' } : undefined, r: u < 0.82 ? 180 * (1 - u / 0.82) : 0, flash: u > 0.82 && u < 0.9 ? 0.6 : 0, s: u < 0.82 ? 0.7 + 0.3 * u : 1 }));
+  /* 3D */
+  I('helixIn', 'حلزون 3D', 'Helix', '3d', u => { const e = E.out(u); return { ry: 540 * (1 - e), dy: 0.4 * (1 - e), twist: 90 * (1 - e) }; });
+  I('cubeThick', 'مكعب تخين', 'Solid cube', '3d', u => { const e = E.io(u); return { ry: -90 * (1 - e), dx: -0.3 * (1 - e), pv: [1, 0.5], extrude: 0.5 * (1 - e) }; });
+  I('floorRise', 'طالع من الأرض', 'Floor rise', '3d', u => { const e = E.out(u); return { rx: 80 * (1 - e), pv: [0.5, 1], reflect: 0.35 * (1 - u), dy: 0.05 * (1 - e) }; });
+  I('skyDrop', 'نازل من السما', 'Sky drop', '3d', u => { const e = E.bounce(u); return { rx: -50 * (1 - E.out(u)), dy: -0.7 * (1 - e), s: 0.7 + 0.3 * E.out(u) }; });
+  I('tiltShift', 'تيلت شيفت', 'Tilt shift', '3d', u => { const e = E.out(u); return { ry: 45 * (1 - e), rx: -15 * (1 - e), blur: 0.06 * (1 - e), s: 0.8 + 0.2 * e }; });
+  I('dominoIn', 'دومينو', 'Domino', '3d', u => ({ rx: -90 * (1 - E.bounce(u)), pv: [0.5, 1], extrude: 0.3 * (1 - u) }));
+  I('mirrorFloor', 'لفّة على مراية', 'Mirror spin', '3d', u => { const e = E.out(u); return { ry: 360 * (1 - e), reflect: 0.35 * (1 - u), s: 0.6 + 0.4 * e }; });
+  I('orbit3d', 'مدار 3D', '3D orbit', '3d', u => { const e = E.out(u), a = (1 - e) * Math.PI; return { dx: 0.5 * Math.sin(a), s: 0.5 + 0.5 * e + 0.2 * Math.cos(a) * (1 - e), ry: -80 * (1 - e), trail: 0.4 }; });
+  /* elastic */
+  I('boomerang', 'بوميرانج', 'Boomerang', 'elastic', u => ({ dx: -0.6 * Math.sin(Math.PI * E.io(u)) * (1 - u * 0.2) * (u < 1 ? 1 : 0), r: -360 * (1 - E.out(u)), s: 0.6 + 0.4 * E.out(u), trail: 0.4 }));
+  I('yoyo', 'يويو', 'Yo-yo', 'elastic', u => ({ dy: -0.5 * (1 - E.elastic(u)), sy: 1 + 0.2 * wob(u), r: 20 * wob(u) }));
+  I('impactLand', 'هبوط بصدمة', 'Impact landing', 'elastic', u => { const e = E.bounce(u), hit = u > 0.36 ? Math.exp(-7 * (u - 0.36)) * (1 - u) : 0; return { dy: -0.6 * (1 - e), sx: 1 + 0.2 * hit, sy: 1 - 0.2 * hit, ov: { k: 'ring', p: clamp((u - 0.36) * 2, 0, 1), n: 2 } }; });
+  I('slinky', 'سلينكي', 'Slinky', 'elastic', u => ({ sk: 30 * wob(u), sy: 1 - 0.3 * wob(u), dy: 0.3 * (1 - E.out(u)) }));
+  I('pogo', 'نطّات', 'Pogo', 'elastic', u => ({ dy: -0.18 * Math.abs(Math.sin(u * 3 * Math.PI)) * (1 - u), dx: 0.5 * (1 - E.out(u)), r: 10 * Math.sin(u * 3 * Math.PI) * (1 - u) }));
+  I('swing3d', 'مرجيحة 3D', '3D swing', 'elastic', u => ({ rx: 70 * Math.exp(-4 * u) * Math.cos(u * 3 * tau) * (u < 1 ? 1 : 0), pv: [0.5, 0], o: fade(u, 6) }));
+  I('magnetIn', 'مغناطيس', 'Magnet', 'elastic', u => ({ dx: 0.6 * (1 - E.elastic(u)), rgb: 0.04 * (1 - u), sk: -20 * (1 - E.out(u)) }));
+  I('fizzIn', 'فوران', 'Fizz', 'elastic', u => ({ s: Math.max(0.01, E.elastic(u)), spark: { k: 'bubble', p: u, n: 22 } }));
+
   const OUT = {};
   for (const k in IN) OUT[k] = u => IN[k](1 - u);
 
@@ -229,6 +323,45 @@
   dev('cardTilt', 'كارت 3D', '3D card', 'card', L => ({ ry: 16 * sin(L * tau * 0.25), rx: 8 * sin(L * tau * 0.2 + 1), shine: { p: (L * 0.25) % 1.6 - 0.3 } }), 0.82);
   dev('phoneLand', 'موبايل بالعرض', 'Landscape phone', 'phone', L => ({ ry: 10 * sin(L * tau * 0.25), dy: 0.008 * sin(L * tau * 0.45) }), 0.86);
   dev('watch', 'ساعة ذكية', 'Smartwatch', 'watch', L => ({ ry: 10 * sin(L * tau * 0.25) }), 0.55);
+
+  /* batch 2 loops */
+  Lp('twistLoop', 'لفّ مستمر', 'Twist loop', 'distort', L => ({ twist: 35 * sin(L * tau * 0.4) }));
+  Lp('bendSway', 'انحناء متمايل', 'Bend sway', 'distort', L => ({ bend: 0.12 * sin(L * tau * 0.5) }));
+  Lp('cylinderSpin', 'أسطوانة بتلف', 'Spinning cylinder', 'distort', L => ({ cyl: 0.999, cylP: (L * 0.25) % 2 - 1, s: 0.85 }));
+  Lp('globeSpin', 'كرة بتلف', 'Spinning globe', 'distort', L => ({ cyl: 0.999, cylP: (L * 0.2) % 2 - 1, bulge: 0.5, s: 0.8 }));
+  Lp('rippleLoop', 'مايّة', 'Ripples', 'distort', L => ({ ripple: 0.35 }));
+  Lp('twirlLoop', 'دوّامة بتتنفس', 'Breathing twirl', 'distort', L => ({ twirl: 90 * sin(L * tau * 0.3) }));
+  Lp('liquidLoop', 'سايل مستمر', 'Liquid loop', 'distort', L => ({ ripple: 0.25, wave: 0.008 }));
+  Lp('bulgeBeat', 'انتفاخ على الإيقاع', 'Bulge beat', 'distort', L => ({ bulge: 0.7 * Math.exp(-7 * ((L * 2) % 1)) }));
+  Lp('accordionBreath', 'أكورديون بيتنفس', 'Breathing accordion', 'distort', L => ({ accord: 0.25 * (1 + sin(L * tau * 0.5)) / 2 + 0.001 }));
+  Lp('hueCycle', 'ألوان بتلف', 'Hue cycle', 'vfx', L => ({ hue: (L * 90) % 360 }));
+  Lp('rainbowGlow', 'توهّج قوس قزح', 'Rainbow glow', 'vfx', L => ({ hue: (L * 120) % 360, glow: 0.4 }));
+  Lp('thermalLoop', 'حراري', 'Thermal view', 'vfx', L => ({ thermal: 1, scan: 0.2 }));
+  Lp('posterBeat', 'بوستر على الإيقاع', 'Poster beat', 'comic', L => ({ poster: (L * 2) % 1 < 0.5 ? 0.6 : 0, hue: (L * 2) % 2 < 1 ? 0 : 180 }));
+  Lp('halftoneLoop', 'نقط جرايد مستمر', 'Halftone print', 'comic', L => ({ halftone: 0.9 }));
+  Lp('sketchLoop', 'رسم رصاص', 'Pencil drawing', 'comic', L => ({ sketch: 1, dx: 0.002 * (rnd(Math.floor(L * 6), 2) - 0.5) }));
+  Lp('comicBurst', 'انفجار كوميك', 'Comic burst', 'comic', L => ({ bg: { k: 'burst', p: 0.9 + 0.1 * sin(L * tau) }, s: 0.75 }));
+  Lp('speedLoop', 'خطوط سرعة مستمرة', 'Speed lines loop', 'comic', L => ({ ov: { k: 'speed', p: 0.8 }, dx: 0.004 * sin(L * 40) }));
+  Lp('flareLoop', 'فلير بيتحرك', 'Moving flare', 'cinema', L => ({ ov: { k: 'flare', p: (L * 0.2) % 1.4 - 0.2, a: 0.8 } }));
+  Lp('raysLoop', 'أشعة مستمرة', 'God rays loop', 'cinema', L => ({ ov: { k: 'rays', p: 0.8 + 0.2 * sin(L * tau * 0.3) } }));
+  Lp('leakLoop', 'تسريبات ضوء', 'Light leaks', 'cinema', L => ({ ov: { k: 'leak', p: 0.8 } }));
+  Lp('noirLoop', 'نوار مستمر', 'Noir film', 'cinema', L => ({ gray: 1, dark: 0.1, flash: 0.06 * rnd(Math.floor(L * 12), 4), scan: 0.1 }));
+  Lp('lightningLoop', 'عاصفة برق', 'Thunderstorm', 'vfx', L => { const on = (L % 2.5) > 2.1; return { ov: { k: 'bolt', on: on ? 0.9 : 0, n: 2, c: '#cfeaff' }, flash: on && rnd(Math.floor(L * 16), 3) > 0.5 ? 0.5 : 0, dark: 0.15 }; });
+  Lp('shockBeat', 'صدمة على الإيقاع', 'Shock beat', 'vfx', L => { const k = (L * 1.25) % 1; return { ov: { k: 'ring', p: k, n: 2 }, s: 1 + 0.06 * Math.exp(-8 * k) }; });
+  Lp('electricLoop', 'كهربا مستمرة', 'Electric loop', 'vfx', L => ({ ov: { k: 'bolt', on: 0.35, n: 2, c: '#7fdcff' }, glow: 0.3 + 0.2 * rnd(Math.floor(L * 16), 6) }));
+  Lp('mirrorH', 'مراية أفقي', 'Mirror', 'vfx', L => ({ mirror: { k: 'h' } }));
+  Lp('mirrorV', 'مراية رأسي', 'Mirror vertical', 'vfx', L => ({ mirror: { k: 'v' } }));
+  Lp('kaleidoLoop', 'كاليدوسكوب مستمر', 'Kaleidoscope loop', 'vfx', L => ({ mirror: { k: 'q' }, r: (L * 20) % 360, s: 1.42, hue: (L * 30) % 360 }));
+  Lp('echoLoop', 'صدى', 'Echo', 'vfx', L => ({ echo: 0.6 + 0.4 * sin(L * tau * 0.5) }));
+  Lp('reflectFloat', 'طاير على مراية', 'Floating reflection', 'cinema', L => ({ reflect: 0.35, dy: -0.02 + 0.012 * sin(L * tau * 0.4), s: 0.78 }));
+  Lp('extrudeTilt', 'كارت تخين 3D', 'Thick 3D card', '3d', L => ({ extrude: 0.6, ry: 20 * sin(L * tau * 0.25), rx: 8 * sin(L * tau * 0.2), s: 0.85 }));
+  Lp('neonBorder', 'برواز نيون', 'Neon border', 'vfx', L => ({ stroke: { p: 1, c: '#00e5ff', w: 0.015 }, glow: 0.2 + 0.15 * sin(L * tau) }));
+  Lp('borderRun', 'برواز بيترسم', 'Running border', 'vfx', L => ({ stroke: { p: (L * 0.5) % 1, c: '#ff2d87', w: 0.02 } }));
+  Lp('portalLoop', 'بوابة مستمرة', 'Portal loop', 'vfx', L => ({ bg: { k: 'portal', p: 1 }, s: 0.7, twirl: 10 * sin(L * 2) }));
+  Lp('auroraTint', 'شفق', 'Aurora tint', 'cinema', L => ({ tint: [['#00ffa0', '#7c4dff', '#00b0ff'][Math.floor(L / 2) % 3], 0.18 + 0.08 * sin(L * tau * 0.5)], glow: 0.2 }));
+  Lp('dreamEcho', 'حلم بصدى', 'Dream echo', 'blur', L => ({ echo: 0.5, blur: 0.01, glow: 0.3 }));
+  Lp('retroTV', 'تلفزيون ريترو', 'Retro TV', 'glitch', L => ({ poster: 0.5, scan: 0.6, rgb: 0.01, wave: 0.004 * (1 + sin(L * 5)), frame: { k: 'tv' }, s: 0.74 }));
+  Lp('ashLoop', 'رماد طاير', 'Floating ash', 'vfx', L => ({ gray: 0.6, spark: { k: 'emberRise', loop: L, n: 24, c: '#cccccc' } }));
 
   const api = { E, rnd, IN, OUT, LOOP, NAMES, CAT, CATS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
