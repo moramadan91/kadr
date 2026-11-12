@@ -71,7 +71,7 @@ main { display: grid; grid-template-columns: var(--libW, 290px) minmax(0, 1fr) v
 #inspTabs button { flex-direction: row; font-size: 13px; font-weight: 600; }
 
 /* media bin */
-#binList.grid { display: grid; align-content: start; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 8px 0 12px; }
+#binList.grid { display: grid; align-content: start; grid-template-columns: repeat(auto-fill, minmax(var(--binW, 72px), 1fr)); gap: 6px; margin: 8px 0 12px; }
 #binList.list { display: grid; align-content: start; gap: 3px; margin: 8px 0 12px; }
 #binList.list .mi { display: flex; align-items: center; gap: 8px; border-radius: 8px; }
 #binList.list .mi .th { width: 54px; flex: none; aspect-ratio: 16/10; }
@@ -629,3 +629,8 @@ label:has(> input[type=color]) { display: inline-flex; align-items: center; gap:
 .acats { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 8px; }
 .acats button { padding: 4px 9px; border-radius: 999px; background: var(--well); border: 1px solid var(--stroke); color: var(--text); font-size: 11px; cursor: pointer; }
 .acats button.on { border-color: var(--accent); color: var(--accent); }
+
+.binzoom { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.binzoom input { flex: 1; min-width: 0; }
+.mi .th .pbar { position: absolute; inset-inline-start: 0; bottom: 0; height: 3px; width: 0; background: var(--accent); z-index: 2; pointer-events: none; }
+.mi.prev { border-color: var(--accent); }

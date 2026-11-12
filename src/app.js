@@ -1472,7 +1472,7 @@ function clockTime() {
   return best && best.it.start + (best.el._px ? best.el.currentTime : S.ltAt(best.it, best.el.currentTime - num(best.it.in, 0))); // a retimed proxy plays timeline time at 1x
 }
 function setPlaying(v) {
-  if (v) animPreview = null;
+  if (v) { animPreview = null; stopBinPrev(); }
   playing = v && total() > 0;
   if (playing && t >= total() - 0.01) t = 0;
   const b = $('#bPlay');
@@ -3074,6 +3074,7 @@ function setLibTab(tab) {
   if (tab === 'captions') renderCapModels();
   if (tab === 'sounds') loadSfx();
   else if (!sfxAudio.paused) sfxAudio.pause();
+  if (tab !== 'media') stopBinPrev();
   $$('#libTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $$('#lib [data-pane]').forEach(p => (p.hidden = p.dataset.pane !== tab));
 }
@@ -3093,7 +3094,33 @@ function binOrder() {
   }[by];
   return Object.entries(P.media).filter(([, m]) => !m.fill && !m.adj && (!q || m.name.toLowerCase().includes(q))).sort(cmp).map(([id]) => id);
 }
+// Quick preview inside the card: one click plays the clip (with its sound) in its own thumbnail.
+let binPrev = null;
+function stopBinPrev() {
+  if (!binPrev) return;
+  const { el, mi, own } = binPrev;
+  binPrev = null;
+  el.pause(); el.ontimeupdate = el.onended = null;
+  if (own) el.removeAttribute('src'); else { el.muted = true; el.currentTime = 0.5; }
+  mi.classList.remove('prev'); mi.querySelector('.pbar')?.remove();
+}
+function toggleBinPrev(mi) {
+  const was = binPrev?.mi === mi;
+  stopBinPrev();
+  const m = P.media[mi.dataset.mid];
+  if (was || !m || !(m.kind === 'video' || m.kind === 'audio')) return;
+  if (playing) setPlaying(false);
+  const v = mi.querySelector('.th video'), own = !v, el = v || new Audio(urlOf(m));
+  const bar = mi.querySelector('.th').appendChild(Object.assign(document.createElement('span'), { className: 'pbar' }));
+  el.ontimeupdate = () => { bar.style.width = (el.currentTime / (el.duration || 1)) * 100 + '%'; };
+  el.onended = stopBinPrev;
+  el.muted = false; el.currentTime = 0;
+  binPrev = { el, mi, own };
+  mi.classList.add('prev');
+  el.play().catch(stopBinPrev);
+}
 function renderBin() {
+  stopBinPrev();
   for (const id of binSel) if (!P.media[id]) binSel.delete(id);
   const used = new Set(P.items.map(i => i.media));
   $('#binList').className = binView;
@@ -3167,7 +3194,7 @@ $('#binList').addEventListener('pointerdown', e => {
     window.removeEventListener('pointermove', mv);
     ghost.hidden = true;
     $$('.row.over').forEach(r => r.classList.remove('over'));
-    if (!dragging) { if (wasSel) { binSel.clear(); binPick(mid, ev); } return; }
+    if (!dragging) { if (wasSel) { binSel.clear(); binPick(mid, ev); } if (!(ev.shiftKey || ev.metaKey || ev.ctrlKey)) toggleBinPrev(mi); return; }
     const hit = document.elementFromPoint(ev.clientX, ev.clientY), row = hit?.closest('.row');
     const t0 = snap1(Math.max(0, timeAt(ev.clientX)), snapPoints(null));
     if (row) addMany(picked(), row.dataset.track, t0);
@@ -3196,7 +3223,17 @@ function binMarquee(e) {
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); box.parentNode.removeChild(box); }, { once: true });
 }
-$('#binList').addEventListener('dblclick', e => { if (e.target.closest('.mi')) addMany(picked()); });
+$('#binList').addEventListener('dblclick', e => { if (e.target.closest('.mi')) { stopBinPrev(); addMany(picked()); } });
+// Zoom: card size of the grid view.
+{
+  const z = $('#binZoom'), set = v => { v = Math.max(+z.min, Math.min(+z.max, v)); z.value = v; $('#binList').style.setProperty('--binW', v + 'px'); try { localStorage.setItem('kadr.binZoom', v); } catch {} };
+  let v0 = 72; try { v0 = +localStorage.getItem('kadr.binZoom') || 72; } catch {}
+  set(v0);
+  z.oninput = () => set(+z.value);
+  $('#binZOut').onclick = () => set(+z.value - 24);
+  $('#binZIn').onclick = () => set(+z.value + 24);
+  $('#binList').addEventListener('wheel', e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); set(+z.value - Math.sign(e.deltaY) * 12); } }, { passive: false });
+}
 $('#binList').addEventListener('contextmenu', e => {
   e.preventDefault();
   const mi = e.target.closest('.mi');
