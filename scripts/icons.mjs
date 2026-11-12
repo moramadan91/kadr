@@ -1,6 +1,6 @@
 // Builds src/icons.js from lucide-static (ISC). Edit NAMES and rerun: node scripts/icons.mjs
 import { readFileSync, writeFileSync } from 'node:fs';
-const NAMES = ['plus', 'type', 'captions', 'undo-2', 'redo-2', 'mouse-pointer-2', 'scissors', 'square-split-horizontal',
+const NAMES = ['plus', 'monitor', 'history', 'type', 'captions', 'undo-2', 'redo-2', 'mouse-pointer-2', 'scissors', 'square-split-horizontal',
   'arrow-left-to-line', 'arrow-right-to-line', 'trash-2', 'bookmark', 'crop', 'flip-horizontal-2', 'flip-vertical-2', 'mic',
   'magnet', 'link-2', 'zoom-in', 'zoom-out', 'maximize-2', 'play', 'pause', 'skip-back', 'skip-forward', 'save',
   'folder-open', 'share', 'languages', 'film', 'music', 'image', 'copy', 'x', 'square', 'eye', 'volume-2', 'volume-x',

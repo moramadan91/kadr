@@ -761,6 +761,7 @@
       if (typeof it.y === 'number' && it.type !== 'text') it.y *= k;
       if (it.kf && it.type !== 'text') for (const f of ['x', 'y']) if (it.kf[f]) it.kf[f] = it.kf[f].map(([t, v]) => [t, v * k]);
       if (it.style) for (const f of ['size', 'strokeW', 'spacing', 'shadowBlur', 'shadowDist', 'glowSize']) if (typeof it.style[f] === 'number') it.style[f] *= k;
+      if (it.style) for (const x of [...(it.style.strokes || []), ...(it.style.shadows || [])]) for (const f of ['w', 'blur', 'dist']) if (x[f] != null) x[f] = +x[f] * k;
     }
     return q;
   }

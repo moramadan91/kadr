@@ -60,7 +60,7 @@ function fontPicker(it) {
   if ($('#fpop')) return closeFontPop();
   const pop = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fpop' }));
   pop.innerHTML = `<div class="fpq">${icon('search')}<input id="fpQ" type="search" placeholder="${tr('fontSearch')}" dir="auto"></div>
-    <div class="ftabs">${['all', 'ar', 'sys', 'lib'].map(x => `<button data-ft="${x}" class="${x === fontTab ? 'on' : ''}">${tr('ft_' + x)}</button>`).join('')}</div>
+    <div class="ftabs">${[['all'], ['fav', 'star'], ['sys', 'monitor'], ['recent', 'history'], ['lib']].map(([x, ic]) => `<button data-ft="${x}" class="${x === fontTab ? 'on' : ''}${ic ? ' fti' : ''}" title="${tr('ft_' + x)}">${ic ? icon(ic) : tr('ft_' + x)}</button>`).join('')}</div>
     <div id="fpL" class="fpl"></div><p class="fpn">${tr('fontNote')}</p>`;
   const r = $('#fontBtn').getBoundingClientRect(), w = 300, h = 420;
   pop.style.left = clamp(r.right - w, 8, innerWidth - w - 8) + 'px';
@@ -74,15 +74,17 @@ function fontPicker(it) {
   const cur = it.style.font;
   const list = () => {
     const q = $('#fpQ').value.trim().toLowerCase(), have = f => fontReady(f);
+    const favs = lsGet('kadr.favFonts', []), kind = f => FontLib.sys.includes(f) ? 'sys' : have(f) ? 'ok' : 'dl';
     let rows;
     if (fontTab === 'sys') rows = FontLib.sys.map(f => [f, 'sys']);
+    else if (fontTab === 'fav' || fontTab === 'recent') rows = (fontTab === 'fav' ? favs : lsGet('kadr.recentFonts', [])).map(f => [f, kind(f)]);
     else {
-      rows = FONT_CAT.filter(c => fontTab === 'ar' ? c[2].includes('a') : fontTab === 'lib' ? !have(c[0]) : true).map(c => [c[0], have(c[0]) ? 'ok' : 'dl', c[2].includes('a')]);
+      rows = FONT_CAT.filter(c => fontTab === 'lib' ? !have(c[0]) : true).map(c => [c[0], have(c[0]) ? 'ok' : 'dl', c[2].includes('a')]);
       if (fontTab === 'all') rows.sort((a, b) => (a[1] === 'dl') - (b[1] === 'dl') || b[2] - a[2]); // ready first, Arabic first
     }
     if (q) rows = rows.filter(r => r[0].toLowerCase().includes(q));
     const more = rows.length > 400;
-    $('#fpL').innerHTML = rows.slice(0, 400).map(([f, k]) => `<div class="fr${f === cur ? ' on' : ''}" data-font="${esc(f)}"${k === 'dl' ? '' : ' data-ff'}><span class="fn">${esc(f)}</span><span class="fs">أبجد Aa</span>${k === 'dl' ? icon('download') : ''}</div>`).join('') +
+    $('#fpL').innerHTML = rows.slice(0, 400).map(([f, k]) => `<div class="fr${f === cur ? ' on' : ''}" data-font="${esc(f)}"${k === 'dl' ? '' : ' data-ff'}><span class="fn">${esc(f)}</span><span class="fs">أبجد Aa</span>${k === 'dl' ? icon('download') : ''}<button class="fv${favs.includes(f) ? ' on' : ''}" data-fav title="${tr('ft_fav')}">${icon('star')}</button></div>`).join('') +
       (more ? `<p class="hint">${tr('fontMore', { n: rows.length - 400 })}</p>` : rows.length ? '' : `<p class="hint">${tr('fontNone')}</p>`);
     paintIcons($('#fpL'));
     // preview each row in its own font only once it scrolls into view (loading hundreds of files at once is slow)
@@ -101,12 +103,18 @@ function fontPicker(it) {
     const r = e.target.closest('[data-font]');
     if (!r || r.classList.contains('busy')) return;
     const f = r.dataset.font;
+    if (e.target.closest('[data-fav]')) { // star: add to / remove from favourites, keep the list open
+      const fv = lsGet('kadr.favFonts', []);
+      lsSet('kadr.favFonts', fv.includes(f) ? fv.filter(x => x !== f) : [f, ...fv]);
+      return list();
+    }
     if (!fontReady(f)) {
       r.classList.add('busy');
       try { await fetchFont(f); } catch (er) { r.classList.remove('busy'); return toast(tr('fontFail') + ' ' + (er.message || er)); }
     }
     snapshot();
     it.style.font = f;
+    lsSet('kadr.recentFonts', [f, ...lsGet('kadr.recentFonts', []).filter(x => x !== f)].slice(0, 20));
     closeFontPop();
     await document.fonts.load(`${it.style.weight || 400} 40px "${f}"`).catch(() => {});
     refresh();
@@ -1254,11 +1262,29 @@ function drawTextItem(ctx, pr, it, lt) {
       ctx.fillText(txt, x, y); ctx.fillText(txt, x, y);
       ctx.restore();
     }
+    // extra strokes stack outward around the main one (Photoshop-style); extra shadows fall from the whole outline
+    const rings = [];
+    let rw = st.strokeW > 0 ? st.strokeW : 0;
+    for (const k of st.strokes || []) if (k.w > 0) rings.push([rw += +k.w, k.c]);
+    ctx.lineJoin = 'round';
+    for (const sh of st.shadows || []) {
+      // only the shadow lands on screen: the body is drawn far off-canvas and its shadow shifted back
+      // (so a fading text never shows a solid shadow-coloured copy through itself)
+      const m = ctx.getTransform(), OFF = 1e4, d = num(sh.dist, 0) * 0.7;
+      ctx.save();
+      ctx.shadowColor = sh.c; ctx.shadowBlur = num(sh.blur, 0);
+      ctx.shadowOffsetX = d - OFF * m.a; ctx.shadowOffsetY = d - OFF * m.b;
+      ctx.fillStyle = ctx.strokeStyle = sh.c;
+      if (rw > 0) { ctx.lineWidth = rw * 2; ctx.strokeText(txt, x + OFF, y); }
+      ctx.fillText(txt, x + OFF, y);
+      ctx.restore();
+    }
     if (st.shadowOn) {
       ctx.shadowColor = st.shadowColor; ctx.shadowBlur = st.shadowBlur;
       ctx.shadowOffsetX = st.shadowDist * 0.7; ctx.shadowOffsetY = st.shadowDist * 0.7;
     }
-    if (st.strokeW > 0) { ctx.lineWidth = st.strokeW * 2; ctx.lineJoin = 'round'; ctx.strokeStyle = st.stroke; ctx.strokeText(txt, x, y); ctx.shadowColor = 'transparent'; }
+    for (let j = rings.length - 1; j >= 0; j--) { ctx.lineWidth = rings[j][0] * 2; ctx.strokeStyle = rings[j][1]; ctx.strokeText(txt, x, y); ctx.shadowColor = 'transparent'; }
+    if (st.strokeW > 0) { ctx.lineWidth = st.strokeW * 2; ctx.strokeStyle = st.stroke; ctx.strokeText(txt, x, y); ctx.shadowColor = 'transparent'; }
     ctx.fillStyle = fillFor(y, i);
     ctx.fillText(txt, x, y);
     ctx.shadowColor = 'transparent';
@@ -1839,8 +1865,8 @@ function addText(styleId) {
 }
 
 function targetsAtPlayhead() {
-  const s = sel && item(sel);
-  return s && active(s, t) ? [s] : P.items.filter(i => active(i, t));
+  const ss = selIds().map(item).filter(i => i && active(i, t)); // every selected layer under the playhead
+  return ss.length ? ss : P.items.filter(i => active(i, t));
 }
 function splitAt(all) {
   const min = 1 / P.fps;
@@ -1896,14 +1922,20 @@ function removeSel() {
   refresh();
 }
 function duplicateSel() {
-  const it = sel && item(sel);
-  if (!it) return;
+  const its = selIds().map(item).filter(Boolean);
+  if (!its.length) return;
   snapshot();
-  const b = JSON.parse(JSON.stringify(it));
-  b.id = uid();
-  b.start = it.start + it.dur - (it.track === 'v1' && magnet ? 0.0001 : 0);
-  P.items.push(b);
-  sel = b.id;
+  const end = Math.max(...its.map(i => i.start + i.dur)), t0 = Math.min(...its.map(i => i.start)), ids = [];
+  for (const it of its) { // a group repeats right after itself, same spacing
+    const b = JSON.parse(JSON.stringify(it));
+    b.id = uid();
+    b.start = its.length > 1 ? end + it.start - t0 : it.start + it.dur - (it.track === 'v1' && magnet ? 0.0001 : 0);
+    if (its.length > 1) b.track = freeLaneAbove(b);
+    P.items.push(b);
+    ids.push(b.id);
+  }
+  sel = ids[0]; msel.clear();
+  if (ids.length > 1) ids.forEach(x => msel.add(x));
   refresh();
 }
 function addMarker() {
@@ -1911,11 +1943,12 @@ function addMarker() {
   P.markers = [...(P.markers || []).filter(m => Math.abs(m - t) > 1e-3), t].sort((a, b) => a - b);
   refresh();
 }
+const visualSel = () => selIds().map(item).filter(it => it && !isText(it) && media(it).kind !== 'audio');
 function mirrorSel() {
-  const it = sel && item(sel);
-  if (!it || isText(it) || media(it).kind === 'audio') return;
+  const its = visualSel();
+  if (!its.length) return;
   snapshot();
-  it.flipH = !it.flipH;
+  for (const it of its) it.flipH = !it.flipH;
   refresh();
 }
 
@@ -2110,11 +2143,15 @@ function inspector() {
       `<div class="tbar"><span>${tr('dir')}</span><div class="tg">${[['ltr', 'pilcrow-right'], ['rtl', 'pilcrow-left']].map(([v, ic]) => `<button data-set="dir" data-v="${v}" class="${st.dir === v ? 'on' : ''}" title="${tr('dir_' + v + 'T')}">${icon(ic)}</button>`).join('')}</div></div>` +
       `<div class="row2">${fld.range('style.spacing', 'spacing', -5, 40, 1, it)}${fld.range('style.lineH', 'lineH', 0.8, 2.5, 0.05, it, 1.3)}</div>` +
       `<div class="inl">${fld.color('style.color', 'color', it)}${fld.check('style.gradOn', 'gradient', it)}${st.gradOn ? fld.color('style.fill2', 'color2', it) : ''}${it.words ? fld.color('style.hl', 'hl', it) : ''}</div>`));
-    h.push(grp('stroke', fld.range('style.strokeW', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color('style.stroke', 'strokeColor', it)}</div>`));
+    const extra = (key, rowFn) => (st[key] || []).map((x, i) => `<div class="xl"><div class="xlh"><span>${tr(key === 'strokes' ? 'stroke' : 'shadow')} ${i + 2}</span><button class="ib" data-xdel="${key}.${i}" title="${tr('remove')}">${icon('x')}</button></div>${rowFn(`style.${key}.${i}`)}</div>`).join('');
+    const addBtn = (title, key) => `<div class="gh ghx"><span>${tr(title)}</span><button class="ib" data-xadd="${key}" title="${tr('addLayer')}">${icon('plus')}</button></div>`;
+    h.push(`<div class="grp">${addBtn('stroke', 'strokes')}` + fld.range('style.strokeW', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color('style.stroke', 'strokeColor', it)}</div>` +
+      extra('strokes', k => fld.range(k + '.w', 'stroke', 0, 20, 1, it) + `<div class="inl">${fld.color(k + '.c', 'strokeColor', it)}</div>`) + '</div>');
     h.push(grp('bg', `<div class="inl">${fld.check('style.bgOn', 'bg', it)}${fld.color('style.bg', 'color', it)}</div>` +
       (st.bgOn ? `<div class="row2">${fld.range('style.bgAlpha', 'opacity', 0, 1, 0.01, it, 1)}${fld.range('style.bgRadius', 'radius', 0, 0.5, 0.01, it, 0.22)}</div>` : '')));
-    h.push(grp('shadow', `<div class="inl">${fld.check('style.shadowOn', 'shadow', it)}${fld.color('style.shadowColor', 'color', it)}</div>` +
-      (st.shadowOn ? `<div class="row2">${fld.range('style.shadowBlur', 'blur', 0, 60, 1, it)}${fld.range('style.shadowDist', 'distance', 0, 40, 1, it)}</div>` : '')));
+    h.push(`<div class="grp">${addBtn('shadow', 'shadows')}<div class="inl">${fld.check('style.shadowOn', 'shadow', it)}${fld.color('style.shadowColor', 'color', it)}</div>` +
+      (st.shadowOn ? `<div class="row2">${fld.range('style.shadowBlur', 'blur', 0, 60, 1, it)}${fld.range('style.shadowDist', 'distance', 0, 40, 1, it)}</div>` : '') +
+      extra('shadows', k => `<div class="inl">${fld.color(k + '.c', 'color', it)}</div><div class="row2">${fld.range(k + '.blur', 'blur', 0, 60, 1, it)}${fld.range(k + '.dist', 'distance', 0, 40, 1, it)}</div>`) + '</div>');
     h.push(grp('glow', `<div class="inl">${fld.check('style.glowOn', 'glow', it)}${fld.color('style.glowColor', 'color', it)}</div>` +
       (st.glowOn ? fld.range('style.glowSize', 'size', 2, 80, 1, it) : '')));
     const ai = S.animAt(it, kfLt(it));
@@ -2609,6 +2646,16 @@ $('#inspBody').addEventListener('click', e => {
     if (an.dataset.anim !== 'none') startAnimPreview(it); else animPreview = null;
     return;
   }
+  const xa = e.target.closest('[data-xadd], [data-xdel]');
+  if (xa) { // add / remove an extra stroke or shadow layer
+    snapshot();
+    if (xa.dataset.xadd) {
+      const k = xa.dataset.xadd, last = (it.style[k] || []).slice(-1)[0];
+      it.style[k] = [...(it.style[k] || []), k === 'strokes' ? { w: 5, c: last ? last.c : '#000000' } : { c: '#000000', blur: 10, dist: 10 }];
+    } else { const [k, i] = xa.dataset.xdel.split('.'); it.style[k] = it.style[k].filter((_, j) => j !== +i); }
+    refresh(); inspector();
+    return;
+  }
   if (e.target.closest('[data-ptog]')) {
     const g = $('#inspBody .tpresets'), open = g.classList.toggle('collapsed') === false;
     const b = e.target.closest('[data-ptog]');
@@ -2650,13 +2697,20 @@ function hitAt(x, y) {
     for (const it of [...P.items].reverse()) if (it.track === order[i] && !isText(it) && !it.hidden && active(it, t) && media(it).kind !== 'audio' && !media(it).adj && inBox(visBox(it, t - it.start), x, y)) return it;
   return null;
 }
+// Multi-selection: a plain outline on each picked layer showing on the preview (no handles).
+const mselBoxes = [];
 function placeSelBox() {
+  const vr = view.getBoundingClientRect(), sr = $('#stage').getBoundingClientRect(), k = vr.width / P.w;
+  const at = b => ({ left: vr.left - sr.left + (b.cx - b.w / 2) * k + 'px', top: vr.top - sr.top + (b.cy - b.h / 2) * k + 'px',
+    width: Math.max(8, b.w * k) + 'px', height: Math.max(8, b.h * k) + 'px', transform: `rotate(${b.rot}deg)` });
+  const shown = id => { const x = item(id); return x && !x.hidden && active(x, t) && !(media(x) && media(x).kind === 'audio') && boxOf(x); };
+  const bs = playing || msel.size < 2 ? [] : [...msel].map(shown).filter(Boolean);
+  while (mselBoxes.length < bs.length) mselBoxes.push($('#stage').appendChild(Object.assign(document.createElement('div'), { className: 'mselbox' })));
+  mselBoxes.forEach((d, i) => { d.hidden = i >= bs.length; if (!d.hidden) Object.assign(d.style, at(bs[i])); });
   const it = sel && item(sel), b = it && !playing && msel.size < 2 && active(it, t) && !(media(it) && media(it).kind === 'audio') && boxOf(it);
   selBox.hidden = !b;
   if (!b) return;
-  const vr = view.getBoundingClientRect(), sr = $('#stage').getBoundingClientRect(), k = vr.width / P.w;
-  Object.assign(selBox.style, { left: vr.left - sr.left + (b.cx - b.w / 2) * k + 'px', top: vr.top - sr.top + (b.cy - b.h / 2) * k + 'px',
-    width: Math.max(8, b.w * k) + 'px', height: Math.max(8, b.h * k) + 'px', transform: `rotate(${b.rot}deg)` });
+  Object.assign(selBox.style, at(b));
 }
 // Value of an animatable prop on the selected item, written as a keyframe when that prop is keyframed.
 const propNow = (it, k) => num(S.animAt(it, kfLt(it))[k], KF_DEF(it)[k]);
@@ -2683,6 +2737,7 @@ selBox.addEventListener('pointerdown', e => {
   window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (changed) { renderTimeline(); inspector(); } }, { once: true });
 });
 view.addEventListener('dblclick', e => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey) return; // quick shift-clicks build a selection, never open the editor
   const r = view.getBoundingClientRect(), k = P.w / r.width;
   const hit = hitAt((e.clientX - r.left) * k, (e.clientY - r.top) * k);
   if (hit && isText(hit)) editTextInline(hit);
@@ -2749,12 +2804,16 @@ view.addEventListener('pointerdown', e => {
       return;
     }
   }
-  const cur = sel && item(sel), cb = cur && active(cur, t) && !(media(cur) && media(cur).kind === 'audio') && boxOf(cur);
-  // keep the current selection when clicking inside it (so you can grab a clip under a text), otherwise pick what's on top
-  if (!(cb && inBox(cb, (x0 - r.left) * k, (y0 - r.top) * k))) {
+  if (e.shiftKey || e.metaKey || e.ctrlKey) { // add / remove the layer under the pointer, like the timeline
     const hit = hitAt((x0 - r.left) * k, (y0 - r.top) * k);
-    select(hit ? hit.id : null);
+    if (hit) toggleSel(hit.id);
+    return;
   }
+  const cur = sel && item(sel), cb = cur && active(cur, t) && !(media(cur) && media(cur).kind === 'audio') && boxOf(cur);
+  // one click on a text always takes the text; otherwise keep the current selection when clicking inside it
+  // (so you can grab a clip under a text), else pick what's on top
+  const hit = hitAt((x0 - r.left) * k, (y0 - r.top) * k);
+  if ((hit && isText(hit)) || !(cb && inBox(cb, (x0 - r.left) * k, (y0 - r.top) * k))) select(hit ? hit.id : null);
   const it = sel && item(sel);
   if (!it || !active(it, t) || (media(it) && media(it).kind === 'audio')) return;
   const a0 = S.animAt(it, kfLt(it)), ox = num(a0.x, isText(it) ? 0.5 : 0), oy = num(a0.y, isText(it) ? 0.5 : 0);
@@ -3340,11 +3399,10 @@ async function freezeFrame() {
   refresh();
 }
 function rotateSel() {
-  const it = sel && item(sel);
-  if (!it || isText(it) || media(it).kind === 'audio') return;
+  const its = visualSel();
+  if (!its.length) return;
   snapshot();
-  const r = num(it.rotate, 0) + 90;
-  it.rotate = r > 180 ? r - 360 : r;
+  for (const it of its) { const r = num(it.rotate, 0) + 90; it.rotate = r > 180 ? r - 360 : r; }
   refresh();
 }
 // Stabilize: the source is processed once (video_stab, cached) and the clip switches to the steady copy;
@@ -4290,16 +4348,35 @@ $('#bLang').onclick = () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyLang(); r
 /* ---------- keyboard: CapCut-style keymap. One table drives the keys, the tooltips and the shortcuts sheet ---------- */
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 let clipBoard = null;
-function copySel() { const it = sel && item(sel); if (it) clipBoard = JSON.parse(JSON.stringify(it)); }
+function copySel() { const its = selIds().map(item).filter(Boolean); if (its.length) clipBoard = JSON.parse(JSON.stringify(its)); }
 function cutSel() { copySel(); removeSel(); }
+// A pasted clip never lands on top of another: nearest free lane of its kind above its own, else a new lane right above it.
+function freeLaneAbove(b) {
+  const free = id => !P.items.some(i => i.track === id && i.start < b.start + b.dur - 1e-6 && b.start < i.start + i.dur - 1e-6);
+  if (free(b.track)) return b.track;
+  const own = P.tracks.find(x => x.id === b.track), kind = own ? own.kind : 'video', at = own ? P.tracks.indexOf(own) : 0;
+  const up = P.tracks.slice(0, at).reverse().find(x => x.kind === kind && x.id !== 'c1' && !x.locked && free(x.id));
+  if (up) return up.id;
+  const x = { id: kind[0] + uid(), kind };
+  P.tracks.splice(at, 0, x);
+  return x.id;
+}
+// Copied layers paste together at the playhead, keeping their timing against each other.
 function pasteClip() {
-  if (!clipBoard || (clipBoard.media && !P.media[clipBoard.media])) return;
+  const src = (clipBoard || []).filter(x => !x.media || P.media[x.media]);
+  if (!src.length) return;
   snapshot();
-  const b = { ...JSON.parse(JSON.stringify(clipBoard)), id: uid(), start: t };
-  const c = b.track === 'v1' && magnet && P.items.find(i => i.track === 'v1' && active(i, t));
-  if (c) b.start = t - c.start > c.dur / 2 ? c.start + c.dur - 1e-4 : c.start - 1e-4; // land on the nearest cut
-  P.items.push(b);
-  sel = b.id;
+  const t0 = Math.min(...src.map(x => x.start)), ids = [];
+  for (const x of src) {
+    const b = { ...JSON.parse(JSON.stringify(x)), id: uid(), start: t + x.start - t0 };
+    const c = src.length === 1 && b.track === 'v1' && magnet && P.items.find(i => i.track === 'v1' && active(i, t));
+    if (c) b.start = t - c.start > c.dur / 2 ? c.start + c.dur - 1e-4 : c.start - 1e-4; // land on the nearest cut
+    else b.track = freeLaneAbove(b);
+    P.items.push(b);
+    ids.push(b.id);
+  }
+  sel = ids[0]; msel.clear();
+  if (ids.length > 1) ids.forEach(x => msel.add(x));
   refresh();
 }
 function selectStep(dir) {
