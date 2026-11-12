@@ -1699,25 +1699,41 @@ function dropLaneEnd(lane) {
   const keep = new Set(['c1', 't1', 'v1', 'v2', 'a1', 'a2']);
   P.tracks = P.tracks.filter(x => keep.has(x.id) || (x !== lane.nt && x.id !== lane.from) || P.items.some(i => i.track === x.id));
 }
-// Several clips selected: drag one and they all shift in time together (tracks stay).
+// Several clips selected: drag one and they all move together, in time and across lanes.
 function groupMove(e, lead) {
   if (sel !== lead.id) { sel = lead.id; inspTab = null; inspector(); paintSel(); }
-  const group = selIds().map(item).filter(Boolean), o = new Map(group.map(i => [i.id, i.start])), x0 = e.clientX;
+  const group = selIds().map(item).filter(Boolean), o = new Map(group.map(i => [i.id, i.start])), x0 = e.clientX, y0 = e.clientY;
   const minStart = Math.min(...group.map(i => i.start)), ids = new Set(group.map(i => i.id));
   const others = P.items.filter(i => !ids.has(i.id));
   const spts = [0, t, ...(P.markers || []), ...others.flatMap(i => [i.start, i.start + i.dur])];
-  let changed = false;
+  const TS = shownTracks(), row0 = new Map(group.map(i => [i.id, TS.findIndex(x => x.id === i.track)]));
+  const pinned = TS.filter(x => !laneKeep.has(x.id)).map(x => x.id); // lanes keep their rows while dragging
+  pinned.forEach(id => laneKeep.add(id));
+  let changed = false, dr = 0;
+  // the whole group moves up/down by whole lanes, only where every clip fits (same kind, free spot, not captions or locked)
+  const fits = k => group.every(i => {
+    const x = TS[row0.get(i.id) + k];
+    return x && (i.track === 'c1' ? k === 0 : x.id !== 'c1') && !x.locked && compatible(i, x.id) &&
+      !others.some(q => q.track === x.id && q.start < i.start + i.dur - 1e-6 && i.start < q.start + q.dur - 1e-6);
+  });
   const mv = ev => {
-    if (!changed) { if (Math.abs(ev.clientX - x0) < 3) return; snapshot(); changed = true; }
+    if (!changed) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return; snapshot(); changed = true; }
     let d = (ev.clientX - x0) / pps;
     const s = o.get(lead.id) + d, a = snap1(s, spts), b = snap1(s + lead.dur, spts) - lead.dur;
     d += (Math.abs(a - s) <= Math.abs(b - s) ? a : b) - s;
     d = Math.max(d, -minStart);
-    for (const i of group) { i.start = o.get(i.id) + d; const el = $(`.clip[data-id="${i.id}"]`); if (el) el.style.left = i.start * pps + 'px'; }
+    for (const i of group) i.start = o.get(i.id) + d;
+    const k = Math.round((ev.clientY - y0) / ROW);
+    if (k !== dr && fits(k)) dr = k;
+    else if (!fits(dr)) dr = fits(0) ? 0 : dr;
+    let moved = false;
+    for (const i of group) { const id = TS[row0.get(i.id) + dr].id; if (i.track !== id) { i.track = id; moved = true; } }
+    if (moved) renderTimeline();
+    else for (const i of group) { const el = $(`.clip[data-id="${i.id}"]`); if (el) el.style.left = i.start * pps + 'px'; }
     needsDraw = true;
   };
   window.addEventListener('pointermove', mv);
-  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); if (changed) refresh(); else select(lead.id); }, { once: true }); // plain click picks just this clip
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); pinned.forEach(id => laneKeep.delete(id)); if (changed) refresh(); else select(lead.id); }, { once: true }); // plain click picks just this clip
 }
 $('#rows').addEventListener('pointermove', e => {
   let bl = $('.bladeline');
@@ -1839,7 +1855,7 @@ function addMedia(mid, trackId, start) {
   if (start == null) start = P.items.filter(i => i.track === trackId).reduce((a, i) => Math.max(a, i.start + i.dur), 0);
   snapshot();
   const it = { id: uid(), track: trackId, media: mid, start, dur: m.kind === 'image' ? 5 : m.dur, in: 0, speed: 1, volume: 1 };
-  if (m.kind !== 'audio') Object.assign(it, { fit: 'cover', scale: 1, x: 0, y: 0, opacity: 1, preset: 'none', brightness: 1, contrast: 1, saturation: 1, temp: 0 });
+  if (m.kind !== 'audio') Object.assign(it, { fit: 'contain', scale: 1, x: 0, y: 0, opacity: 1, preset: 'none', brightness: 1, contrast: 1, saturation: 1, temp: 0 });
   P.items.push(it);
   sel = it.id;
   inspTab = null;
@@ -2790,6 +2806,8 @@ function editTextInline(it) {
   };
   ta.onblur = () => done(true);
 }
+// Click on the empty area around the frame: drop the selection.
+$('#stage').addEventListener('pointerdown', e => { if (e.button === 0 && e.target === e.currentTarget && (sel || msel.size)) select(null); });
 view.addEventListener('pointerdown', e => {
   const r = view.getBoundingClientRect(), k = P.w / r.width, x0 = e.clientX, y0 = e.clientY;
   if (e.button !== 0) return;
@@ -3089,8 +3107,10 @@ $('#binList').addEventListener('pointerdown', e => {
     ghost.hidden = true;
     $$('.row.over').forEach(r => r.classList.remove('over'));
     if (!dragging) { if (wasSel) { binSel.clear(); binPick(mid, ev); } return; }
-    const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.row');
-    if (row) addMany(picked(), row.dataset.track, snap1(Math.max(0, timeAt(ev.clientX)), snapPoints(null)));
+    const hit = document.elementFromPoint(ev.clientX, ev.clientY), row = hit?.closest('.row');
+    const t0 = snap1(Math.max(0, timeAt(ev.clientX)), snapPoints(null));
+    if (row) addMany(picked(), row.dataset.track, t0);
+    else if (hit?.closest('#tl')) addMany(picked(), newLaneFor(picked()[0], ev.clientY < $('#rows').getBoundingClientRect().top), t0); // empty timeline space: a lane of its own
   };
   window.addEventListener('pointermove', mv);
   window.addEventListener('pointerup', up, { once: true });
@@ -3648,11 +3668,11 @@ const STICKERS = {
 /* ---------- icons: Lucide line icons (iconlib.js, 24x24 paths) drawn as text-like layers ----------
    They take the text look: colour/gradient, outline strokes (+ extra), shadows (+ extra), glow, box, every animation,
    plus line width, fill and a self-drawing line (draw: 'in' once, 'loop' draw-hold-erase). */
-const ICONS = window.MaqtoIconLib || {}, iconPaths = new Map(), iconLens = new Map();
-const iconPath = n => { if (!iconPaths.has(n)) iconPaths.set(n, new Path2D(ICONS[n][0])); return iconPaths.get(n); };
+const ICLIB = window.MaqtoIconLib || {}, iconPaths = new Map(), iconLens = new Map();
+const iconPath = n => { if (!iconPaths.has(n)) iconPaths.set(n, new Path2D(ICLIB[n][0])); return iconPaths.get(n); };
 function iconLen(n) { // total line length, measured once by the browser
   if (!iconLens.has(n)) {
-    const e = document.createElementNS('http://www.w3.org/2000/svg', 'path'); e.setAttribute('d', ICONS[n][0]);
+    const e = document.createElementNS('http://www.w3.org/2000/svg', 'path'); e.setAttribute('d', ICLIB[n][0]);
     let L = 60; try { L = e.getTotalLength() || 60; } catch {}
     iconLens.set(n, L);
   }
@@ -3666,7 +3686,7 @@ function drawProg(it, lt) {
 }
 function drawIconItem(ctx, pr, it, st, s, lt) {
   const alpha = s.alpha * clamp(num(it.opacity, 1), 0, 1);
-  if (alpha <= 0 || !ICONS[it.icon] || s.sc <= 0 || s.sx <= 0 || s.sy <= 0) return;
+  if (alpha <= 0 || !ICLIB[it.icon] || s.sc <= 0 || s.sx <= 0 || s.sy <= 0) return;
   const sz = st.size, k = sz / 24, tk = S.trkAt(it, lt), cx = (num(it.x, 0.5) + tk[0]) * pr.w, cy = (num(it.y, 0.5) + tk[1]) * pr.h;
   const sc = s.sc * num(it.scale, 1), box = sz * 1.2;
   if (ctx === vctx) textBoxes.set(it.id, { cx: cx + s.dx, cy: cy + s.dy, w: box * sc * s.sx, h: box * sc * s.sy, rot: s.rot * 180 / Math.PI + num(it.rotate, 0) });
@@ -3751,18 +3771,18 @@ const IC_CATS = {
 };
 const IC_TABS = ['anim', 'draw', 'pop', 'all', ...Object.keys(IC_CATS)];
 let icCat = 'anim';
-const icSvg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[n][0]}"/></svg>`;
+const icSvg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICLIB[n][0]}"/></svg>`;
 function renderIcons() {
-  const q = ($('#icQ').value || '').trim().toLowerCase(), names = Object.keys(ICONS);
+  const q = ($('#icQ').value || '').trim().toLowerCase(), names = Object.keys(ICLIB);
   $('#icCats').innerHTML = IC_TABS.map(c => `<button class="chip${c === icCat && !q ? ' on' : ''}" data-cat="${c}">${tr('ic_' + c)}</button>`).join('');
   const btn = n => `<button data-ic="${n}" title="${n}">${icSvg(n)}</button>`;
   let h;
   if (q) {
-    const hits = names.filter(n => n.includes(q) || ICONS[n][1].includes(q));
+    const hits = names.filter(n => n.includes(q) || ICLIB[n][1].includes(q));
     h = hits.length ? `<div class="stk icl">${hits.map(btn).join('')}</div>` : `<p class="hint">${tr('stNone')}</p>`;
-  } else if (icCat === 'anim') h = `<div class="stk stanim">${IC_ANIM.filter(([n]) => ICONS[n]).map(([n, l]) => `<button data-ic="${n}" data-loop="${l}" title="${n} · ${esc(tr('an_' + l))}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
-  else if (icCat === 'draw') h = `<div class="stk stanim">${IC_DRAW.filter(n => ICONS[n]).map(n => `<button data-ic="${n}" data-draw="loop" title="${n}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
-  else if (icCat === 'pop') h = `<div class="stk icl">${IC_POP.filter(n => ICONS[n]).map(btn).join('')}</div>`;
+  } else if (icCat === 'anim') h = `<div class="stk stanim">${IC_ANIM.filter(([n]) => ICLIB[n]).map(([n, l]) => `<button data-ic="${n}" data-loop="${l}" title="${n} · ${esc(tr('an_' + l))}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
+  else if (icCat === 'draw') h = `<div class="stk stanim">${IC_DRAW.filter(n => ICLIB[n]).map(n => `<button data-ic="${n}" data-draw="loop" title="${n}"><canvas width="64" height="64"></canvas></button>`).join('')}</div>`;
+  else if (icCat === 'pop') h = `<div class="stk icl">${IC_POP.filter(n => ICLIB[n]).map(btn).join('')}</div>`;
   else h = `<div class="stk icl">${(icCat === 'all' ? names : names.filter(n => IC_CATS[icCat].test(n))).map(btn).join('')}</div>`;
   $('#iconList').innerHTML = h;
   iconThumbs(performance.now() / 1000);
@@ -4504,6 +4524,13 @@ let clipBoard = null;
 function copySel() { const its = selIds().map(item).filter(Boolean); if (its.length) clipBoard = JSON.parse(JSON.stringify(its)); }
 function cutSel() { copySel(); removeSel(); }
 // A pasted clip never lands on top of another: nearest free lane of its kind above its own, else a new lane right above it.
+// A new empty lane for a dropped file: sounds go under the others, pictures on top (`top`) or just over the main lane.
+function newLaneFor(mid, top) {
+  const kind = P.media[mid]?.kind === 'audio' ? 'audio' : 'video', x = { id: kind[0] + uid(), kind };
+  if (kind === 'audio') P.tracks.push(x);
+  else P.tracks.splice(top ? 0 : Math.max(0, P.tracks.findIndex(t => t.id === 'v1')), 0, x);
+  return x.id;
+}
 function freeLaneAbove(b) {
   const free = id => !P.items.some(i => i.track === id && i.start < b.start + b.dur - 1e-6 && b.start < i.start + i.dur - 1e-6);
   if (free(b.track)) return b.track;
