@@ -21,7 +21,10 @@
         "transparent": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 20, "y": 24 },
+        "trafficLightPosition": {
+          "x": 20,
+          "y": 24
+        },
         "windowEffects": {
           "effects": [
             "underWindowBackground",
@@ -59,12 +62,21 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["maqto", "kadr"],
+        "ext": [
+          "maqto",
+          "kadr"
+        ],
         "name": "Maqto Project",
         "description": "Maqto video project",
         "role": "Editor",
         "mimeType": "application/x-maqto",
-        "exportedType": { "identifier": "app.maqto.project", "conformsTo": ["public.json", "public.data"] }
+        "exportedType": {
+          "identifier": "app.maqto.project",
+          "conformsTo": [
+            "public.json",
+            "public.data"
+          ]
+        }
       }
     ],
     "category": "Video",
@@ -79,7 +91,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/rnnoise.rnnn": "rnnoise.rnnn"
+      "resources/rnnoise.rnnn": "rnnoise.rnnn",
+      "icons/doc/maqto-doc.ico": "maqto-doc.ico"
     },
     "externalBin": [
       "binaries/ffmpeg",
@@ -88,7 +101,10 @@
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "13.4",
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "files": {
+        "Resources/maqto-doc.icns": "icons/doc/maqto-doc.icns"
+      }
     },
     "windows": {
       "nsis": {
@@ -96,7 +112,8 @@
           "Arabic",
           "English"
         ],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerHooks": "windows-hooks.nsh"
       }
     },
     "createUpdaterArtifacts": true
