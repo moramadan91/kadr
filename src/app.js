@@ -2,6 +2,9 @@
 window.addEventListener('error', e => window.__TAURI__?.core.invoke('dev_log', { msg: `${e.message} @${e.lineno}` }));
 window.addEventListener('unhandledrejection', e => window.__TAURI__?.core.invoke('dev_log', { msg: 'rejection: ' + (e.reason && (e.reason.stack || e.reason)) }));
 const S = window.MaqtoShared, G = window.MaqtoGraph, I18N = window.MaqtoI18n, ICONS = window.MaqtoIcons;
+// names of the rich clip animations (anims.js) and their groups
+for (const [id, ar, en] of MaqtoAnims.NAMES) { I18N.ar['an_' + id] ??= ar; I18N.en['an_' + id] ??= en; }
+for (const [id, ar, en] of [['basic', 'أساسي', 'Basic'], ...MaqtoAnims.CATS]) { I18N.ar['ac_' + id] = ar; I18N.en['ac_' + id] = en; }
 // the two sample photos (trpics/) shown on transition, filter, effect and layer cards
 const trImgs = ['a', 'b'].map(n => Object.assign(new Image(), { src: 'trpics/' + n + '.jpg' }));
 for (const [id, p] of Object.entries(S.PRESETS)) if (p.en) { I18N.en['p_' + id] = I18N.en['p_' + id] || p.en; I18N.ar['p_' + id] = I18N.ar['p_' + id] || p.ar; } // filter names live with the filters
@@ -820,9 +823,13 @@ function drawVisual(ctx, time, ov, textHook) {
 // WebKit ignores the blend mode when it draws a <video> straight onto a canvas, so a blended clip is
 // drawn into its own layer first and that layer is blended onto the frame.
 const blendLayer = document.createElement('canvas');
-function drawItem(ctx, it, time, ov, srcOv, flat) {
+function drawItem(ctx, it, time, ov, srcOv, flat, noFx) {
     const pv = ov && ov.id === it.id, m = media(it);
     if (!m || m.kind === 'audio' || it.hidden) return;
+    if (!noFx && !m.adj && (pv || active(it, time))) { // rich animation: draw the clip on its own layer, then animfx.js
+      const lt = pv ? ov.lt : time - it.start, q = S.vaFx(it, lt);
+      if (q && !(it.blend && it.blend !== 'normal' && !flat)) return drawFx(ctx, it, time, ov, srcOv, flat, q, lt);
+    }
     if (!flat && it.blend && it.blend !== 'normal' && BLENDS[it.blend]) {
       const c = ctx.canvas, g = blendLayer.getContext('2d');
       if (blendLayer.width !== c.width || blendLayer.height !== c.height) { blendLayer.width = c.width; blendLayer.height = c.height; }
@@ -895,6 +902,18 @@ function drawItem(ctx, it, time, ov, srcOv, flat) {
     if (dip && dip[1] > 0) { ctx.globalAlpha *= dip[1]; ctx.fillStyle = S.TR_DIP[dip[0]]; ctx.fillRect(L.ox, L.oy, L.cw, L.ch); }
     if (ctx === vctx && sel === it.id && m.fill && it.fill && it.fill.type !== 'solid' && !playing) drawFillGuide(ctx, it.fill, L);
     ctx.restore();
+}
+
+const fxLayer = document.createElement('canvas');
+function drawFx(ctx, it, time, ov, srcOv, flat, q, lt) {
+  const c = ctx.canvas, mt = ctx.getTransform();
+  if (fxLayer.width !== c.width || fxLayer.height !== c.height) { fxLayer.width = c.width; fxLayer.height = c.height; }
+  const g = fxLayer.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(mt);
+  drawItem(g, it, time, ov, srcOv, flat, true);
+  const a = S.withVa(S.animAt(it, lt), lt, P.w, P.h), L = S.layout(a, media(it), P.w, P.h), [tx, ty] = S.trkAt(it, lt);
+  const x = L.ox + tx * P.w, y = L.oy + ty * P.h;
+  MaqtoFx.draw(ctx, fxLayer, { x: mt.a * x + mt.e, y: mt.d * y + mt.f, w: L.cw * mt.a, h: L.ch * mt.d, r: num(a.rotate, 0) }, q);
 }
 
 // ---------- shader transitions (src/gltrans.js) ----------
@@ -2192,9 +2211,13 @@ function inspector() {
     {
       const V = !isText(it);
       const key = { in: 'anim', out: 'out', loop: 'loop' }[animSub];
-      const list = V ? ['none', ...Object.keys({ in: S.VA_IN, out: S.VA_OUT, loop: S.VA_LOOP }[animSub])] : { in: ANIM_IN, out: ANIM_OUT, loop: ANIM_LOOP }[animSub];
+      const all = V ? Object.keys({ in: S.VA_IN, out: S.VA_OUT, loop: S.VA_LOOP }[animSub]) : null, catOf = a => MaqtoAnims.CAT[a] || 'basic';
+      const cats = V ? ['basic', ...MaqtoAnims.CATS.map(c => c[0])].filter(c => all.some(a => catOf(a) === c)) : [];
+      if (V && !cats.includes(animCat)) animCat = 'basic';
+      const list = V ? ['none', ...all.filter(a => catOf(a) === animCat)] : { in: ANIM_IN, out: ANIM_OUT, loop: ANIM_LOOP }[animSub];
       const curA = ({ slide: 'slideUp' })[it[key]] || it[key] || 'none';
       h.push(`<div class="seg">${['in', 'out', 'loop'].map(x => `<button data-asub="${x}" class="${x === animSub ? 'on' : ''}">${tr('an_' + x)}${(x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) && (x === 'in' ? it.anim : x === 'out' ? it.out : it.loop) !== 'none' ? ' •' : ''}</button>`).join('')}</div>`);
+      if (V) h.push(`<div class="acats">${cats.map(c => `<button data-acat="${c}" class="${c === animCat ? 'on' : ''}">${tr('ac_' + c)}${all.includes(curA) && catOf(curA) === c ? ' •' : ''}</button>`).join('')}</div>`);
       h.push(`<div class="agrid">${list.map(a => `<button data-anim="${a}" class="${a === curA ? 'on' : ''}">${a === 'none' ? icon('x') : `<canvas data-a="${a}" width="120" height="80"></canvas>`}<span>${tr('an_' + a)}</span></button>`).join('')}</div>`);
       if (animSub !== 'loop' && curA !== 'none') h.push(fld.range(animSub === 'in' ? 'inDur' : 'outDur', 'animDur', 0.1, 3, 0.05, it, animSub === 'in' ? 0.5 : 0.4));
       if (V) h.push(fades);
@@ -2403,6 +2426,7 @@ $('#inspTabs').addEventListener('click', e => {
   if (b) { inspTab = b.dataset.itab; inspector(); }
 });
 
+let animCat = 'basic';
 let editing = false, animSub = 'in', colSub = 'basic', hslSel = 'red', curCh = 'l';
 
 // A clip's frame (at its local time lt) as 96px pixels, for auto colour. Videos use a spare element.
@@ -2632,6 +2656,8 @@ $('#inspBody').addEventListener('click', e => {
   if (!it) return;
   const kb = e.target.closest('[data-kf]');
   if (kb) { const a = kb.dataset.kf; return a === 'tog' ? kfToggle(it) : kfJump(it, a === 'next' ? 1 : -1); }
+  const ac = e.target.closest('[data-acat]');
+  if (ac) { animCat = ac.dataset.acat; return inspector(); }
   const sub = e.target.closest('[data-asub]');
   if (sub) {
     animSub = sub.dataset.asub;
@@ -3681,6 +3707,7 @@ function animThumbs(now) {
       const per = animSub === 'loop' ? 2.4 : 1.6, u = Math.min(1, (now % per) / (per * 0.6));
       const f = animSub === 'in' ? S.VA_IN[a] : animSub === 'out' ? S.VA_OUT[a] : S.VA_LOOP[a] && S.VA_LOOP[a].f;
       if (!f) continue;
+      if (S.RICH[animSub].has(a)) { richThumb(g, pic, a, now); continue; }
       const d = animSub === 'loop' ? f(now % per, per) : f(u), s = num(d.s, 1) * 0.62;
       g.translate(W / 2 + (d.dx || 0) * W, H / 2 + (d.dy || 0) * H); g.rotate((d.r || 0) * Math.PI / 180);
       g.globalAlpha = clamp(num(d.o, 1), 0, 1);
@@ -3692,6 +3719,19 @@ function animThumbs(now) {
       drawTextItem(g, { w: W, h: H }, fake, lt);
     }
   }
+}
+// A rich animation on the thumbnail: the same channels and compositor as the preview, on a fake 0.62-size clip.
+const thumbLayer = document.createElement('canvas');
+function richThumb(g, pic, a, now) {
+  const W = g.canvas.width, H = g.canvas.height, per = animSub === 'loop' ? 4 : 1.8, D = per * 0.6;
+  const fk = { dur: per, inDur: D, outDur: D, anim: animSub === 'in' ? a : 'none', out: animSub === 'out' ? a : 'none', loop: animSub === 'loop' ? a : 'none' };
+  const u = Math.min(1, (now % per) / D), lt = animSub === 'in' ? u * D : animSub === 'out' ? Math.min(per - 1e-3, per - D + u * D) : now % per;
+  const d = S.vaDelta(fk, lt), q = S.vaFx(fk, lt);
+  if (thumbLayer.width !== W || thumbLayer.height !== H) { thumbLayer.width = W; thumbLayer.height = H; }
+  const t = thumbLayer.getContext('2d'), cx = W / 2 + d.dx * W, cy = H / 2 + d.dy * H, w = W * 0.62 * num(d.s, 1), h = H * 0.62 * num(d.s, 1);
+  t.setTransform(1, 0, 0, 1, 0, 0); t.clearRect(0, 0, W, H); t.globalAlpha = clamp(num(d.o, 1), 0, 1);
+  t.translate(cx, cy); t.rotate(d.r * Math.PI / 180); t.drawImage(pic, -w / 2, -h / 2, w, h); t.globalAlpha = 1;
+  if (q) MaqtoFx.draw(g, thumbLayer, { x: cx - w / 2, y: cy - h / 2, w, h, r: d.r }, q); else g.drawImage(thumbLayer, 0, 0);
 }
 // Stickers: emoji placed as text layers, so they scale, animate and export like any text.
 const STICKERS = {
@@ -4101,6 +4141,39 @@ async function renderGlTrans(Q, work, fps) {
   return out;
 }
 
+// Rich animations (anims.js): their stretches are drawn with the preview code and laid over the clip's track as PNG frames;
+// the graph hides the clip itself over the same frames (S.richSegs / S.segFrames).
+async function renderRich(Q, work, fps) {
+  const out = [], c = document.createElement('canvas');
+  c.width = P.w; c.height = P.h;
+  const ctx = c.getContext('2d'), ids = new Set(Q.items.map(x => x.id));
+  const list = P.items.filter(b => ids.has(b.id) && !isText(b) && media(b) && media(b).kind !== 'audio' && !media(b).adj && S.richSegs(b).length);
+  const png = async name => { const blob = await new Promise(r => c.toBlob(r, 'image/png')); await inv('write_frame', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-id': String(work.id), 'x-name': name } }); };
+  for (const [gi, b] of list.entries()) {
+    const m = media(b), isV = m.kind === 'video' && !m.fill;
+    for (const [si, sg] of S.richSegs(b).entries()) {
+      const N = S.segFrames(sg, fps), names = [];
+      for (let f0 = 0; f0 < N; f0 += 60) { // decode in batches: a long loop would not fit in memory at once
+        const fs = Array.from({ length: Math.min(60, N - f0) }, (_, i) => sg[0] + (f0 + i) / fps);
+        const fr = isV ? await framesAt(m, fs.map(lt => num(b.in, 0) + S.srcAt(b, Math.min(lt, b.dur - 1e-3)))) : [];
+        for (const [i, lt] of fs.entries()) {
+          if (cancelled) throw new Error(tr('cancelled'));
+          progress(tr('p_anim'), (gi + (f0 + i) / N) / list.length);
+          ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, P.w, P.h);
+          drawItem(ctx, b, b.start + lt, null, fr[i]);
+          const name = `r${gi}_${si}_${String(f0 + i).padStart(5, '0')}.png`;
+          await png(name); names.push({ name, frames: 1 });
+        }
+      }
+      ctx.clearRect(0, 0, P.w, P.h);
+      const end = `r${gi}_${si}_end.png`;
+      await png(end); names.push({ name: end, frames: 1 }); // clear frame: nothing stays on top after it
+      out.push({ track: b.track, start: b.start + sg[0], path: await inv('write_work', new TextEncoder().encode(G.concatText(names, fps)), { headers: { 'x-id': String(work.id), 'x-name': `rich${gi}_${si}.ffconcat` } }) });
+    }
+  }
+  return out;
+}
+
 const RES = [['720p', 720], ['1080p', 1080], ['2K', 1440], ['4K', 2160]];
 /* ---------- new project / welcome ---------- */
 const FORMATS = [ // [ratio, label key, platforms]
@@ -4270,7 +4343,7 @@ async function doExport(o) {
         const list = await rasterizeTexts(Q, work, g, 'g' + gi + '_');
         if (list) textLists.push({ track: g[0], path: await inv('write_work', new TextEncoder().encode(G.concatText(list, o.fps)), { headers: { 'x-id': String(work.id), 'x-name': 'text' + gi + '.ffconcat' } }) });
       }
-      const transLists = await renderGlTrans(Q, work, o.fps);
+      const transLists = [...await renderGlTrans(Q, work, o.fps), ...await renderRich(Q, work, o.fps)];
       const luts = await writeLuts(Q, work), masks = await writeMasks(Q, work);
       await writeFills(Q, work);
       const rife = {};

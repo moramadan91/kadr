@@ -197,6 +197,8 @@
         const fi = num(it.fadeIn, 0), fo = num(it.fadeOut, 0);
         if (fi > 0) ch.push(`fade=t=in:st=0:d=${f3(fi)}:alpha=1`);
         if (fo > 0) ch.push(`fade=t=out:st=${f3(it.dur - fo)}:d=${f3(fo)}:alpha=1`);
+        const rs = S.richSegs(it0); // rich animation stretches come as rendered frames: hide the clip under them
+        if (rs.length) ch.push(`colorchannelmixer=aa=0:enable='${rs.map(sg => `between(t,${f3(sg[0])},${f3(sg[0] + S.segFrames(sg, fps) / fps - 0.001)})`).join('+')}'`);
         ch.push(`setpts=PTS+${f3(it.start)}/TB`);
         fc.push(`[${mk ? `ma${j}` : vin}]${ch.join(',')}[v${j}]`);
         let tx = it.trk ? `'${ox}+${S.trkExpr(it, W, 0)}'` : ox, ty = it.trk ? `'${oy}+${S.trkExpr(it, H, 1)}'` : oy;

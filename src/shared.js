@@ -893,6 +893,49 @@
     spinLoop: { f: (L) => ({ r: 90 * L }), e: { r: L => `90*${L}` } },
     kenBurns: { f: (L, d) => ({ s: 1 + 0.15 * L / d, dx: 0.03 * L / d }), e: { s: (L, d) => `1+0.15*${L}/${(+d).toFixed(4)}`, dx: (L, d) => `0.03*${L}/${(+d).toFixed(4)}` }, smax: 1.15 },
   };
+  // Rich animations (anims.js): their basic channels go through the path above; the rest (3D, blur, glitch, reveals,
+  // pieces, device frames) is drawn by animfx.js, and the export renders those stretches as frames from the same code.
+  const AX = typeof module !== 'undefined' && module.exports ? require('./anims.js') : root.MaqtoAnims;
+  const RICH = { in: new Set(), out: new Set(), loop: new Set() };
+  if (AX) {
+    for (const k in AX.IN) { VA_IN[k] = AX.IN[k]; RICH.in.add(k); }
+    for (const k in AX.OUT) { VA_OUT[k] = AX.OUT[k]; RICH.out.add(k); }
+    for (const k in AX.LOOP) { VA_LOOP[k] = { f: AX.LOOP[k], e: {} }; RICH.loop.add(k); }
+  }
+  const FXK = ['sk', 'ry', 'rx', 'blur', 'px', 'rgb', 'glitch', 'wave', 'scan', 'flash', 'dark', 'gray', 'inv', 'glow'];
+  const FXO = ['pv', 'tint', 'shine', 'mb', 'wipe', 'tiles', 'spark', 'frame'];
+  // The rich channels of an item at local time lt (null when none of its animations is rich right now).
+  function vaFx(it, lt) {
+    if (it.type === 'text') return null;
+    const inD = Math.min(num(it.inDur, 0.5), it.dur), outD = Math.min(num(it.outDur, 0.4), it.dur), parts = [];
+    if (RICH.in.has(it.anim) && lt < inD) parts.push([VA_IN[it.anim], clamp(lt / inD, 0, 1), 0.05 / inD]);
+    if (RICH.out.has(it.out) && it.dur - lt < outD) parts.push([VA_OUT[it.out], clamp(1 - (it.dur - lt) / outD, 0, 1), 0.05 / outD]);
+    if (RICH.loop.has(it.loop)) parts.push([u => VA_LOOP[it.loop].f(u, it.dur), lt, 0.05]);
+    if (!parts.length) return null;
+    const q = { sx: 1, sy: 1, t: lt, ghosts: [] };
+    for (const k of FXK) q[k] = 0;
+    for (const [f, u, du] of parts) {
+      const d = f(u);
+      q.sx *= num(d.sx, 1); q.sy *= num(d.sy, 1);
+      for (const k of FXK) if (d[k]) q[k] += d[k];
+      for (const k of FXO) if (d[k] != null) q[k] = d[k];
+      if (d.trail) for (let i = 1; i <= 4; i++) { // ghosts: where the layer was a moment ago, relative to now
+        const g = f(Math.max(0, u - i * du));
+        q.ghosts.push({ dx: num(g.dx, 0) - num(d.dx, 0), dy: num(g.dy, 0) - num(d.dy, 0), s: num(g.s, 1) / num(d.s, 1), r: num(g.r, 0) - num(d.r, 0), o: d.trail * (1 - i / 5) * 0.6 });
+      }
+    }
+    return q;
+  }
+  // Local time spans the export renders as frames (rich in / out / loop), and their frame counts.
+  function richSegs(it) {
+    if (it.type === 'text' || it.hidden) return [];
+    if (RICH.loop.has(it.loop)) return [[0, it.dur]];
+    const s = [], inD = Math.min(num(it.inDur, 0.5), it.dur), outD = Math.min(num(it.outDur, 0.4), it.dur);
+    if (RICH.in.has(it.anim)) s.push([0, inD]);
+    if (RICH.out.has(it.out)) { const a = it.dur - outD; if (s.length && a <= s[0][1]) s[0][1] = it.dur; else s.push([a, it.dur]); }
+    return s;
+  }
+  const segFrames = (sg, fps) => Math.max(1, Math.round((sg[1] - sg[0]) * fps));
   const vaIn = it => it.type !== 'text' && VA_IN[it.anim] ? it.anim : null;
   const vaOut = it => it.type !== 'text' && VA_OUT[it.out] ? it.out : null;
   const vaLoop = it => it.type !== 'text' && VA_LOOP[it.loop] ? it.loop : null;
@@ -1705,7 +1748,7 @@
     return [];
   }
 
-  const api = { FX, FX_CAT, FXG, FXG0, fxgGLSL, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, GLT, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
+  const api = { FX, FX_CAT, FXG, FXG0, fxgGLSL, fxOf, fxVals, fxChain, TR_MOVE, trSub, trVal, BLEND_FF, TRANS, GLT, TR_SLIDE, TR_DIP, TR_GEQ, ease3, easeExpr, transClip, transIn, transOut, hasKey, keyUV, MASKS, MASK_DEF, hasMask, drawMask, num, clamp, CURVES, curveSpeed, curveDur, uAtF, fAtU, hasCurve, srcLen, srcAt, ltAt, rateAt, subCurve, EASE, VA_IN, VA_OUT, VA_LOOP, RICH, vaFx, richSegs, segFrames, hasVa, vaDelta, withVa, bakeVa, PRESETS, grade, HSL_BANDS, LOOKS, LUT_N, hasColor, colorFn, curveFn, parseCube, sampleLut, bakeLut, cubeText, colorKey, srcCrop, logoBox, layout, fadeAlpha, audioFade, fxKey, projectDur, scaleProject, parseWhisper, groupWords, trkAt, trkExpr, pwExpr, KF, kfVal, hasKf, animAt, shiftTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MaqtoShared = api;
 })(this);

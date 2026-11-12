@@ -109,6 +109,24 @@ assert.ok(!isRed(px(2.35, 540 - 300, 960 - 400)), 'late: image moved away');
 const late = px(2.35, 540 + 290, 960 - 400);
 assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque red on the right ' + late);
 
+// rich animations (anims.js): every in ends at rest, the clip is hidden under its rendered stretch, then shows
+{
+  const A = require('../src/anims');
+  assert.ok(Object.keys(A.IN).length + Object.keys(A.OUT).length + Object.keys(A.LOOP).length >= 200);
+  for (const k in A.IN) { const q = A.IN[k](1); for (const c of ['dx', 'dy', 'r', 'ry', 'rx', 'blur', 'rgb', 'glitch']) assert.ok(!q[c] || Math.abs(q[c]) < 1e-3, `${k} ends at rest (${c})`); }
+  const it = { type: 'image', dur: 2, anim: 'flip3dY', inDur: 0.5, out: 'tilesFall', outDur: 0.4 };
+  assert.deepStrictEqual(S.richSegs(it), [[0, 0.5], [1.6, 2]]);
+  assert.ok(S.vaFx(it, 0.1).ry > 10 && !S.vaFx(it, 1));
+  Object.assign(p.items[2], { kf: undefined, x: 0, y: -400, scale: 0.35, rotate: 0, opacity: 1, anim: 'flip3dY', inDur: 0.8 });
+  delete p.items[2].kf;
+  const rmov = path.join(dir, 'rich.mp4');
+  run(ffmpeg, buildArgs(p, { out: rmov, textList }).args);
+  const at = (time) => { const b = execFileSync(ffmpeg, ['-v', 'error', '-ss', String(time), '-i', rmov, '-frames:v', '1', '-vf', 'crop=2:2:540:560', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']); return [...b.subarray(0, 3)]; };
+  assert.ok(!isRed(at(0.8)), 'hidden while its frames would play ' + at(0.8));
+  assert.ok(isRed(at(1.8)), 'shown after the in animation ' + at(1.8));
+  delete p.items[2].anim;
+}
+
 // speed curves: time maps round-trip, a split keeps the source range, visual animations resolve
 {
   const curve = { id: 'hero', pts: S.CURVES.hero, src: 6 }, c = { dur: S.curveDur(curve), curve };
