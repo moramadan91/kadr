@@ -1,6 +1,6 @@
 [package]
 name = "maqto"
-version = "1.0.22"
+version = "1.0.23"
 description = "Maqto video editor"
 edition = "2021"
 
