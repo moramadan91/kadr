@@ -57,6 +57,16 @@
       "app",
       "nsis"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["maqto", "kadr"],
+        "name": "Maqto Project",
+        "description": "Maqto video project",
+        "role": "Editor",
+        "mimeType": "application/x-maqto",
+        "exportedType": { "identifier": "app.maqto.project", "conformsTo": ["public.json", "public.data"] }
+      }
+    ],
     "category": "Video",
     "publisher": "Maqto",
     "shortDescription": "Video editor",

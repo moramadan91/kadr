@@ -371,6 +371,15 @@ fn model_path(app: &AppHandle, model: &str) -> R<PathBuf> {
 /// cached by its arguments, so the preview plays it at normal speed instead of changing the rate
 /// every frame. The output path in `args` is the "__OUT__" placeholder.
 // Running proxy renders by job id (a clip id), so a newer edit of the same clip can stop the old one.
+// A project file the OS asked us to open (double-click / "Open with"): kept until the page takes it.
+static OPEN_FILE: Mutex<Option<String>> = Mutex::new(None);
+fn offer_file(app: &AppHandle, p: PathBuf) {
+    if !matches!(p.extension().and_then(|e| e.to_str()), Some("maqto" | "kadr")) { return; }
+    *OPEN_FILE.lock().unwrap() = Some(p.to_string_lossy().into_owned());
+    let _ = app.emit("open-file", ());
+}
+#[tauri::command]
+fn take_open_file() -> Option<String> { OPEN_FILE.lock().unwrap().take() }
 static PX_JOBS: std::sync::LazyLock<Mutex<HashMap<String, Arc<Mutex<Option<Child>>>>>> = std::sync::LazyLock::new(Default::default);
 
 #[tauri::command]
@@ -735,12 +744,14 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, splash_show, splash_done, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make, assistant::assistant_ready, assistant::assistant_ask, assistant::assistant_stop
+            cancel, take_open_file, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, splash_show, splash_done, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make, assistant::assistant_ready, assistant::assistant_ask, assistant::assistant_stop
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             app.manage(mcp::Bridge::start(app.handle().clone()));
+            // Windows/Linux pass a double-clicked project as the first argument
+            if let Some(a) = std::env::args().nth(1) { offer_file(app.handle(), PathBuf::from(a)); }
             // launch intro runs in its own small window (it calls splash_done when it ends); the editor
             // loads hidden behind it. Fallback in case the intro never reports back.
             let h = app.handle().clone();
@@ -757,6 +768,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Maqto")
         .run(|app, e| {
+            // macOS hands double-clicked files over as an event
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &e {
+                for u in urls { if let Ok(p) = u.to_file_path() { offer_file(app, p); } }
+            }
             // Cmd+Q / app menu Quit: same question first. quit_app exits with a code, so it passes.
             if let tauri::RunEvent::ExitRequested { code: None, api, .. } = e {
                 api.prevent_exit();

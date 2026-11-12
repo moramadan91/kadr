@@ -4635,6 +4635,13 @@ function showKeys() {
 $('#bKeys').onclick = showKeys;
 // Window close / Cmd+Q: offer to save unsaved work first (Rust holds the close until quit_app).
 let quitting = false;
+// A project double-clicked in Finder/Explorer: open it (at launch, or while the app is running).
+async function openPending() {
+  const f = await inv('take_open_file').catch(() => null);
+  if (f) { hideModal(); openPath(f); }
+  return !!f;
+}
+TA.event.listen('open-file', openPending);
 TA.event.listen('quit-requested', async () => {
   if (quitting) return;
   await autosave();
@@ -4844,7 +4851,7 @@ TA.event.listen('mcp-call', async e => {
 });
 
 inv('dev_demo').then(async d => {
-  if (!d.paths || !d.paths.length) return newProj(true); // always the start screen; unsaved work waits there as a card
+  if (!d.paths || !d.paths.length) return (await openPending()) || newProj(true); // always the start screen; unsaved work waits there as a card
   const ids = addToBin(await inv('probe', { paths: d.paths }));
   for (const id of ids) addMedia(id, P.media[id].kind === 'image' ? 'v2' : null, P.media[id].kind === 'image' ? 1 : null);
   const pic = P.items.find(i => P.media[i.media]?.kind === 'image');
