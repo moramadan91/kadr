@@ -455,6 +455,7 @@ async fn audio_fx(app: AppHandle, srv: State<'_, Arc<MediaServer>>, path: String
     let mut chain = vec![];
     if fx.contains('d') { chain.push("highpass=f=70,arnndn=m=rnnoise.rnnn"); }
     if fx.contains('n') { chain.push("loudnorm=I=-14:TP=-1.5:LRA=11,aformat=sample_rates=48000"); }
+    if fx == "x" { chain.push("anull"); } // plain sound track, for the preview's Web Audio playback
     if chain.is_empty() { return Err("no audio effect".into()); }
     let af = chain.join(",");
     let meta = std::fs::metadata(&path).map_err(err)?;
@@ -725,12 +726,19 @@ fn app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         &P::about(app, None, None)?, &P::separator(app)?, &P::services(app, None)?, &P::separator(app)?,
         &P::hide(app, None)?, &P::hide_others(app, None)?, &P::show_all(app, None)?, &P::separator(app)?, &quit,
     ])?;
+    // File items go to the page (menu-file event) so they share the save/unsaved-work logic of the shortcuts.
+    let f = |id: &str, label: &str, key: &str| MenuItem::with_id(app, id, label, true, Some(key));
+    let file = Submenu::with_items(app, "File", true, &[
+        &f("new", "New Project", "CmdOrCtrl+N")?, &f("open", "Open…", "CmdOrCtrl+O")?, &P::separator(app)?,
+        &f("save", "Save", "CmdOrCtrl+S")?, &f("saveAs", "Save As…", "CmdOrCtrl+Shift+S")?, &P::separator(app)?,
+        &f("import", "Import Media…", "CmdOrCtrl+I")?, &f("export", "Export Video…", "CmdOrCtrl+E")?,
+    ])?;
     let edit = Submenu::with_items(app, "Edit", true, &[
         &P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?,
         &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?,
     ])?;
     let window = Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?, &P::fullscreen(app, None)?])?;
-    Menu::with_items(app, &[&maqto, &edit, &window])
+    Menu::with_items(app, &[&maqto, &file, &edit, &window])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -760,7 +768,11 @@ pub fn run() {
             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(6)); splash_done(h); });
             Ok(())
         })
-        .on_menu_event(|app, e| if e.id() == "quit" { let _ = app.emit("quit-requested", ()); })
+        .on_menu_event(|app, e| match e.id().as_ref() {
+            "quit" => { let _ = app.emit("quit-requested", ()); }
+            id @ ("new" | "open" | "save" | "saveAs" | "import" | "export") => { let _ = app.emit("menu-file", id.to_string()); }
+            _ => {}
+        })
         .on_window_event(|w, e| if w.label() == "main" { match e {
             // The page decides: it asks to save unsaved work, then calls quit_app.
             tauri::WindowEvent::CloseRequested { api, .. } => { api.prevent_close(); let _ = w.emit("quit-requested", ()); }

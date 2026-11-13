@@ -455,6 +455,49 @@ function syncMedia() {
   }
   for (const [k, e] of els) if (k.endsWith('|dn') && !driven.has(e) && !e.paused) e.pause();
   driveTails();
+  waSync();
+}
+// Clip sound through Web Audio: each source's sound track is pulled out once (audio_fx 'x'), decoded,
+// and started sample-exact at its cut. A <video> that starts its own sound blocks WebKit's page for
+// ~200 ms at every cut, so those players stay muted and only give the picture.
+const AC = window.AudioContext ? new AudioContext({ latencyHint: 'playback' }) : null;
+const waBuf = new Map(), waLive = new Map();
+const waOk = it => !!AC && !S.fxKey(it) && !S.hasCurve(it) && (num(it.speed, 1) === 1 || !!it.pitch);
+const waUse = it => waOk(it) && !!media(it)?._wa && AC.state === 'running'; // a suspended context would be silent: players keep their sound
+function waLoad(mid) {
+  const m = P.media[mid];
+  if (waBuf.has(mid) || !m || num(m.dur, 0) > 900) return; // shortcut: very long sources keep element audio (memory)
+  waBuf.set(mid, inv('audio_fx', { path: m.path, fx: 'x' })
+    .then(p => fetch(urlOf({ path: p }))).then(r => r.arrayBuffer()).then(b => AC.decodeAudioData(b))
+    .then(B => { m._wa = B; inv('dev_log', { msg: `wa decoded ${m.name} ${B.duration.toFixed(2)}s ctx=${AC.state}` }); }, e => { m._wa = null; inv('dev_log', { msg: 'wa failed ' + e }); }));
+}
+function waStop(id) { const n = waLive.get(id); if (!n) return; try { n.src.stop(); } catch {} n.src.disconnect(); n.g.disconnect(); waLive.delete(id); }
+function waSync() {
+  if (!AC) return;
+  const want = new Set();
+  if (playing && !clock.wait) for (const it of P.items) {
+    const m = media(it);
+    if (!m || m.kind === 'image' || m.fill || m.adj || it.muted || !waOk(it)) continue;
+    waLoad(it.media);
+    const B = m._wa, lt = t - it.start;
+    if (!B || lt < -0.3 || lt >= it.dur) continue; // starts up to 0.3 s ahead, scheduled on the audio clock
+    want.add(it.id);
+    const sp = num(it.speed, 1);
+    let n = waLive.get(it.id);
+    // off by more than 0.12 s (seek, trim, held clock) or new speed: start again from here
+    if (n && (n.sp !== sp || (lt > 0.2 && Math.abs(AC.currentTime - n.t0 - lt) > 0.12))) { waStop(it.id); n = null; }
+    if (!n) {
+      if (AC.state === 'suspended') AC.resume();
+      const src = AC.createBufferSource(), g = AC.createGain(), from = Math.max(0, lt);
+      src.buffer = B; src.playbackRate.value = sp; src.connect(g).connect(AC.destination);
+      const when = AC.currentTime + Math.max(0, -lt), off = num(it.in, 0) + from * sp;
+      if (off >= B.duration) continue;
+      src.start(when, off);
+      waLive.set(it.id, n = { src, g, sp, t0: when - from });
+    }
+    n.g.gain.value = clamp(num(it.volume, 1) * S.audioFade(it, Math.max(0, lt)), 0, 1);
+  }
+  for (const id of [...waLive.keys()]) if (!want.has(id)) waStop(id);
 }
 // Under a shader transition the outgoing clip keeps playing from its source past its out-point (both
 // clips move, as in CapCut), on an element of its own; with no source left it holds its last frame.
@@ -524,12 +567,12 @@ function driveEl(el, it, silent) {
     const warm = !on && playing && it.start > t && it.start - t < 0.8;
     // Fast parts (over 3x) can't be decoded in real time: hold the element paused and jump to the
     // wanted frame whenever the last jump has landed (frame skipping keeps the picture in sync).
-    const fast = on && playing && sp > 3;
+    const fast = on && playing && !clock.wait && sp > 3; // held at a cut: the clip on screen waits too
     // Speed curves change the rate every frame; WebKit stutters on each playbackRate write, so step it.
-    const rate = warm ? 0.0625 : el._px ? 1 : S.hasCurve(it) ? +Math.pow(1.15, Math.round(Math.log(sp) / Math.log(1.15))).toFixed(3) : sp, mute = silent || !!it.muted || !on || fast;
+    const rate = warm ? 0.0625 : el._px ? 1 : S.hasCurve(it) ? +Math.pow(1.15, Math.round(Math.log(sp) / Math.log(1.15))).toFixed(3) : sp, mute = silent || !!it.muted || fast || waUse(it) || (!on && !warm); // warming: unmuted at volume 0, so the sound path is already open at the cut
     if (Math.abs(el.playbackRate - rate) > 1e-3) el.playbackRate = rate;
     if (el.muted !== mute) el.muted = mute;
-    const vol = clamp(num(it.volume, 1) * S.audioFade(it, t - it.start), 0, 1);
+    const vol = on ? clamp(num(it.volume, 1) * S.audioFade(it, t - it.start), 0, 1) : 0;
     if (Math.abs(el.volume - vol) > 0.005) el.volume = vol;
     el._hold = fast;
     if (fast) {
@@ -540,12 +583,26 @@ function driveEl(el, it, silent) {
         el._seekAt = now;
         if (el.fastSeek && sp > 6) el.fastSeek(want); else el.currentTime = want;
       }
-    } else if (on && playing) {
-      if (el.paused) { if (Math.abs(el.currentTime - want) > 0.15) el.currentTime = want; el.play().catch(() => {}); }
+    } else if (on && playing && !clock.wait) {
+      // the file often ends a few ms before its clip does: hold the last frame, no restart (play() costs ~80 ms in WebKit)
+      const atEnd = el.ended || (isFinite(el.duration) && want >= el.duration - 0.06);
+      if (el._first && el._live === undefined) { // the cut: wait for its first fresh frame (at most 400 ms)
+        el._live = false; el._liveAt = performance.now();
+        if (el.requestVideoFrameCallback) el.requestVideoFrameCallback(() => { el._live = true; needsDraw = true; }); else el._live = true;
+      }
+      if (atEnd) {}
+      else if (el.paused) { if (Math.abs(el.currentTime - want) > 0.15) el.currentTime = want; el.play().catch(() => {}); }
       else if (Math.abs(el.currentTime - want) > 0.3 * Math.max(1, sp)) el.currentTime = want; // faster clips drift more between frames
     } else if (warm) {
       const in0 = el._px ? 0 : num(it.in, 0);
-      if (el.paused) { if (!el.seeking && Math.abs(el.currentTime - in0) > 0.05) el.currentTime = in0; el.play().catch(() => {}); }
+      if (el.paused) { el._first = null; el._live = undefined; if (!el.seeking && Math.abs(el.currentTime - in0) > 0.05) el.currentTime = in0; el.play().catch(() => {}); }
+      // Keep its first frame before the cut: WebKit blocks ~100-200 ms on the first draws of a video that
+      // has just started; the preview shows this copy until the player hands over a fresh frame.
+      else if (!el._first && el.readyState >= 2 && el.tagName === 'VIDEO' && el.videoWidth) {
+        const c = el._first = document.createElement('canvas');
+        c.width = c._w = el.videoWidth; c.height = el.videoHeight;
+        c.getContext('2d').drawImage(el, 0, 0);
+      }
     } else {
       if (!el.paused) el.pause();
       if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
@@ -844,6 +901,7 @@ function drawItem(ctx, it, time, ov, srcOv, flat, noFx) {
     if (m.adj) { drawAdj(ctx, it, pv ? ov.lt : time - it.start); return; }
     let src = srcOv || (m.fill ? fillCanvas(it) : m.kind === 'image' ? imgFor(m) : tail ? tailSrc(it) : elFor(it));
     if (!src) return;
+    if (src._live === false && src._first && performance.now() - src._liveAt < 400) src = src._first;
     if (m.fill || src.tagName === 'CANVAS') {} // fill layer / held last frame: always ready
     else if (m.kind === 'image' ? !src.complete || !src.naturalWidth : src.readyState < 2) {
       if (!src._snap) return;
@@ -1443,14 +1501,23 @@ function loop(now) {
     // The playing clip is the clock (no seeks fighting the decoder); wall time only if it stalls > 0.8 s.
     const tc = clockTime();
     if (tc !== null && tc !== clock.tc) { clock.tc = tc; clock.at = now; }
-    t = tc !== null && now - clock.at < 800 ? Math.max(t, tc) : t + (now - lastTick) / 1000;
+    const tn = tc !== null && now - clock.at < 800 ? Math.max(t, tc) : t + (now - lastTick) / 1000;
+    // At a cut, hold the clock (and the last picture) until the next clip's decoder runs, at most 1 s:
+    // running on would skip its first frames and words, then seek again to catch up.
+    if (cutWait(t, tn)) { if (!clock.wait) clock.wait = now; } else { if (clock.wait) inv('dev_log', { msg: `cut wait ${Math.round(now - clock.wait)}ms at t=${t.toFixed(2)}` }); clock.wait = 0; }
+    if (!clock.wait || now - clock.wait > 1000) t = tn;
     if (t >= total()) { t = total(); setPlaying(false); }
     needsDraw = true;
     follow();
   }
+  if (playing && now - lastTick > 50) inv('dev_log', { msg: `frame gap ${Math.round(now - lastTick)}ms at t=${t.toFixed(2)}${clock.wait ? ' (cut wait)' : ''}` });
   lastTick = now;
+  const p0 = performance.now();
   syncMedia();
+  const p1 = performance.now();
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
+  const p2 = performance.now();
+  if (playing && p2 - p0 > 30) inv('dev_log', { msg: `slow tick sync=${Math.round(p1 - p0)}ms draw=${Math.round(p2 - p1)}ms at t=${t.toFixed(2)}` });
   if (!playing && inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
   if (!playing && libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
   if (!playing && libTab === 'effects' && fxHover && now - (loop.tf || 0) > 33) { loop.tf = now; fxThumbs(now / 1000); }
@@ -1460,6 +1527,15 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
+// A clip starting in (t0, t1], or started under 1 s ago, whose player is still seeking or buffering.
+function cutWait(t0, t1) {
+  for (const it of P.items) {
+    if (it.start > t1 || it.start <= t0 - 1 || it.start + it.dur <= t1 || it.hidden) continue;
+    const m = media(it), el = m && m.kind !== 'image' && els.get(chainKey(it));
+    if (el && (el.seeking || el.readyState < 3)) return true;
+  }
+  return false;
+}
 function clockTime() {
   let best = null;
   for (const it of P.items) {
@@ -1472,6 +1548,7 @@ function clockTime() {
   return best && best.it.start + (best.el._px ? best.el.currentTime : S.ltAt(best.it, best.el.currentTime - num(best.it.in, 0))); // a retimed proxy plays timeline time at 1x
 }
 function setPlaying(v) {
+  clock.wait = 0;
   if (v) { animPreview = null; stopBinPrev(); }
   playing = v && total() > 0;
   if (playing && t >= total() - 0.01) t = 0;
@@ -3731,15 +3808,28 @@ $('#fxCards').addEventListener('click', e => {
 });
 // Animation grid: every preset plays on a small copy of the clip (or a word for text), looping.
 let athumb = { id: null, c: null };
+// Animated cards (animations, stickers, icons) sit still on one frame; the card under the pointer plays.
+const STILL_T = 0.6;
+let hoverCv = null;
+document.addEventListener('pointerover', e => {
+  const L = e.target.closest?.('#stickerList, #iconList, #inspBody .agrid');
+  let b = e.target; while (L && b && b.parentElement !== L) b = b.parentElement;
+  const c = L && b ? b.querySelector('canvas') : null;
+  if (c === hoverCv) return;
+  if (hoverCv) hoverCv._drawn = false; // back to its still frame on the next tick
+  hoverCv = c;
+});
 function animThumbs(now) {
   const B = $('#inspBody').getBoundingClientRect(), it = sel && item(sel);
-  // only the cards on screen: 200+ rich thumbnails every frame starve playback
-  const cs = $$('#inspBody .agrid canvas').filter(c => { const r = c.getBoundingClientRect(); return r.bottom > B.top && r.top < B.bottom && r.height > 0; });
+  // still cards are drawn once (when on screen); only the hovered card moves
+  const cs = $$('#inspBody .agrid canvas').filter(c => c === hoverCv || (!c._drawn && (r => r.bottom > B.top && r.top < B.bottom && r.height > 0)(c.getBoundingClientRect())));
   if (!cs.length || !it) return;
   const V = !isText(it);
   if (V && athumb.id !== it.id) athumb = { id: it.id, c: null };
   const pic = V && (athumb.c || (athumb.c = clipThumb(it)) || cardCanvas(sampleScene));
+  const real = !V || athumb.c, now0 = now;
   for (const c of cs) {
+    now = c === hoverCv ? now0 : STILL_T; c._drawn = !!real;
     const a = c.dataset.a, g = c.getContext('2d'), W = c.width, H = c.height;
     g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.clearRect(0, 0, W, H);
     if (V) {
@@ -3901,8 +3991,10 @@ function renderIcons() {
   $('#iconList').innerHTML = h;
   iconThumbs(performance.now() / 1000);
 }
-function iconThumbs(now) {
+function iconThumbs(now0) {
   for (const c of $$('#iconList canvas')) {
+    if (c !== hoverCv && c._drawn) continue;
+    const now = c === hoverCv ? now0 : STILL_T; c._drawn = true;
     const b = c.parentElement, g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 64, 64);
     drawTextItem(g, { w: 64, h: 64 }, { text: b.dataset.ic, icon: b.dataset.ic, style: { ...presetStyle('plain'), size: 30, strokeW: 0, color: '#e8ecf1' }, x: 0.5, y: 0.5, dur: 1e4, anim: 'none', out: 'none', loop: b.dataset.loop, draw: b.dataset.draw }, 1 + now % 60);
@@ -3947,8 +4039,10 @@ function renderStickers() {
   $('#stickerList').innerHTML = h;
   stickerThumbs(performance.now() / 1000);
 }
-function stickerThumbs(now) {
+function stickerThumbs(now0) {
   for (const c of $$('#stickerList canvas')) {
+    if (c !== hoverCv && c._drawn) continue;
+    const now = c === hoverCv ? now0 : STILL_T; c._drawn = true;
     const b = c.parentElement, g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 64, 64);
     drawTextItem(g, { w: 64, h: 64 }, { text: b.dataset.st, style: { ...presetStyle('plain'), size: 30 }, x: 0.5, y: 0.5, dur: 1e4, anim: 'none', out: 'none', loop: b.dataset.loop }, 1 + now % 60);
@@ -4788,6 +4882,8 @@ async function openPending() {
   return !!f;
 }
 TA.event.listen('open-file', openPending);
+// macOS menu bar > File
+TA.event.listen('menu-file', e => ({ new: () => newProj(), open, save: () => save(), saveAs: () => save(true), import: importMedia, export: exportDialog })[e.payload]?.());
 TA.event.listen('quit-requested', async () => {
   if (quitting) return;
   await autosave();
