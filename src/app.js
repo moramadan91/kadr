@@ -1451,11 +1451,11 @@ function loop(now) {
   lastTick = now;
   syncMedia();
   if (needsDraw || animPreview) { needsDraw = false; draw(); updatePlayhead(); }
-  if (inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
-  if (libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
-  if (libTab === 'effects' && fxHover && now - (loop.tf || 0) > 33) { loop.tf = now; fxThumbs(now / 1000); }
-  if (libTab === 'stickers' && stCat === 'anim' && now - (loop.ts || 0) > 40) { loop.ts = now; stickerThumbs(now / 1000); }
-  if (libTab === 'icons' && (icCat === 'anim' || icCat === 'draw') && !$('#icQ').value && now - (loop.ti || 0) > 40) { loop.ti = now; iconThumbs(now / 1000); }
+  if (!playing && inspTab === 'tAnim' && now - (loop.th || 0) > 33) { loop.th = now; animThumbs(now / 1000); }
+  if (!playing && libTab === 'trans' && now - (loop.tt || 0) > 40) { loop.tt = now; transThumbs(now / 1000); }
+  if (!playing && libTab === 'effects' && fxHover && now - (loop.tf || 0) > 33) { loop.tf = now; fxThumbs(now / 1000); }
+  if (!playing && libTab === 'stickers' && stCat === 'anim' && now - (loop.ts || 0) > 40) { loop.ts = now; stickerThumbs(now / 1000); }
+  if (!playing && libTab === 'icons' && (icCat === 'anim' || icCat === 'draw') && !$('#icQ').value && now - (loop.ti || 0) > 40) { loop.ti = now; iconThumbs(now / 1000); }
   if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
   requestAnimationFrame(loop);
 }
@@ -3732,7 +3732,9 @@ $('#fxCards').addEventListener('click', e => {
 // Animation grid: every preset plays on a small copy of the clip (or a word for text), looping.
 let athumb = { id: null, c: null };
 function animThumbs(now) {
-  const cs = $$('#inspBody .agrid canvas'), it = sel && item(sel);
+  const B = $('#inspBody').getBoundingClientRect(), it = sel && item(sel);
+  // only the cards on screen: 200+ rich thumbnails every frame starve playback
+  const cs = $$('#inspBody .agrid canvas').filter(c => { const r = c.getBoundingClientRect(); return r.bottom > B.top && r.top < B.bottom && r.height > 0; });
   if (!cs.length || !it) return;
   const V = !isText(it);
   if (V && athumb.id !== it.id) athumb = { id: it.id, c: null };
@@ -4414,7 +4416,7 @@ async function doExport(o) {
 /* ---------- captions ---------- */
 // Speech models for auto captions and their download size; the user picks one, each downloads once.
 const CAP_MODELS = { small: '466 MB', 'large-v3-turbo-q5_0': '547 MB', 'large-v3-turbo': '1.6 GB', 'large-v3-q5_0': '1.1 GB' };
-const capModel = () => { const m = lsGet('kadr.capModel', 'small'); return CAP_MODELS[m] ? m : 'small'; };
+const capModel = () => { const m = lsGet('kadr.capModel', 'large-v3-turbo-q5_0'); return CAP_MODELS[m] ? m : 'large-v3-turbo-q5_0'; };
 async function renderCapModels() {
   const have = await Promise.all(Object.keys(CAP_MODELS).map(m => inv('model_ready', { model: m }).catch(() => false)));
   $('#capModel').innerHTML = Object.keys(CAP_MODELS).map((m, i) => `<option value="${m}"${m === capModel() ? ' selected' : ''}>${tr('cm_' + m)} · ${CAP_MODELS[m]}${have[i] ? ' ✓' : ''}</option>`).join('');
