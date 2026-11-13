@@ -772,9 +772,19 @@
     for (const seg of json.transcription || []) {
       const w = (seg.text || '').trim();
       if (!w || /^[\[(].*[\])]$/.test(w)) continue;
-      const s = seg.offsets.from / 1000, e = seg.offsets.to / 1000;
-      if (/^[\p{P}\p{S}]+$/u.test(w) && out.length) { out[out.length - 1].w += w; out[out.length - 1].e = e; continue; }
-      out.push({ w, s, e });
+      let s = seg.offsets.from / 1000, e = seg.offsets.to / 1000;
+      // DTW token times (centiseconds) when present: they land ~0.1 s after the sound starts
+      const tk = (seg.tokens || []).filter(x => !/^\[_/.test(x.text) && x.t_dtw >= 0);
+      const d = tk.length ? { s: Math.max(0, tk[0].t_dtw / 100 - 0.1), last: tk[tk.length - 1].t_dtw / 100 } : null;
+      if (d) { s = d.s; e = Math.max(s + 0.05, d.last + 0.15); }
+      if (/^[\p{P}\p{S}]+$/u.test(w) && out.length) { out[out.length - 1].w += w; if (!d) out[out.length - 1].e = e; continue; }
+      out.push({ w, s, e, d: !!d });
+    }
+    // DTW gives starts; a word lasts until the next one starts (unless there is a pause)
+    for (let i = 0; i < out.length; i++) {
+      const x = out[i], n = out[i + 1];
+      if (x.d && n && n.s > x.s && n.s - x.e < 0.3) x.e = n.s;
+      delete x.d;
     }
     return out;
   }

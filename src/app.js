@@ -460,7 +460,8 @@ function syncMedia() {
 // Clip sound through Web Audio: each source's sound track is pulled out once (audio_fx 'x'), decoded,
 // and started sample-exact at its cut. A <video> that starts its own sound blocks WebKit's page for
 // ~200 ms at every cut, so those players stay muted and only give the picture.
-const AC = window.AudioContext ? new AudioContext({ latencyHint: 'playback' }) : null;
+const AC = window.AudioContext ? new AudioContext({ latencyHint: 'interactive' }) : null;
+const waLat = () => (AC.outputLatency || 0) + (AC.baseLatency || 0); // seconds between start() and the speaker
 const waBuf = new Map(), waLive = new Map();
 const waOk = it => !!AC && !S.fxKey(it) && !S.hasCurve(it) && (num(it.speed, 1) === 1 || !!it.pitch);
 const waUse = it => waOk(it) && !!media(it)?._wa && AC.state === 'running'; // a suspended context would be silent: players keep their sound
@@ -479,7 +480,8 @@ function waSync() {
     const m = media(it);
     if (!m || m.kind === 'image' || m.fill || m.adj || it.muted || !waOk(it)) continue;
     waLoad(it.media);
-    const B = m._wa, lt = t - it.start;
+    // play ahead by the output delay, so each word reaches the speaker on its frame (and its caption)
+    const B = m._wa, lt = t - it.start + waLat();
     if (!B || lt < -0.3 || lt >= it.dur) continue; // starts up to 0.3 s ahead, scheduled on the audio clock
     want.add(it.id);
     const sp = num(it.speed, 1);
@@ -1625,11 +1627,7 @@ function renderTimeline() {
     P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
   laneGap();
-  const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
-  let ticks = '';
-  for (let s = 0; s * pps < width; s += step) ticks += `<div class="tick" style="left:${s * pps}px">${fmt(s).replace(/:00$/, '')}</div>`;
-  ticks += (P.markers || []).map((m, i) => `<div class="mk" data-mk="${i}" style="left:${m * pps}px"></div>`).join('');
-  $('#ruler').innerHTML = ticks;
+  renderRuler(width);
   $('#tdur').textContent = fmt(total());
   $('#tl').classList.toggle('blade', tool === 'blade');
   updatePlayhead();
@@ -1858,7 +1856,31 @@ $('#ruler').addEventListener('dblclick', e => {
   refresh();
 });
 
-function setZoom(v) { pps = clamp(v, 8, 400); $('#zoom').value = pps; renderTimeline(); }
+function renderRuler(width) {
+  const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
+  let ticks = '';
+  for (let s = 0; s * pps < width; s += step) ticks += `<div class="tick" style="left:${s * pps}px">${fmt(s).replace(/:00$/, '')}</div>`;
+  ticks += (P.markers || []).map((m, i) => `<div class="mk" data-mk="${i}" style="left:${m * pps}px"></div>`).join('');
+  $('#ruler').innerHTML = ticks;
+}
+// Zoom only moves what is already there (positions and widths), no rebuild of every clip: smooth with many captions.
+function setZoom(v) {
+  pps = clamp(v, 8, 400); $('#zoom').value = pps;
+  const width = (Math.max(total(), t) + 30) * pps, byId = new Map(P.items.map(i => [i.id, i]));
+  $('#rows').style.width = $('#ruler').style.width = width + 'px';
+  for (const el of $('#rows').querySelectorAll('.clip')) {
+    const it = byId.get(el.dataset.id);
+    if (!it) continue;
+    el.style.left = it.start * pps + 'px'; el.style.width = Math.max(4, it.dur * pps) + 'px';
+    for (const d of el.querySelectorAll('.kfd')) d.style.left = d.dataset.kt * pps + 'px';
+  }
+  for (const bx of $('#rows').querySelectorAll('.trbox')) {
+    const b = byId.get(bx.dataset.trn), T = b && S.transIn(P, b);
+    if (T) { bx.style.left = (b.start - T.d / 2) * pps + 'px'; bx.style.width = T.d * pps + 'px'; }
+  }
+  renderRuler(width);
+  updatePlayhead();
+}
 $('#zoom').addEventListener('input', e => setZoom(+e.target.value));
 const zoomQ = { k: 1, x: 0, raf: 0 };
 $('#scroll').addEventListener('wheel', e => {

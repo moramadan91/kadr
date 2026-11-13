@@ -659,8 +659,10 @@ async fn transcribe(app: AppHandle, id: u32, audio_args: Vec<String>, lang: Stri
             run_job(&state, &sidecar("ffmpeg"), &audio_args, |_| {})?;
             let base = dir.join("out");
             let threads = std::thread::available_parallelism().map(|n| n.get().clamp(2, 8)).unwrap_or(4).to_string();
+            // DTW token times (-dtw, needs -nfa, read from -ojf): plain whisper word times run up to ~0.8 s early.
+            let dtw = if model.starts_with("large-v3-turbo") { "large.v3.turbo" } else if model.starts_with("large-v3") { "large.v3" } else { "small" };
             let args: Vec<String> = ["-m", &model_path(&app, &model)?.to_string_lossy(), "-f", &dir.join("mix.wav").to_string_lossy(),
-                "-l", &lang, "-ml", "1", "-sow", "-oj", "-of", &base.to_string_lossy(), "-t", &threads, "-pp", "-np"]
+                "-l", &lang, "-ml", "1", "-sow", "-oj", "-ojf", "-nfa", "-dtw", dtw, "-of", &base.to_string_lossy(), "-t", &threads, "-pp", "-np"]
                 .iter().map(|s| s.to_string()).collect();
             let a2 = a.clone();
             run_job(&state, &whisper, &args, move |l| {

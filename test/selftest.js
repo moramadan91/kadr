@@ -254,4 +254,13 @@ assert.ok(late[0] > late[1] + 40 && late[0] > late[2] + 40, 'late: half-opaque r
 }
 
 fs.rmSync(dir, { recursive: true, force: true });
+// DTW token times win over segment offsets (whisper's run early); words run on to the next start
+{
+  const tk = (txt, d) => ({ text: txt, t_dtw: d });
+  const w = S.parseWhisper({ transcription: [
+    { text: ' a', offsets: { from: 800, to: 900 }, tokens: [tk('[_BEG_]', -1), tk(' a', 154)] },
+    { text: ' b', offsets: { from: 900, to: 1200 }, tokens: [tk(' b', 178), tk('c', 186)] },
+  ] });
+  assert.ok(Math.abs(w[0].s - 1.44) < 1e-6 && Math.abs(w[0].e - w[1].s) < 1e-6 && Math.abs(w[1].s - 1.68) < 1e-6, JSON.stringify(w));
+}
 console.log('selftest ok');
