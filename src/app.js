@@ -455,22 +455,25 @@ function syncMedia() {
   }
   for (const [k, e] of els) if (k.endsWith('|dn') && !driven.has(e) && !e.paused) e.pause();
   driveTails();
-  waSync();
+  try { waSync(); } catch (e) { console.error(e); } // sound must never stop the playback loop
 }
 // Clip sound through Web Audio: each source's sound track is pulled out once (audio_fx 'x'), decoded,
 // and started sample-exact at its cut. A <video> that starts its own sound blocks WebKit's page for
 // ~200 ms at every cut, so those players stay muted and only give the picture.
 const AC = window.AudioContext ? new AudioContext({ latencyHint: 'interactive' }) : null;
 const waLat = () => (AC.outputLatency || 0) + (AC.baseLatency || 0); // seconds between start() and the speaker
-const waBuf = new Map(), waLive = new Map();
+// Decoded sound per source path, kept outside the project: undo snapshots and saves copy P as JSON.
+const waBuf = new Map(), waReady = new Map(), waLive = new Map();
 const waOk = it => !!AC && !S.fxKey(it) && !S.hasCurve(it) && (num(it.speed, 1) === 1 || !!it.pitch);
-const waUse = it => waOk(it) && !!media(it)?._wa && AC.state === 'running'; // a suspended context would be silent: players keep their sound
+const waOf = m => (m && waReady.get(m.path)) || null;
+const waUse = it => waOk(it) && !!waOf(media(it)) && AC.state === 'running'; // a suspended context would be silent: players keep their sound
 function waLoad(mid) {
   const m = P.media[mid];
-  if (waBuf.has(mid) || !m || num(m.dur, 0) > 900) return; // shortcut: very long sources keep element audio (memory)
-  waBuf.set(mid, inv('audio_fx', { path: m.path, fx: 'x' })
+  if (!m || waBuf.has(m.path) || num(m.dur, 0) > 900) return; // shortcut: very long sources keep element audio (memory)
+  const path = m.path;
+  waBuf.set(path, inv('audio_fx', { path, fx: 'x' })
     .then(p => fetch(urlOf({ path: p }))).then(r => r.arrayBuffer()).then(b => AC.decodeAudioData(b))
-    .then(B => { m._wa = B; inv('dev_log', { msg: `wa decoded ${m.name} ${B.duration.toFixed(2)}s ctx=${AC.state}` }); }, e => { m._wa = null; inv('dev_log', { msg: 'wa failed ' + e }); }));
+    .then(B => { waReady.set(path, B); }, e => inv('dev_log', { msg: 'wa failed ' + e })));
 }
 function waStop(id) { const n = waLive.get(id); if (!n) return; try { n.src.stop(); } catch {} n.src.disconnect(); n.g.disconnect(); waLive.delete(id); }
 function waSync() {
@@ -481,7 +484,7 @@ function waSync() {
     if (!m || m.kind === 'image' || m.fill || m.adj || it.muted || !waOk(it)) continue;
     waLoad(it.media);
     // play ahead by the output delay, so each word reaches the speaker on its frame (and its caption)
-    const B = m._wa, lt = t - it.start + waLat();
+    const B = waOf(m), lt = t - it.start + waLat();
     if (!B || lt < -0.3 || lt >= it.dur) continue; // starts up to 0.3 s ahead, scheduled on the audio clock
     want.add(it.id);
     const sp = num(it.speed, 1);
@@ -1498,6 +1501,7 @@ for (const id of ['#lib', '#insp', '#tl']) new ResizeObserver(placeSplits).obser
 
 /* ---------- transport ---------- */
 function loop(now) {
+  requestAnimationFrame(loop); // first: an error in this frame must not freeze playback
   chainKeys.clear();
   if (playing) {
     // The playing clip is the clock (no seeks fighting the decoder); wall time only if it stalls > 0.8 s.
@@ -1526,7 +1530,6 @@ function loop(now) {
   if (!playing && libTab === 'stickers' && stCat === 'anim' && now - (loop.ts || 0) > 40) { loop.ts = now; stickerThumbs(now / 1000); }
   if (!playing && libTab === 'icons' && (icCat === 'anim' || icCat === 'draw') && !$('#icQ').value && now - (loop.ti || 0) > 40) { loop.ti = now; iconThumbs(now / 1000); }
   if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
-  requestAnimationFrame(loop);
 }
 const clock = { tc: null, at: 0 };
 // A clip starting in (t0, t1], or started under 1 s ago, whose player is still seeking or buffering.
@@ -1592,7 +1595,7 @@ function laneBtns(x) {
 function trBoxes(tid) {
   return P.items.filter(b => b.track === tid && b.trans && S.GLT.includes(b.trans.id)).map(b => {
     const T = S.transIn(P, b);
-    return T ? `<b class="trn trbox" data-trn="${b.id}" title="${tr('tr_' + T.id)}" style="left:${(b.start - T.d / 2) * pps}px;width:${T.d * pps}px"><i class="e l"></i>${icon('arrow-right-left')}<i class="e r"></i></b>` : '';
+    return T ? `<b class="trn trbox" data-trn="${b.id}" title="${tr('tr_' + T.id)}" style="left:calc(${b.start - T.d / 2}px * var(--pps));width:calc(${T.d}px * var(--pps))"><i class="e l"></i>${icon('arrow-right-left')}<i class="e r"></i></b>` : '';
   }).join('');
 }
 $('#rows').addEventListener('pointerdown', e => {
@@ -1621,10 +1624,11 @@ function laneGap() {
 new ResizeObserver(() => laneGap()).observe($('#scroll'));
 function renderTimeline() {
   const width = (Math.max(total(), t) + 30) * pps, TS = shownTracks();
-  $('#rows').style.width = $('#ruler').style.width = width + 'px';
+  ppsVar();
+  $('#rows').style.width = $('#ruler').style.width = `calc(${width / pps}px * var(--pps))`;
   $('#heads').innerHTML = TS.map(x => `<div class="head${x.locked ? ' locked' : ''}" data-track="${x.id}" title="${tr('dragTrack')}"><i style="background:${TRACK_COLOR[x.kind]}"></i><em>${esc(trackLabel(x))}</em>${laneBtns(x)}</div>`).join('');
   $('#rows').innerHTML = TS.map(x => `<div class="row${x.id === 'v1' ? ' main' : ''}${x.locked ? ' locked' : ''}" data-track="${x.id}">${
-    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:${it.start * pps}px;width:${Math.max(4, it.dur * pps)}px"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:${x * pps}px"></i>`).join('')}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
+    P.items.filter(i => i.track === x.id).map(it => `<div class="clip k-${kindOf(it)}${isSel(it.id) ? ' sel' : ''}${it.hidden ? ' off' : ''}" data-id="${it.id}" style="left:calc(${it.start}px * var(--pps));width:max(4px, calc(${it.dur}px * var(--pps)))"><div class="h l"></div>${S.transIn(P, it) && !S.GLT.includes(it.trans.id) ? `<b class="trn" data-trn="${it.id}" title="${tr('tr_' + it.trans.id)}">${icon('arrow-right-left')}</b>` : ''}<span>${clipLabel(it)}</span>${kfTimes(it).filter(x => x >= 0 && x <= it.dur).map(x => `<i class="kfd" data-kt="${x}" style="left:calc(${x}px * var(--pps))"></i>`).join('')}${pxBar(it, 'tl')}<div class="h r"></div></div>`).join('') + trBoxes(x.id)
   }</div>`).join('');
   laneGap();
   renderRuler(width);
@@ -1856,29 +1860,21 @@ $('#ruler').addEventListener('dblclick', e => {
   refresh();
 });
 
+const rulerStep = () => [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
 function renderRuler(width) {
-  const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find(s => s * pps >= 70) || 300;
+  const step = renderRuler.step = rulerStep();
   let ticks = '';
-  for (let s = 0; s * pps < width; s += step) ticks += `<div class="tick" style="left:${s * pps}px">${fmt(s).replace(/:00$/, '')}</div>`;
-  ticks += (P.markers || []).map((m, i) => `<div class="mk" data-mk="${i}" style="left:${m * pps}px"></div>`).join('');
+  for (let s = 0; s * pps < width; s += step) ticks += `<div class="tick" style="left:calc(${s}px * var(--pps))">${fmt(s).replace(/:00$/, '')}</div>`;
+  ticks += (P.markers || []).map((m, i) => `<div class="mk" data-mk="${i}" style="left:calc(${m}px * var(--pps))"></div>`).join('');
   $('#ruler').innerHTML = ticks;
 }
-// Zoom only moves what is already there (positions and widths), no rebuild of every clip: smooth with many captions.
+// One variable carries the zoom: every clip, tick and keyframe is placed as seconds x --pps.
+const ppsVar = () => { $('#rows').style.setProperty('--pps', pps); $('#ruler').style.setProperty('--pps', pps); };
+// Zoom writes one CSS variable; the ruler is rebuilt only when its tick spacing changes.
 function setZoom(v) {
   pps = clamp(v, 8, 400); $('#zoom').value = pps;
-  const width = (Math.max(total(), t) + 30) * pps, byId = new Map(P.items.map(i => [i.id, i]));
-  $('#rows').style.width = $('#ruler').style.width = width + 'px';
-  for (const el of $('#rows').querySelectorAll('.clip')) {
-    const it = byId.get(el.dataset.id);
-    if (!it) continue;
-    el.style.left = it.start * pps + 'px'; el.style.width = Math.max(4, it.dur * pps) + 'px';
-    for (const d of el.querySelectorAll('.kfd')) d.style.left = d.dataset.kt * pps + 'px';
-  }
-  for (const bx of $('#rows').querySelectorAll('.trbox')) {
-    const b = byId.get(bx.dataset.trn), T = b && S.transIn(P, b);
-    if (T) { bx.style.left = (b.start - T.d / 2) * pps + 'px'; bx.style.width = T.d * pps + 'px'; }
-  }
-  renderRuler(width);
+  ppsVar();
+  if (rulerStep() !== renderRuler.step) renderRuler((Math.max(total(), t) + 30) * pps);
   updatePlayhead();
 }
 $('#zoom').addEventListener('input', e => setZoom(+e.target.value));
