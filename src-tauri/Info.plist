@@ -21,7 +21,8 @@
     <dict>
       <key>UTTypeIdentifier</key><string>app.maqto.project</string>
       <key>UTTypeDescription</key><string>Maqto Project</string>
-      <key>UTTypeConformsTo</key><array><string>public.json</string><string>public.data</string></array>
+      <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.content</string></array>
+      <!-- not public.json: text types get a Quick Look text thumbnail in Finder instead of the icon -->
       <key>UTTypeIconFile</key><string>maqto-doc.icns</string>
       <key>UTTypeTagSpecification</key>
       <dict>

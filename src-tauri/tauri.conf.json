@@ -73,8 +73,8 @@
         "exportedType": {
           "identifier": "app.maqto.project",
           "conformsTo": [
-            "public.json",
-            "public.data"
+            "public.data",
+            "public.content"
           ]
         }
       }
