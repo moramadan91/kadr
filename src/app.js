@@ -305,11 +305,16 @@ function pxPaint(id) {
 }
 TA.event.listen('pxprog', e => { const g = pxProg.get(e.payload.job); if (g) { g.p = e.payload.p; pxPaint(e.payload.job); } });
 const mpx = new Map(); // media path -> proxy path, '' while it is being made, null if it failed
+const sparse = new Map(); // media path -> its keyframes are far apart (true/false, a promise while checking)
 function mediaProxy(m) {
-  if (m.kind !== 'video' || !(Math.max(m.w, m.h) > 1280) || lsGet('kadr.proxy', true) === false) return null;
+  if (m.kind !== 'video' || m.fill || m.adj || lsGet('kadr.proxy', true) === false) return null;
+  const big = Math.max(m.w, m.h) > 1280;
+  // far keyframes make every seek and cut slow (scrubbing freezes): those get a proxy too, at full size
+  if (!big && !sparse.has(m.path)) sparse.set(m.path, inv('sparse_keys', { path: m.path }).then(v => { sparse.set(m.path, v); if (v) needsDraw = true; }, () => sparse.set(m.path, false)));
+  if (!big && sparse.get(m.path) !== true) return null;
   if (!mpx.has(m.path)) {
     mpx.set(m.path, '');
-    const k = 960 / Math.max(m.w, m.h), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
+    const k = Math.min(1, 960 / Math.max(m.w, m.h)), ev = v => Math.max(2, Math.round(v * k / 2) * 2);
     inv('proxy_render', { args: ['-y', '-v', 'error', '-i', m.path, '-map', '0:v:0', '-map', '0:a:0?', '-vf', `scale=${ev(m.w)}:${ev(m.h)}`,
       ...G.ENCODERS.proxy(), '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '__OUT__'] })
       .then(p => { mpx.set(m.path, p); needsDraw = true; }, () => mpx.set(m.path, null));
@@ -317,7 +322,7 @@ function mediaProxy(m) {
   return mpx.get(m.path) || null;
 }
 function elFor(it) {
-  const m = media(it), px = proxyFor(it) || mediaProxy(m), url = px ? urlOf({ path: px }) : urlOf(m), key = chainKey(it);
+  const m = media(it), rp = proxyFor(it), px = rp || mediaProxy(m), url = px ? urlOf({ path: px }) : urlOf(m), key = chainKey(it);
   let el = els.get(key);
   if (el && el.dataset.src === url) return el;
   if (el) { el.pause(); el.removeAttribute('src'); el.load(); el.remove(); }
@@ -326,7 +331,7 @@ function elFor(it) {
   el.crossOrigin = 'anonymous'; // untainted frames for WebGL grading
 
   el.playsInline = true;
-  el._px = !!px;
+  el._px = !!rp; // a retimed proxy plays timeline time; a plain one keeps source time
   el.dataset.src = url;
   el.src = url;
   el.addEventListener('seeked', () => (needsDraw = true));
@@ -588,7 +593,7 @@ function driveEl(el, it, silent) {
         el._seekAt = now;
         if (el.fastSeek && sp > 6) el.fastSeek(want); else el.currentTime = want;
       }
-    } else if (on && playing && !clock.wait) {
+    } else if (on && playing && (!clock.wait || clock.seekHold)) {
       // the file often ends a few ms before its clip does: hold the last frame, no restart (play() costs ~80 ms in WebKit)
       const atEnd = el.ended || (isFinite(el.duration) && want >= el.duration - 0.06);
       if (el._first && el._live === undefined) { // the cut: wait for its first fresh frame (at most 400 ms)
@@ -610,7 +615,8 @@ function driveEl(el, it, silent) {
       }
     } else {
       if (!el.paused) el.pause();
-      if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) el.currentTime = want;
+      // while dragging: nearest keyframe (fast, smooth); once it stops the exact frame follows
+      if (on && !el.seeking && Math.abs(el.currentTime - want) > 0.5 / P.fps) { if (scrubbing && el.fastSeek && Math.abs(el.currentTime - want) > 1) el.fastSeek(want); else el.currentTime = want; }
       // Preroll: park the next clip on its first frame so the cut starts without a seek.
       else if (!on && playing && it.start > t && it.start - t < 1.5 && !el.seeking && Math.abs(el.currentTime - (el._px ? 0 : num(it.in, 0))) > 0.05) el.currentTime = el._px ? 0 : num(it.in, 0);
     }
@@ -1505,12 +1511,15 @@ function loop(now) {
   chainKeys.clear();
   if (playing) {
     // The playing clip is the clock (no seeks fighting the decoder); wall time only if it stalls > 0.8 s.
-    const tc = clockTime();
+    // Clock: the clip sound being heard (captions then follow the voice), else the playing video.
+    // One far from t is stale (a seek just moved t), not a clock.
+    const tc0 = (clock.wait ? null : waClock()) ?? clockTime(), tc = tc0 !== null && Math.abs(tc0 - t) < 0.3 ? tc0 : null;
     if (tc !== null && tc !== clock.tc) { clock.tc = tc; clock.at = now; }
     const tn = tc !== null && now - clock.at < 800 ? Math.max(t, tc) : t + (now - lastTick) / 1000;
     // At a cut, hold the clock (and the last picture) until the next clip's decoder runs, at most 1 s:
     // running on would skip its first frames and words, then seek again to catch up.
-    if (cutWait(t, tn)) { if (!clock.wait) clock.wait = now; } else { if (clock.wait) inv('dev_log', { msg: `cut wait ${Math.round(now - clock.wait)}ms at t=${t.toFixed(2)}` }); clock.wait = 0; }
+    const cw = cutWait(t, tn);
+    if (cw) { if (!clock.wait) clock.wait = now; clock.seekHold = cw === 2; } else { if (clock.wait) inv('dev_log', { msg: `cut wait ${Math.round(now - clock.wait)}ms at t=${t.toFixed(2)}` }); clock.wait = 0; }
     if (!clock.wait || now - clock.wait > 1000) t = tn;
     if (t >= total()) { t = total(); setPlaying(false); }
     needsDraw = true;
@@ -1532,14 +1541,25 @@ function loop(now) {
   if (now - (loop.tw || 0) > 300) { loop.tw = now; warmTrans(); }
 }
 const clock = { tc: null, at: 0 };
-// A clip starting in (t0, t1], or started under 1 s ago, whose player is still seeking or buffering.
+// A clip on screen whose player is seeking, or one starting in (t0, t1] / under 1 s ago still buffering.
+// Running on during a seek makes the player chase the clock (seek, land late, seek again): frozen picture.
+// 1: a cut (players held paused), 2: a playing player seeking (it keeps playing, only the clock waits).
 function cutWait(t0, t1) {
+  let r = 0;
   for (const it of P.items) {
-    if (it.start > t1 || it.start <= t0 - 1 || it.start + it.dur <= t1 || it.hidden) continue;
-    const m = media(it), el = m && m.kind !== 'image' && els.get(chainKey(it));
-    if (el && (el.seeking || el.readyState < 3)) return true;
+    if (it.start > t1 || it.start + it.dur <= t1 || it.hidden) continue;
+    const fresh = it.start > t0 - 1, m = media(it), el = m && m.kind !== 'image' && els.get(chainKey(it));
+    if (!el) continue;
+    if (fresh && (el.seeking || el.readyState < 3)) return 1;
+    if (!fresh && el.seeking && !el.paused && rateOf(it) <= 3) r = 2; // fast parts skip frames by seeking on purpose
   }
-  return false;
+  return r;
+}
+// Timeline time of the clip sound now reaching the speaker.
+function waClock() {
+  if (!AC) return null;
+  for (const it of P.items) { const n = waLive.get(it.id); if (n && active(it, t)) return it.start + AC.currentTime - n.t0 - waLat(); }
+  return null;
 }
 function clockTime() {
   let best = null;
@@ -1562,7 +1582,7 @@ function setPlaying(v) {
   b.innerHTML = icon(b.dataset.i);
   if (!playing) for (const el of els.values()) el.pause();
 }
-function seek(v) { animPreview = null; t = clamp(v, 0, Math.max(total(), 0) + 3600); needsDraw = true; } // free to run past the last clip
+function seek(v) { animPreview = null; t = clamp(v, 0, Math.max(total(), 0) + 3600); needsDraw = true; for (const id of [...waLive.keys()]) waStop(id); } // free to run past the last clip
 function updatePlayhead() {
   $('#ph').style.left = t * pps + 'px';
   $('#tc').textContent = fmt(t);
@@ -1840,12 +1860,17 @@ $('#rows').addEventListener('pointermove', e => {
   bl.style.left = timeAt(e.clientX) * pps + 'px';
 });
 
+// Dragging the playhead pauses playback (players only show frames, one jump at a time) and resumes on release.
+let scrubbing = false;
 function scrubFrom(e) {
   const at = ev => { seek(timeAt(ev.clientX)); if ((t + 10) * pps > $('#rows').offsetWidth) renderTimeline(); };
+  const was = playing;
+  scrubbing = true;
+  if (was) setPlaying(false);
   at(e);
   const mv = ev => at(ev);
   window.addEventListener('pointermove', mv);
-  window.addEventListener('pointerup', () => window.removeEventListener('pointermove', mv), { once: true });
+  window.addEventListener('pointerup', () => { window.removeEventListener('pointermove', mv); scrubbing = false; needsDraw = true; if (was) setPlaying(true); }, { once: true });
 }
 $('#ruler').addEventListener('pointerdown', e => {
   const mk = e.target.closest('.mk');
@@ -4536,9 +4561,11 @@ async function renderCapModels() {
 }
 $('#capModel').addEventListener('change', e => { lsSet('kadr.capModel', e.target.value); renderCapModels(); });
 async function autoCaptions() {
-  const hasAudio = P.items.some(i => { const m = media(i); return m && !i.muted && (m.kind === 'audio' || m.hasAudio); });
-  if (!hasAudio) return toast(tr('needAudio'));
-  const old = P.items.filter(i => i.track === 'c1');
+  // only the clips picked on the timeline: their sound alone is transcribed, captions elsewhere stay
+  const pick = selIds().map(item).filter(i => { const m = i && media(i); return m && !i.muted && (m.kind === 'audio' || m.hasAudio); });
+  if (!pick.length) return toast(tr(P.items.some(i => media(i)) ? 'capPick' : 'needAudio'));
+  const inPick = c => pick.some(i => c.start + c.dur / 2 >= i.start && c.start + c.dur / 2 < i.start + i.dur);
+  const old = P.items.filter(i => i.track === 'c1' && inPick(i));
   if (old.length && !(await TA.dialog.ask(tr('replaceCaps'), { kind: 'warning' }))) return;
   setPlaying(false);
   cancelled = false;
@@ -4554,15 +4581,16 @@ async function autoCaptions() {
     progress(tr('p_audio'), 0);
     work = await inv('work_begin');
     await dnPrep();
-    const { args } = G.buildArgs(P, { out: work.path + '/mix.wav', audioOnly: true });
+    const { args } = G.buildArgs({ ...P, items: pick }, { out: work.path + '/mix.wav', audioOnly: true });
     const json = await inv('transcribe', { id: work.id, audioArgs: args, lang: $('#capLang').value, model });
     work = null;
     hideModal();
     const words = S.parseWhisper(JSON.parse(json));
     if (!words.length) return toast(tr('noSpeech'));
     snapshot();
-    const style = old.length && isText(old[0]) ? old[0].style : textDefaults(true);
-    P.items = P.items.filter(i => i.track !== 'c1');
+    const prev = old[0] || P.items.find(i => i.track === 'c1');
+    const style = prev && isText(prev) ? prev.style : textDefaults(true);
+    P.items = P.items.filter(i => !old.includes(i));
     const groups = S.groupWords(words);
     groups.forEach((g, i) => {
       const next = groups[i + 1];

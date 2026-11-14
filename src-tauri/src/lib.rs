@@ -436,6 +436,27 @@ fn proxy_cancel(job: String) {
     if let Some(s) = PX_JOBS.lock().unwrap().remove(&job) { if let Some(mut c) = s.lock().unwrap().take() { let _ = c.kill(); } }
 }
 
+/// True when a video has keyframes over 2 s apart in its first 12 s (AI clips often have one per file):
+/// every seek then decodes from the far keyframe, so the preview needs a proxy with dense keyframes.
+#[tauri::command]
+async fn sparse_keys(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(out) = command(&sidecar("ffprobe")).args(["-v", "error", "-select_streams", "v:0", "-read_intervals", "%+12",
+            "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", &path]).output() else { return false };
+        let mut keys = vec![];
+        let mut last = 0.0f64;
+        for l in String::from_utf8_lossy(&out.stdout).lines() {
+            let mut f = l.split(',');
+            let Some(t) = f.next().and_then(|x| x.parse::<f64>().ok()) else { continue };
+            last = last.max(t);
+            if f.next().is_some_and(|x| x.starts_with('K')) { keys.push(t); }
+        }
+        keys.sort_by(|a, b| a.total_cmp(b));
+        keys.push(last);
+        keys.windows(2).any(|w| w[1] - w[0] > 2.0)
+    }).await.unwrap_or(false)
+}
+
 /// Raw frames for motion tracking: ffmpeg's stdout handed to JS as bytes.
 #[tauri::command]
 async fn gray_frames(args: Vec<String>) -> R<tauri::ipc::Response> {
@@ -754,7 +775,7 @@ pub fn run() {
         .manage(MediaServer::start().expect("media server"))
         .invoke_handler(tauri::generate_handler![
             probe, save_project, open_project, recovery_path, work_begin, work_end, write_frame, export_run, audio_fx, video_stab, proxy_render, write_work, read_lut, lut_library, lut_add, lut_remove, sfx_library, sfx_import, overlay_library,
-            cancel, take_open_file, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, splash_show, splash_done, path_exists, gray_frames, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make, assistant::assistant_ready, assistant::assistant_ask, assistant::assistant_stop
+            cancel, take_open_file, model_ready, model_download, transcribe, save_recording, dev_demo, dev_log, media_base, quit_app, splash_show, splash_done, path_exists, gray_frames, sparse_keys, proxy_cancel, system_fonts, fonts_downloaded, font_fetch, mcp::mcp_reply, rife::rife_ready, rife::rife_download, rife::rife_make, matte::matte_ready, matte::matte_download, matte::matte_make, assistant::assistant_ready, assistant::assistant_ask, assistant::assistant_stop
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
